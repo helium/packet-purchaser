@@ -1,0 +1,5 @@
+## Name of the node
+-name packet_purchaser@127.0.0.1
+
+## Cookie for distributed erlang
+-setcookie packet_purchaser

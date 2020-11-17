@@ -1,0 +1,21 @@
+{application, packet_purchaser, [
+    {description, "An OTP application"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {mod, {packet_purchaser_app, []}},
+    {applications, [
+        kernel,
+        stdlib,
+        syntax_tools,
+        compiler,
+        crypto,
+        ssl,
+        public_key,
+        lager
+    ]},
+    {env, []},
+    {modules, []},
+
+    {licenses, ["Apache 2.0"]},
+    {links, []}
+]}.
