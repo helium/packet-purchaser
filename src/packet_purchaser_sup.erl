@@ -30,6 +30,15 @@
     modules => [I]
 }).
 
+-define(WORKER(I, Args), #{
+    id => I,
+    start => {I, start_link, Args},
+    restart => permanent,
+    shutdown => 5000,
+    type => worker,
+    modules => [I]
+}).
+
 -define(SERVER, ?MODULE).
 
 %%====================================================================
@@ -58,8 +67,11 @@ init([]) ->
         {base_dir, BaseDir},
         {update_dir, application:get_env(blockchain, update_dir, undefined)}
     ],
-
-    ChildSpecs = [?SUP(blockchain_sup, [BlockchainOpts])],
+    SCWorkerOpts = #{},
+    ChildSpecs = [
+        ?SUP(blockchain_sup, [BlockchainOpts]),
+        ?WORKER(packet_purchaser_sc_worker, [SCWorkerOpts])
+    ],
     {ok, {?FLAGS, ChildSpecs}}.
 
 %%====================================================================
