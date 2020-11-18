@@ -11,8 +11,13 @@
         crypto,
         ssl,
         public_key,
-        lager
+        lager,
+        ranch,
+        libp2p,
+        helium_proto,
+        observer_cli
     ]},
+    {included_applications, [blockchain]},
     {env, []},
     {modules, []},
 

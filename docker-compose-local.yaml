@@ -1,0 +1,10 @@
+version: '3'
+services:
+  packet_purchaser:
+    build: .
+    image: helium/packet_purchaser:latest
+    container_name: helium_packet_purchaser
+    volumes:
+      - /tmp/packet_purchaser:/var/data
+    environment:
+      - PP_BASE_DIR=/var/data

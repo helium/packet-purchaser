@@ -1,0 +1,2 @@
+-define(APP, packet_purchaser).
+-define(APP_STRING, "packet_purchaser").
