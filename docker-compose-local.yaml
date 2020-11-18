@@ -5,6 +5,6 @@ services:
     image: helium/packet_purchaser:latest
     container_name: helium_packet_purchaser
     volumes:
-      - /tmp/packet_purchaser:/var/data
+      - ./data:/var/data
     environment:
       - PP_BASE_DIR=/var/data
