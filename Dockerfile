@@ -34,7 +34,6 @@ RUN make
 
 ADD config/vm.args config/vm.args
 ADD config/sys.config.src config/sys.config.src
-ADD priv/genesis update/genesis 
 RUN ./rebar3 release
 
 CMD ["_build/default/rel/packet_purchaser/bin/packet_purchaser", "foreground"]
