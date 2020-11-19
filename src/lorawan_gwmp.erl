@@ -26,25 +26,25 @@
 %% @end
 %%%-------------------------------------------------------------------
 -spec push_data(
-    non_neg_integer(),
+    integer(),
     non_neg_integer(),
     float(),
-    binary(),
+    string(),
     float(),
     float(),
     binary()
 ) -> binary().
-push_data(MAC, Tmst, Freq, Datr, RSSI, SNR, Data) ->
+push_data(MAC, Tmst, Freq, Datr, RSSI, SNR, Payload) ->
     Data = #{
-        time => iso8601:format(Tmst),
+        time => iso8601:format(calendar:universal_time()),
         tmst => Tmst,
         freq => Freq,
         modu => <<"LORA">>,
         datr => Datr,
         rssi => RSSI,
         lsnr => SNR,
-        size => erlang:byte_size(Data),
-        data => base64:encode(Data)
+        size => erlang:byte_size(Payload),
+        data => base64:encode(Payload)
     },
     BinJSX = jsx:encode(#{rxpk => [Data]}),
     Token = token(),

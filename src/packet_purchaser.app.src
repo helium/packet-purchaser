@@ -17,7 +17,8 @@
         helium_proto,
         observer_cli,
         jsx,
-        iso8601
+        iso8601,
+        poolboy
     ]},
     {included_applications, [blockchain]},
     {env, []},
