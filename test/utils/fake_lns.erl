@@ -1,20 +1,14 @@
--module(packet_purchaser_connector_udp).
+-module(fake_lns).
 
 -behavior(gen_server).
 
--include("packet_purchaser.hrl").
-
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
+-include("lorawan_gwmp.hrl").
 
 %% ------------------------------------------------------------------
 %% API Function Exports
 %% ------------------------------------------------------------------
 -export([
-    start_link/1,
-    pool_spec/0,
-    send/1
+    start_link/1
 ]).
 
 %% ------------------------------------------------------------------
@@ -30,14 +24,11 @@
 ]).
 
 -define(SERVER, ?MODULE).
--define(POOL, packet_purchaser_connector_udp_pool).
--define(DEFAULT_ADDRESS, {127, 0, 0, 1}).
--define(DEFAULT_PORT, 1680).
 
 -record(state, {
     socket :: gen_udp:socket(),
-    address :: inet:socket_address() | inet:hostname(),
-    port :: inet:port_number()
+    port :: inet:port_number(),
+    forward :: pid()
 }).
 
 %% ------------------------------------------------------------------
@@ -47,43 +38,17 @@
 start_link(Args) ->
     gen_server:start_link(?SERVER, Args, []).
 
-pool_spec() ->
-    Args = application:get_env(?APP, ?SERVER, []),
-    poolboy:child_spec(
-        ?POOL,
-        [
-            {name, {local, ?POOL}},
-            {worker_module, ?SERVER},
-            {size, 5},
-            {max_overflow, 10}
-        ],
-        [
-            {address, proplists:get_value(address, Args, ?DEFAULT_ADDRESS)},
-            {port, proplists:get_value(port, Args, ?DEFAULT_PORT)}
-        ]
-    ).
-
--spec send(binary()) -> ok | {error, any()}.
-send(Data) ->
-    poolboy:transaction(?POOL, fun(Worker) ->
-        gen_server:call(Worker, {send, Data})
-    end).
-
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 init(Args) ->
     process_flag(trap_exit, true),
     lager:info("~p init with ~p", [?SERVER, Args]),
-    Address = proplists:get_value(address, Args, ?DEFAULT_ADDRESS),
-    Port = proplists:get_value(port, Args, ?DEFAULT_PORT),
-    {ok, Socket} = gen_udp:open(0, [binary, {active, true}]),
-    {ok, #state{socket = Socket, address = Address, port = Port}}.
+    Port = maps:get(port, Args),
+    {ok, Socket} = gen_udp:open(Port, [binary, {active, true}]),
+    Pid = maps:get(forward, Args),
+    {ok, #state{socket = Socket, port = Port, forward = Pid}}.
 
-handle_call({send, Data}, _From, #state{socket = Socket, address = Address, port = Port} = State) ->
-    Reply = gen_udp:send(Socket, Address, Port, Data),
-    lager:info("sent ~p to ~p:~p replied: ~p", [Data, Address, Port, Reply]),
-    {reply, Reply, State};
 handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
     {reply, ok, State}.
@@ -92,6 +57,9 @@ handle_cast(_Msg, State) ->
     lager:warning("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
 
+handle_info({udp, Socket, IP, Port, Packet}, #state{socket = Socket} = State) ->
+    ok = handle_udp(IP, Port, Packet, State),
+    {noreply, State};
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p, ~p", [_Msg, State]),
     {noreply, State}.
@@ -106,6 +74,17 @@ terminate(_Reason, #state{socket = Socket}) ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
+
+handle_udp(
+    Address,
+    Port,
+    <<?PROTOCOL_2:8/integer-unsigned, Token:2/binary, ?PUSH_DATA:8/integer-unsigned,
+        _MAC:64/integer, BinJSX/binary>>,
+    #state{socket = Socket, forward = Pid} = _State
+) ->
+    Map = jsx:decode(BinJSX),
+    Pid ! {fake_lns, self(), ?PUSH_DATA, Map},
+    gen_udp:send(Socket, Address, Port, lorawan_gwmp:push_ack(Token)).
 
 %% ------------------------------------------------------------------
 %% EUNIT Tests

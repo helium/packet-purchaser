@@ -1,0 +1,7 @@
+-define(PROTOCOL_2, 2).
+-define(PUSH_DATA, 0).
+-define(PUSH_ACK, 1).
+-define(PULL_DATA, 2).
+-define(PULL_RESP, 3).
+-define(PULL_ACK, 4).
+-define(TX_ACK, 5).

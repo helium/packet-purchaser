@@ -4,6 +4,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -include("packet_purchaser.hrl").
+-include("lorawan_gwmp.hrl").
 
 -export([
     all/0,
@@ -45,7 +46,7 @@ end_per_testcase(_TestCase, _Config) ->
 %%--------------------------------------------------------------------
 
 full(_Config) ->
-    {ok, Socket} = gen_udp:open(1680, [binary, {active, true}]),
+    {ok, FakeLNSPid} = fake_lns:start_link(#{port => 1680, forward => self()}),
 
     Payload = <<"payload">>,
     Timestamp = erlang:system_time(millisecond),
@@ -77,42 +78,32 @@ full(_Config) ->
         self()
     ),
 
-    LoRaPacket =
-        receive
-            {udp, Socket, _IP, _Port, P} -> P
-        after 500 -> ct:fail("socket timeout")
-        end,
-
-    <<Protocol:8/integer-unsigned, _Token:2/binary, PushData:8/integer-unsigned, MAC:64/integer,
-        BinJSX/binary>> = LoRaPacket,
-
-    ?assertEqual(2, Protocol),
-    ?assertEqual(0, PushData),
-    ?assertEqual(0, MAC),
-    Map = jsx:decode(BinJSX),
-    ct:pal("[~p:~p:~p] MARKER ~p~n", [?MODULE, ?FUNCTION_NAME, ?LINE, Map]),
-    ?assert(
-        test_utils:match_map(
-            #{
-                <<"rxpk">> => [
+    receive
+        {fake_lns, FakeLNSPid, ?PUSH_DATA, Map} ->
+            ?assert(
+                test_utils:match_map(
                     #{
-                        <<"data">> => base64:encode(Payload),
-                        <<"datr">> => DataRate,
-                        <<"freq">> => Frequency,
-                        <<"lsnr">> => SNR,
-                        <<"modu">> => <<"LORA">>,
-                        <<"rssi">> => RSSI,
-                        <<"size">> => erlang:byte_size(Payload),
-                        <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => Timestamp
-                    }
-                ]
-            },
-            Map
-        )
-    ),
+                        <<"rxpk">> => [
+                            #{
+                                <<"data">> => base64:encode(Payload),
+                                <<"datr">> => DataRate,
+                                <<"freq">> => Frequency,
+                                <<"lsnr">> => SNR,
+                                <<"modu">> => <<"LORA">>,
+                                <<"rssi">> => RSSI,
+                                <<"size">> => erlang:byte_size(Payload),
+                                <<"time">> => fun erlang:is_binary/1,
+                                <<"tmst">> => Timestamp
+                            }
+                        ]
+                    },
+                    Map
+                )
+            )
+    after 500 -> ct:fail("fake_lns timeout")
+    end,
 
-    gen_udp:close(Socket),
+    gen_server:stop(FakeLNSPid),
     ok.
 
 %% ------------------------------------------------------------------

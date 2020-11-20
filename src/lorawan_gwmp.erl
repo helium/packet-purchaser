@@ -6,18 +6,12 @@
 %%%-------------------------------------------------------------------
 -module(lorawan_gwmp).
 
+-include("lorawan_gwmp.hrl").
+
 -export([
     push_data/7,
     push_ack/1
 ]).
-
--define(PROTOCOL_2, 2).
--define(PUSH_DATA, 0).
--define(PUSH_ACK, 1).
--define(PULL_DATA, 2).
--define(PULL_RESP, 3).
--define(PULL_ACK, 4).
--define(TX_ACK, 5).
 
 %%%-------------------------------------------------------------------
 %% @doc
@@ -36,7 +30,7 @@
 ) -> binary().
 push_data(MAC, Tmst, Freq, Datr, RSSI, SNR, Payload) ->
     Data = #{
-        time => iso8601:format(calendar:universal_time()),
+        time => iso8601:format(calendar:system_time_to_universal_time(Tmst, millisecond)),
         tmst => Tmst,
         freq => Freq,
         modu => <<"LORA">>,
