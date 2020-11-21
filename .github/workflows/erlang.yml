@@ -14,7 +14,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Install libs
-      run: apt-get update && apt-get install -y autoconf automake libtool flex bison libgmp-dev cmake build-essential emacs-nox libssl-dev
+      run: apt-get update && apt-get install -y rustc autoconf automake libtool flex bison libgmp-dev cmake build-essential emacs-nox libssl-dev
     - name: Install libsodium
       run: git clone -b stable https://github.com/jedisct1/libsodium.git && cd libsodium && ./configure --prefix=/usr && make check && make install && cd ..
     - name: Compile
