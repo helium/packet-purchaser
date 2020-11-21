@@ -1,0 +1,23 @@
+name: Erlang CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: erlang:22.0.7
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install libs
+      run: apt-get update && apt-get install -y autoconf automake libtool flex bison libgmp-dev cmake build-essential emacs-nox libssl-dev
+    - name: Install libsodium
+      run: git clone -b stable https://github.com/jedisct1/libsodium.git && cd libsodium && ./configure --prefix=/usr && make check && make install && cd ..
+    - name: Compile
+      run: make
+    - name: Run tests
+      run: make test
