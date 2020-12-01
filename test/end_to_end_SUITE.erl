@@ -1,4 +1,4 @@
--module(end_to_end_TEST).
+-module(end_to_end_SUITE).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("eunit/include/eunit.hrl").
