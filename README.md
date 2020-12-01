@@ -1,9 +1,1 @@
-packet_purchaser
-=====
-
-An OTP application
-
-Build
------
-
-    $ rebar3 compile
+# Helium Packet Purchaser ![CI](https://github.com/helium/packet-purchaser/workflows/CI/badge.svg?branch=master)
