@@ -2,13 +2,14 @@
 
 -behavior(gen_server).
 
--include("lorawan_gwmp.hrl").
+-include("semtech_udp.hrl").
 
 %% ------------------------------------------------------------------
 %% API Function Exports
 %% ------------------------------------------------------------------
 -export([
-    start_link/1
+    start_link/1,
+    delay_next_udp/1
 ]).
 
 %% ------------------------------------------------------------------
@@ -28,7 +29,8 @@
 -record(state, {
     socket :: gen_udp:socket(),
     port :: inet:port_number(),
-    forward :: pid()
+    forward :: pid(),
+    delay_next_udp = false :: boolean()
 }).
 
 %% ------------------------------------------------------------------
@@ -37,6 +39,9 @@
 
 start_link(Args) ->
     gen_server:start_link(?SERVER, Args, []).
+
+delay_next_udp(Pid) ->
+    gen_server:cast(Pid, delay_next_udp).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -53,13 +58,26 @@ handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
     {reply, ok, State}.
 
+handle_cast(delay_next_udp, State) ->
+    lager:info("delaying next udp"),
+    {noreply, State#state{delay_next_udp = true}};
 handle_cast(_Msg, State) ->
     lager:warning("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
 
-handle_info({udp, Socket, IP, Port, Packet}, #state{socket = Socket} = State) ->
+handle_info(
+    {udp, Socket, IP, Port, Packet},
+    #state{socket = Socket, delay_next_udp = false} = State
+) ->
     ok = handle_udp(IP, Port, Packet, State),
     {noreply, State};
+handle_info(
+    {udp, Socket, IP, Port, Packet},
+    #state{socket = Socket, delay_next_udp = true} = State
+) ->
+    timer:sleep(timer:seconds(3)),
+    ok = handle_udp(IP, Port, Packet, State),
+    {noreply, State#state{delay_next_udp = false}};
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p, ~p", [_Msg, State]),
     {noreply, State}.
@@ -84,7 +102,7 @@ handle_udp(
 ) ->
     Map = jsx:decode(BinJSX),
     Pid ! {fake_lns, self(), ?PUSH_DATA, Map},
-    gen_udp:send(Socket, Address, Port, lorawan_gwmp:push_ack(Token)).
+    gen_udp:send(Socket, Address, Port, semtech_udp:push_ack(Token)).
 
 %% ------------------------------------------------------------------
 %% EUNIT Tests

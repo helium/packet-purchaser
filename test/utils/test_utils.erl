@@ -1,9 +1,61 @@
 -module(test_utils).
 
--export([match_map/2]).
-
 -include_lib("common_test/include/ct.hrl").
 -include_lib("eunit/include/eunit.hrl").
+
+-include("packet_purchaser.hrl").
+
+-export([
+    init_per_testcase/2,
+    match_map/2,
+    end_per_testcase/2
+]).
+
+-spec init_per_testcase(atom(), list()) -> list().
+init_per_testcase(TestCase, Config) ->
+    case os:getenv("CT_LAGER", "NONE") of
+        "DEBUG" ->
+            FormatStr = [
+                "[",
+                erlang:atom_to_list(TestCase),
+                "] ",
+                "[",
+                date,
+                " ",
+                time,
+                "] ",
+                pid,
+                " [",
+                severity,
+                "]",
+                {device_id, [" [", device_id, "]"], ""},
+                " [",
+                {module, ""},
+                {function, [":", function], ""},
+                {line, [":", line], ""},
+                "] ",
+                message,
+                "\n"
+            ],
+            ok = application:set_env(lager, handlers, [
+                {lager_console_backend, [
+                    {level, debug},
+                    {formatter_config, FormatStr}
+                ]}
+            ]);
+        _ ->
+            ok = application:set_env(lager, log_root, "/log")
+    end,
+    {ok, _} = application:ensure_all_started(?APP),
+    lager:info("starting test ~p", [TestCase]),
+    Config.
+
+-spec end_per_testcase(atom(), list()) -> ok.
+end_per_testcase(TestCase, _Config) ->
+    lager:info("stopping test ~p", [TestCase]),
+    ok = application:stop(?APP),
+    ok = application:stop(lager),
+    ok.
 
 -spec match_map(map(), any()) -> true | {false, term()}.
 match_map(Expected, Got) when is_map(Got) ->

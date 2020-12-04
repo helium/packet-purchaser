@@ -27,13 +27,15 @@ handle_packet(SCPacket, _PacketTime, _Pid) ->
     RSSI = blockchain_helium_packet_v1:signal_strength(Packet),
     SNR = blockchain_helium_packet_v1:snr(Packet),
     Payload = blockchain_helium_packet_v1:payload(Packet),
-    UDPData = lorawan_gwmp:push_data(
+    Token = semtech_udp:token(),
+    UDPData = semtech_udp:push_data(
         MAC,
         Tmst,
         Freq,
         Datr,
         RSSI,
         SNR,
-        Payload
+        Payload,
+        Token
     ),
-    packet_purchaser_connector_udp:send(UDPData).
+    packet_purchaser_connector_udp:push_data(Token, UDPData).
