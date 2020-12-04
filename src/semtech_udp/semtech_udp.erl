@@ -1,16 +1,19 @@
 %%%-------------------------------------------------------------------
 %% @doc
-%% == LoRaWan Gateway Message Protocol ==
+%% == Semtech basic communication protocol between Lora gateway and server ==
 %% See https://github.com/Lora-net/packet_forwarder/blob/master/PROTOCOL.TXT
 %% @end
 %%%-------------------------------------------------------------------
--module(lorawan_gwmp).
+-module(semtech_udp).
 
--include("lorawan_gwmp.hrl").
+-include("semtech_udp.hrl").
 
 -export([
-    push_data/7,
-    push_ack/1
+    push_data/8,
+    push_ack/1,
+    token/0,
+    token/1,
+    identifier/1
 ]).
 
 %%%-------------------------------------------------------------------
@@ -26,13 +29,15 @@
     string(),
     float(),
     float(),
+    binary(),
     binary()
 ) -> binary().
-push_data(MAC, Tmst, Freq, Datr, RSSI, SNR, Payload) ->
+push_data(MAC, Tmst, Freq, Datr, RSSI, SNR, Payload, Token) ->
     Data = #{
         time => iso8601:format(calendar:system_time_to_universal_time(Tmst, millisecond)),
         tmst => Tmst,
         freq => Freq,
+        stat => 0,
         modu => <<"LORA">>,
         datr => Datr,
         rssi => RSSI,
@@ -41,7 +46,6 @@ push_data(MAC, Tmst, Freq, Datr, RSSI, SNR, Payload) ->
         data => base64:encode(Payload)
     },
     BinJSX = jsx:encode(#{rxpk => [Data]}),
-    Token = token(),
     <<?PROTOCOL_2:8/integer-unsigned, Token/binary, ?PUSH_DATA:8/integer-unsigned, MAC:64/integer,
         BinJSX/binary>>.
 
@@ -53,11 +57,22 @@ push_data(MAC, Tmst, Freq, Datr, RSSI, SNR, Payload) ->
 %%%-------------------------------------------------------------------
 -spec push_ack(binary()) -> binary().
 push_ack(Token) ->
-    <<?PROTOCOL_2:8/integer-unsigned, Token/binary, ?PUSH_ACK:8/integer-unsigned>>.
+    <<?PROTOCOL_2:8/integer-unsigned, Token:2/binary, ?PUSH_ACK:8/integer-unsigned>>.
+
+-spec token() -> binary().
+token() ->
+    crypto:strong_rand_bytes(2).
+
+-spec token(binary()) -> binary().
+token(<<?PROTOCOL_2:8/integer-unsigned, Token:2/binary, _/binary>>) ->
+    Token.
+
+-spec identifier(binary()) -> integer().
+identifier(
+    <<?PROTOCOL_2:8/integer-unsigned, _Token:2/binary, Identifier:8/integer-unsigned, _/binary>>
+) ->
+    Identifier.
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
--spec token() -> binary().
-token() ->
-    crypto:strong_rand_bytes(2).
