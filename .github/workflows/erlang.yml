@@ -30,9 +30,6 @@ jobs:
       - name: Run xref
         run: ./rebar3 xref
 
-      - name: Run Dialyzer
-        run: ./rebar3 dialyzer
-
       - name: Run EUnit tests
         env:
           ASAN_OPTIONS: detect_leaks=0
@@ -45,3 +42,6 @@ jobs:
           # tests.
           ASAN_OPTIONS: detect_leaks=0
         run: LD_PRELOAD="$(cc --print-file libasan.so)" ./rebar3 ct
+      
+      - name: Run Dialyzer
+        run: ./rebar3 dialyzer
