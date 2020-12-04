@@ -8,6 +8,10 @@
 
 -include("semtech_udp.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([
     push_data/8,
     push_ack/1,
@@ -76,3 +80,96 @@ identifier(
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+%% ------------------------------------------------------------------
+%% EUNIT Tests
+%% ------------------------------------------------------------------
+-ifdef(TEST).
+
+push_data_test() ->
+    Token0 = token(),
+    Tmst = erlang:system_time(millisecond),
+    Payload = <<"payload">>,
+    PushData = push_data(
+        0,
+        Tmst,
+        915.2,
+        <<"datr">>,
+        -80.0,
+        -10,
+        Payload,
+        Token0
+    ),
+    <<?PROTOCOL_2:8/integer-unsigned, Token1:2/binary, Id:8/integer-unsigned, MAC:64/integer,
+        BinJSX/binary>> = PushData,
+    ?assertEqual(Token1, Token0),
+    ?assertEqual(?PUSH_DATA, Id),
+    ?assertEqual(0, MAC),
+    ?assertEqual(
+        #{
+            <<"rxpk">> => [
+                #{
+                    <<"time">> => iso8601:format(
+                        calendar:system_time_to_universal_time(Tmst, millisecond)
+                    ),
+                    <<"tmst">> => Tmst,
+                    <<"freq">> => 915.2,
+                    <<"stat">> => 0,
+                    <<"modu">> => <<"LORA">>,
+                    <<"datr">> => <<"datr">>,
+                    <<"rssi">> => -80.0,
+                    <<"lsnr">> => -10,
+                    <<"size">> => erlang:byte_size(Payload),
+                    <<"data">> => base64:encode(Payload)
+                }
+            ]
+        },
+        jsx:decode(BinJSX)
+    ),
+    ok.
+
+push_ack_test() ->
+    Token = token(),
+    PushAck = push_ack(Token),
+    ?assertEqual(
+        <<?PROTOCOL_2:8/integer-unsigned, Token:2/binary, ?PUSH_ACK:8/integer-unsigned>>,
+        PushAck
+    ),
+    ok.
+
+token_test() ->
+    Token = token(),
+    ?assertEqual(2, erlang:byte_size(Token)),
+    ?assertEqual(Token, token(push_ack(Token))),
+    PushData = push_data(
+        0,
+        erlang:system_time(millisecond),
+        915.2,
+        <<"datr">>,
+        -80.0,
+        -10,
+        <<"payload">>,
+        Token
+    ),
+    ?assertEqual(Token, token(PushData)),
+    ?assertException(error, function_clause, token(<<"some unknown stuff">>)),
+    ok.
+
+identifier_test() ->
+    Token = token(),
+    ?assertEqual(?PUSH_ACK, identifier(push_ack(Token))),
+    PushData = push_data(
+        0,
+        erlang:system_time(millisecond),
+        915.2,
+        <<"datr">>,
+        -80.0,
+        -10,
+        <<"payload">>,
+        Token
+    ),
+    ?assertEqual(?PUSH_DATA, identifier(PushData)),
+    ?assertException(error, function_clause, token(<<"some unknown stuff">>)),
+    ok.
+
+-endif.
