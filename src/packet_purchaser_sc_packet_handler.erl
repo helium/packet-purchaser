@@ -19,8 +19,8 @@ handle_offer(_Offer, _HandlerPid) ->
 -spec handle_packet(blockchain_state_channel_packet_v1:packet(), pos_integer(), pid()) -> ok.
 handle_packet(SCPacket, _PacketTime, _Pid) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
-    _Hotspot = blockchain_state_channel_packet_v1:hotspot(SCPacket),
-    MAC = 0,
+    Hotspot = blockchain_state_channel_packet_v1:hotspot(SCPacket),
+    <<_:8/integer, MAC:8/binary, _/binary>> = Hotspot,
     Tmst = blockchain_helium_packet_v1:timestamp(Packet),
     Freq = blockchain_helium_packet_v1:frequency(Packet),
     Datr = blockchain_helium_packet_v1:datarate(Packet),

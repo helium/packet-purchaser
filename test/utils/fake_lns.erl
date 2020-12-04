@@ -96,8 +96,8 @@ terminate(_Reason, #state{socket = Socket}) ->
 handle_udp(
     Address,
     Port,
-    <<?PROTOCOL_2:8/integer-unsigned, Token:2/binary, ?PUSH_DATA:8/integer-unsigned,
-        _MAC:64/integer, BinJSX/binary>>,
+    <<?PROTOCOL_2:8/integer-unsigned, Token:2/binary, ?PUSH_DATA:8/integer-unsigned, _MAC:8/binary,
+        BinJSX/binary>>,
     #state{socket = Socket, forward = Pid} = _State
 ) ->
     Map = jsx:decode(BinJSX),

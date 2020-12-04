@@ -62,7 +62,8 @@ full(_Config) ->
         SNR,
         {devaddr, 16#deadbeef}
     ),
-    Hotspot = <<"hotspot">>,
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    Hotspot = libp2p_crypto:pubkey_to_bin(PubKey),
     Region = 'US915',
     SCPacket = blockchain_state_channel_packet_v1:new(
         Packet,
