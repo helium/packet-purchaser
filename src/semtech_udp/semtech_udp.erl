@@ -15,6 +15,8 @@
 -export([
     push_data/8,
     push_ack/1,
+    pull_data/2,
+    pull_ack/1,
     token/0,
     token/1,
     identifier/1
@@ -62,6 +64,25 @@ push_data(MAC, Tmst, Freq, Datr, RSSI, SNR, Payload, Token) ->
 -spec push_ack(binary()) -> binary().
 push_ack(Token) ->
     <<?PROTOCOL_2:8/integer-unsigned, Token:2/binary, ?PUSH_ACK:8/integer-unsigned>>.
+
+%%%-------------------------------------------------------------------
+%% @doc
+%% That packet type is used by the gateway to poll data from the server.
+%% @end
+%%%-------------------------------------------------------------------
+-spec pull_data(binary(), binary()) -> binary().
+pull_data(Token, MAC) ->
+    <<?PROTOCOL_2:8/integer-unsigned, Token:2/binary, ?PULL_DATA:8/integer-unsigned, MAC:8/binary>>.
+
+%%%-------------------------------------------------------------------
+%% @doc
+%% That packet type is used by the server to confirm that the network route is
+%% open and that the server can send PULL_RESP packets at any time.
+%% @end
+%%%-------------------------------------------------------------------
+-spec pull_ack(binary()) -> binary().
+pull_ack(Token) ->
+    <<?PROTOCOL_2:8/integer-unsigned, Token:2/binary, ?PULL_ACK:8/integer-unsigned>>.
 
 -spec token() -> binary().
 token() ->

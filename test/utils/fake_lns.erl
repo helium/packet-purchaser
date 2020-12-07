@@ -102,7 +102,15 @@ handle_udp(
 ) ->
     Map = jsx:decode(BinJSX),
     Pid ! {fake_lns, self(), ?PUSH_DATA, Map},
-    gen_udp:send(Socket, Address, Port, semtech_udp:push_ack(Token)).
+    gen_udp:send(Socket, Address, Port, semtech_udp:push_ack(Token));
+handle_udp(
+    Address,
+    Port,
+    <<?PROTOCOL_2:8/integer-unsigned, Token:2/binary, ?PULL_DATA:8/integer-unsigned, MAC:8/binary>>,
+    #state{socket = Socket, forward = Pid} = _State
+) ->
+    Pid ! {fake_lns, self(), ?PULL_DATA, {Token, MAC}},
+    gen_udp:send(Socket, Address, Port, semtech_udp:pull_ack(Token)).
 
 %% ------------------------------------------------------------------
 %% EUNIT Tests

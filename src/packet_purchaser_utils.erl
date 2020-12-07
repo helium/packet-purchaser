@@ -3,7 +3,8 @@
 -include("packet_purchaser.hrl").
 
 -export([
-    get_oui/1
+    get_oui/1,
+    pubkeybin_to_mac/1
 ]).
 
 -spec get_oui(Chain :: blockchain:blockchain()) -> non_neg_integer() | undefined.
@@ -19,6 +20,11 @@ get_oui(Chain) ->
             %% there are some ouis on chain
             find_oui(PubkeyBin, Ledger)
     end.
+
+-spec pubkeybin_to_mac(binary()) -> binary().
+pubkeybin_to_mac(PubKeyBin) ->
+    <<_:8/integer, MAC:8/binary, _/binary>> = PubKeyBin,
+    MAC.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
