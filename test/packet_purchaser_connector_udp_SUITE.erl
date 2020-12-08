@@ -19,6 +19,7 @@
 ]).
 
 -record(state, {
+    pubkeybin :: libp2p_crypto:pubkey_bin(),
     socket :: gen_udp:socket(),
     address :: inet:socket_address() | inet:hostname(),
     port :: inet:port_number(),
@@ -55,8 +56,9 @@ end_per_testcase(TestCase, Config) ->
 %% TEST CASES
 %%--------------------------------------------------------------------
 
-push_data(_Config) ->
-    {ok, FakeLNSPid} = fake_lns:start_link(#{port => 1680, forward => self()}),
+push_data(Config) ->
+    FakeLNSPid = proplists:get_value(fake_lns, Config),
+    {PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
 
     Payload = <<"payload">>,
     Timestamp = erlang:system_time(millisecond),
@@ -74,12 +76,10 @@ push_data(_Config) ->
         SNR,
         {devaddr, 16#deadbeef}
     ),
-    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
-    Hotspot = libp2p_crypto:pubkey_to_bin(PubKey),
     Region = 'US915',
     SCPacket = blockchain_state_channel_packet_v1:new(
         Packet,
-        Hotspot,
+        PubKeyBin,
         Region
     ),
 
@@ -116,16 +116,14 @@ push_data(_Config) ->
     end,
 
     %% Chekcing that the push data cache is empty as we should have gotten the push ack
-    State = poolboy:transaction(packet_purchaser_connector_udp_pool, fun(Worker) ->
-        sys:get_state(Worker)
-    end),
+    State = sys:get_state(WorkerPid),
     ?assertEqual(#{}, State#state.push_data),
 
-    gen_server:stop(FakeLNSPid),
     ok.
 
-delay_push_data(_Config) ->
-    {ok, FakeLNSPid} = fake_lns:start_link(#{port => 1680, forward => self()}),
+delay_push_data(Config) ->
+    FakeLNSPid = proplists:get_value(fake_lns, Config),
+    {PubKeyBin, _WorkerPid} = proplists:get_value(gateway, Config),
 
     Payload = <<"payload">>,
     Timestamp = erlang:system_time(millisecond),
@@ -143,12 +141,10 @@ delay_push_data(_Config) ->
         SNR,
         {devaddr, 16#deadbeef}
     ),
-    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
-    Hotspot = libp2p_crypto:pubkey_to_bin(PubKey),
     Region = 'US915',
     SCPacket = blockchain_state_channel_packet_v1:new(
         Packet,
-        Hotspot,
+        PubKeyBin,
         Region
     ),
 
@@ -216,23 +212,23 @@ delay_push_data(_Config) ->
             )
     after 3500 -> ct:fail("fake_lns timeout")
     end,
-
-    gen_server:stop(FakeLNSPid),
     ok.
 
-pull_data(_Config) ->
-    {ok, FakeLNSPid} = fake_lns:start_link(#{port => 1680, forward => self()}),
-
+pull_data(Config) ->
+    FakeLNSPid = proplists:get_value(fake_lns, Config),
+    {PubKeyBin, _WorkerPid} = proplists:get_value(gateway, Config),
     receive
         {fake_lns, FakeLNSPid, ?PULL_DATA, {Token, MAC}} ->
             ?assert(erlang:is_binary(Token)),
-            ?assertEqual(<<1, 2, 3, 4, 5, 6, 7, 8>>, MAC),
+            ?assertEqual(packet_purchaser_utils:pubkeybin_to_mac(PubKeyBin), MAC),
             ok
     after 10500 -> ct:fail("fake_lns timeout")
     end,
-
-    gen_server:stop(FakeLNSPid),
     ok.
+
+% TODO: test failed pull_data
+
+% TODO: Test downlink
 
 %% ------------------------------------------------------------------
 %% Helper functions

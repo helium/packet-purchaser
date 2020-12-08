@@ -78,7 +78,6 @@
        {ref,"5f6b47aebc14d89a2ae4f4ab0f21bb39063e3c13"}},
   2},
  {<<"observer_cli">>,{pkg,<<"observer_cli">>,<<"1.6.0">>},0},
- {<<"poolboy">>,{pkg,<<"poolboy">>,<<"1.5.2">>},0},
  {<<"procket">>,{pkg,<<"procket">>,<<"0.9.3">>},3},
  {<<"ranch">>,{pkg,<<"ranch">>,<<"1.5.0">>},2},
  {<<"rand_compat">>,{pkg,<<"rand_compat">>,<<"0.0.3">>},3},
@@ -104,7 +103,7 @@
  {<<"xxhash">>,
   {git,"https://github.com/pierreis/erlang-xxhash",
        {ref,"5d222dcb54c9dd8247d4429174126ebda52b0e2d"}},
-  1}]}.
+  0}]}.
 [
 {pkg_hash,[
  {<<"backoff">>, <<"83B72ED2108BA1EE8F7D1C22E0B4A00CFE3593A67DBC792799E8CCE9F42F796B">>},
@@ -122,7 +121,6 @@
  {<<"libp2p_crypto">>, <<"0FBFA0373FB3261CB2B87BBE428C59BF98E50592A53487CD044710123E6B9861">>},
  {<<"multiaddr">>, <<"978E58E28F6FACAF428C87AF933612B1E2F3F2775F1794EDA5E831A4EACD2984">>},
  {<<"observer_cli">>, <<"F7FFE1C9D43B7BB0ECDBF158D0DD211D44AA505D5510BE580D1F25DCA5627A08">>},
- {<<"poolboy">>, <<"392B007A1693A64540CEAD79830443ABF5762F5D30CF50BC95CB2C1AAAFA006B">>},
  {<<"procket">>, <<"593E907645307BC854CE3532F3F9C07987D8DC9848180CD2EE408FD92B22CC1E">>},
  {<<"ranch">>, <<"F04166F456790FEE2AC1AA05A02745CC75783C2BFB26D39FAF6AEFC9A3D3A58A">>},
  {<<"rand_compat">>, <<"011646BC1F0B0C432FE101B816F25B9BBB74A085713CEE1DAFD2D62E9415EAD3">>},

@@ -19,9 +19,9 @@ handle_offer(_Offer, _HandlerPid) ->
 -spec handle_packet(blockchain_state_channel_packet_v1:packet(), pos_integer(), pid()) -> ok.
 handle_packet(SCPacket, _PacketTime, _Pid) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
-    Hotspot = blockchain_state_channel_packet_v1:hotspot(SCPacket),
+    PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
     Token = semtech_udp:token(),
-    MAC = packet_purchaser_utils:pubkeybin_to_mac(Hotspot),
+    MAC = packet_purchaser_utils:pubkeybin_to_mac(PubKeyBin),
     Tmst = blockchain_helium_packet_v1:timestamp(Packet),
     Payload = blockchain_helium_packet_v1:payload(Packet),
     UDPData = semtech_udp:push_data(
@@ -40,4 +40,13 @@ handle_packet(SCPacket, _PacketTime, _Pid) ->
             data => base64:encode(Payload)
         }
     ),
-    packet_purchaser_connector_udp:push_data(Token, UDPData).
+    case packet_purchaser_connector_udp_sup:maybe_start_worker(PubKeyBin, #{}) of
+        {ok, WorkerPid} ->
+            packet_purchaser_connector_udp:push_data(WorkerPid, Token, UDPData);
+        {error, _Reason} = Error ->
+            lager:error("failed to start udp connector for ~p: ~p", [
+                blockchain_utils:addr2name(PubKeyBin),
+                _Reason
+            ]),
+            Error
+    end.

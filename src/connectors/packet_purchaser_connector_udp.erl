@@ -14,8 +14,7 @@
 %% ------------------------------------------------------------------
 -export([
     start_link/1,
-    pool_spec/0,
-    push_data/2
+    push_data/3
 ]).
 
 %% ------------------------------------------------------------------
@@ -45,6 +44,7 @@
 -define(PULL_DATA_TIMER, timer:seconds(10)).
 
 -record(state, {
+    pubkeybin :: libp2p_crypto:pubkey_bin(),
     socket :: gen_udp:socket(),
     address :: inet:socket_address() | inet:hostname(),
     port :: inet:port_number(),
@@ -59,39 +59,24 @@
 start_link(Args) ->
     gen_server:start_link(?SERVER, Args, []).
 
-pool_spec() ->
-    Args = application:get_env(?APP, ?SERVER, []),
-    poolboy:child_spec(
-        ?POOL,
-        [
-            {name, {local, ?POOL}},
-            {worker_module, ?SERVER},
-            {size, proplists:get_value(size, Args, ?DEFAULT_SIZE)},
-            {max_overflow, proplists:get_value(max_overflow, Args, ?DEFAULT_MAX_OVERFLOW)}
-        ],
-        [
-            {address, proplists:get_value(address, Args, ?DEFAULT_ADDRESS)},
-            {port, proplists:get_value(port, Args, ?DEFAULT_PORT)}
-        ]
-    ).
-
--spec push_data(binary(), binary()) -> ok | {error, any()}.
-push_data(Token, Data) ->
-    poolboy:transaction(?POOL, fun(Worker) ->
-        gen_server:call(Worker, {push_data, Token, Data})
-    end).
+-spec push_data(pid(), binary(), binary()) -> ok | {error, any()}.
+push_data(Pid, Token, Data) ->
+    gen_server:call(Pid, {push_data, Token, Data}).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 init(Args) ->
+    % TODO: Add lager MD here for hotspot name
     process_flag(trap_exit, true),
+    PubKeyBin = maps:get(pubkeybin, Args),
+    lager:md([{gateway_id, blockchain_utils:addr2name(PubKeyBin)}]),
     lager:info("~p init with ~p", [?SERVER, Args]),
-    Address = proplists:get_value(address, Args, ?DEFAULT_ADDRESS),
-    Port = proplists:get_value(port, Args, ?DEFAULT_PORT),
+    Address = maps:get(address, Args, ?DEFAULT_ADDRESS),
+    Port = maps:get(port, Args, ?DEFAULT_PORT),
     {ok, Socket} = gen_udp:open(0, [binary, {active, true}]),
     _ = schedule_pull_data(),
-    {ok, #state{socket = Socket, address = Address, port = Port}}.
+    {ok, #state{pubkeybin = PubKeyBin, socket = Socket, address = Address, port = Port}}.
 
 handle_call(
     {push_data, Token, Data},
@@ -151,7 +136,6 @@ handle_info(
 ) ->
     case maps:get(Token, PushData, undefined) of
         undefined ->
-            lager:debug("got unkown push data timeout ~p", [Token]),
             {noreply, State};
         {Data, _} ->
             lager:debug("got push data timeout ~p, retrying", [Token]),
@@ -166,10 +150,9 @@ handle_info(
     {noreply, State#state{pull_data = RefAndToken}};
 handle_info(
     ?PULL_DATA_TIMEOUT_TICK,
-    #state{socket = Socket} = State
+    State
 ) ->
     lager:error("got a pull data timeout closing down"),
-    ok = gen_udp:close(Socket),
     {stop, pull_data_timeout, State};
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p, ~p", [_Msg, State]),
@@ -192,18 +175,17 @@ schedule_pull_data() ->
 
 -spec send_pull_data(#state{}) -> {ok, {reference(), binary()}} | {error, any()}.
 send_pull_data(
-    #state{socket = Socket, address = Address, port = Port}
+    #state{pubkeybin = PubKeyBin, socket = Socket, address = Address, port = Port}
 ) ->
     Token = semtech_udp:token(),
-    % TODO: get MAC from local chain pub key
-    Data = semtech_udp:pull_data(Token, <<1, 2, 3, 4, 5, 6, 7, 8>>),
+    Data = semtech_udp:pull_data(Token, packet_purchaser_utils:pubkeybin_to_mac(PubKeyBin)),
     case gen_udp:send(Socket, Address, Port, Data) of
         ok ->
             lager:debug("sent pull data keepalive ~p", [Token]),
             TimerRef = erlang:send_after(?PULL_DATA_TIMER, self(), ?PULL_DATA_TIMEOUT_TICK),
             {ok, {TimerRef, Token}};
         Error ->
-            lager:debug("failed to send pull data keepalive ~p: ~p", [Token, Error]),
+            lager:warning("failed to send pull data keepalive ~p: ~p", [Token, Error]),
             Error
     end.
 

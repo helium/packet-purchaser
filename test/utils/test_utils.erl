@@ -28,7 +28,7 @@ init_per_testcase(TestCase, Config) ->
                 " [",
                 severity,
                 "]",
-                {device_id, [" [", device_id, "]"], ""},
+                {gateway_id, [" [", gateway_id, "]"], ""},
                 " [",
                 {module, ""},
                 {function, [":", function], ""},
@@ -47,12 +47,16 @@ init_per_testcase(TestCase, Config) ->
             ok = application:set_env(lager, log_root, "/log")
     end,
     {ok, _} = application:ensure_all_started(?APP),
+    {ok, FakeLNSPid} = fake_lns:start_link(#{port => 1680, forward => self()}),
+    {PubKeyBin, WorkerPid} = start_gateway(),
     lager:info("starting test ~p", [TestCase]),
-    Config.
+    [{fake_lns, FakeLNSPid}, {gateway, {PubKeyBin, WorkerPid}} | Config].
 
 -spec end_per_testcase(atom(), list()) -> ok.
-end_per_testcase(TestCase, _Config) ->
+end_per_testcase(TestCase, Config) ->
     lager:info("stopping test ~p", [TestCase]),
+    FakeLNSPid = proplists:get_value(fake_lns, Config),
+    ok = gen_server:stop(FakeLNSPid),
     ok = application:stop(?APP),
     ok = application:stop(lager),
     ok.
@@ -102,3 +106,10 @@ match_map(_Expected, _Got) ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
+
+-spec start_gateway() -> {libp2p_crypto:pubkeybin(), pid()}.
+start_gateway() ->
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+    {ok, WorkerPid} = packet_purchaser_connector_udp_sup:maybe_start_worker(PubKeyBin, #{}),
+    {PubKeyBin, WorkerPid}.
