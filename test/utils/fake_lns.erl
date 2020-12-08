@@ -9,7 +9,8 @@
 %% ------------------------------------------------------------------
 -export([
     start_link/1,
-    delay_next_udp/2
+    delay_next_udp/2,
+    rcv/2, rcv/3
 ]).
 
 %% ------------------------------------------------------------------
@@ -42,6 +43,15 @@ start_link(Args) ->
 
 delay_next_udp(Pid, Delay) ->
     gen_server:cast(Pid, {delay_next_udp, Delay}).
+
+rcv(Pid, Type) ->
+    rcv(Pid, Type, timer:seconds(1)).
+
+rcv(Pid, Type, Delay) ->
+    receive
+        {?MODULE, Pid, Type, Data} -> {ok, Data}
+    after Delay -> ct:fail("fake_lns rcv timeout")
+    end.
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -76,7 +86,7 @@ handle_info(
     #state{socket = Socket, forward = Pid} = State
 ) ->
     lager:info("sending ~p: ~p / ~p", [Type, Map, Data]),
-    Pid ! {fake_lns, self(), Type, Map},
+    Pid ! {?MODULE, self(), Type, Map},
     _ = gen_udp:send(Socket, IP, Port, Data),
     {noreply, State};
 handle_info(_Msg, State) ->

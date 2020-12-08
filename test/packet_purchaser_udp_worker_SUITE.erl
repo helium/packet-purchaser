@@ -91,31 +91,28 @@ push_data(Config) ->
         self()
     ),
 
-    receive
-        {fake_lns, FakeLNSPid, ?PUSH_DATA, Map0} ->
-            ?assert(
-                test_utils:match_map(
+    {ok, Map0} = fake_lns:rcv(FakeLNSPid, ?PUSH_DATA),
+    ?assert(
+        test_utils:match_map(
+            #{
+                <<"rxpk">> => [
                     #{
-                        <<"rxpk">> => [
-                            #{
-                                <<"data">> => base64:encode(Payload),
-                                <<"datr">> => DataRate,
-                                <<"freq">> => Frequency,
-                                <<"stat">> => 0,
-                                <<"lsnr">> => SNR,
-                                <<"modu">> => <<"LORA">>,
-                                <<"rssi">> => RSSI,
-                                <<"size">> => erlang:byte_size(Payload),
-                                <<"time">> => fun erlang:is_binary/1,
-                                <<"tmst">> => Timestamp
-                            }
-                        ]
-                    },
-                    Map0
-                )
-            )
-    after 500 -> ct:fail("fake_lns timeout")
-    end,
+                        <<"data">> => base64:encode(Payload),
+                        <<"datr">> => DataRate,
+                        <<"freq">> => Frequency,
+                        <<"stat">> => 0,
+                        <<"lsnr">> => SNR,
+                        <<"modu">> => <<"LORA">>,
+                        <<"rssi">> => RSSI,
+                        <<"size">> => erlang:byte_size(Payload),
+                        <<"time">> => fun erlang:is_binary/1,
+                        <<"tmst">> => Timestamp
+                    }
+                ]
+            },
+            Map0
+        )
+    ),
 
     %% Chekcing that the push data cache is empty as we should have gotten the push ack
     State = sys:get_state(WorkerPid),
@@ -156,31 +153,28 @@ delay_push_data(Config) ->
         self()
     ),
 
-    receive
-        {fake_lns, FakeLNSPid, ?PUSH_DATA, Map0} ->
-            ?assert(
-                test_utils:match_map(
+    {ok, Map0} = fake_lns:rcv(FakeLNSPid, ?PUSH_DATA),
+    ?assert(
+        test_utils:match_map(
+            #{
+                <<"rxpk">> => [
                     #{
-                        <<"rxpk">> => [
-                            #{
-                                <<"data">> => base64:encode(Payload),
-                                <<"datr">> => DataRate,
-                                <<"freq">> => Frequency,
-                                <<"stat">> => 0,
-                                <<"lsnr">> => SNR,
-                                <<"modu">> => <<"LORA">>,
-                                <<"rssi">> => RSSI,
-                                <<"size">> => erlang:byte_size(Payload),
-                                <<"time">> => fun erlang:is_binary/1,
-                                <<"tmst">> => Timestamp
-                            }
-                        ]
-                    },
-                    Map0
-                )
-            )
-    after 500 -> ct:fail("fake_lns timeout")
-    end,
+                        <<"data">> => base64:encode(Payload),
+                        <<"datr">> => DataRate,
+                        <<"freq">> => Frequency,
+                        <<"stat">> => 0,
+                        <<"lsnr">> => SNR,
+                        <<"modu">> => <<"LORA">>,
+                        <<"rssi">> => RSSI,
+                        <<"size">> => erlang:byte_size(Payload),
+                        <<"time">> => fun erlang:is_binary/1,
+                        <<"tmst">> => Timestamp
+                    }
+                ]
+            },
+            Map0
+        )
+    ),
 
     ok = fake_lns:delay_next_udp(FakeLNSPid, timer:seconds(3)),
     ok = packet_purchaser_sc_packet_handler:handle_packet(
@@ -189,48 +183,37 @@ delay_push_data(Config) ->
         self()
     ),
 
-    receive
-        {fake_lns, FakeLNSPid, ?PUSH_DATA, Map1} ->
-            ?assert(
-                test_utils:match_map(
+    {ok, Map1} = fake_lns:rcv(FakeLNSPid, ?PUSH_DATA, timer:seconds(4)),
+    ?assert(
+        test_utils:match_map(
+            #{
+                <<"rxpk">> => [
                     #{
-                        <<"rxpk">> => [
-                            #{
-                                <<"data">> => base64:encode(Payload),
-                                <<"datr">> => DataRate,
-                                <<"freq">> => Frequency,
-                                <<"stat">> => 0,
-                                <<"lsnr">> => SNR,
-                                <<"modu">> => <<"LORA">>,
-                                <<"rssi">> => RSSI,
-                                <<"size">> => erlang:byte_size(Payload),
-                                <<"time">> => fun erlang:is_binary/1,
-                                <<"tmst">> => Timestamp
-                            }
-                        ]
-                    },
-                    Map1
-                )
-            )
-    after 3500 -> ct:fail("fake_lns timeout")
-    end,
+                        <<"data">> => base64:encode(Payload),
+                        <<"datr">> => DataRate,
+                        <<"freq">> => Frequency,
+                        <<"stat">> => 0,
+                        <<"lsnr">> => SNR,
+                        <<"modu">> => <<"LORA">>,
+                        <<"rssi">> => RSSI,
+                        <<"size">> => erlang:byte_size(Payload),
+                        <<"time">> => fun erlang:is_binary/1,
+                        <<"tmst">> => Timestamp
+                    }
+                ]
+            },
+            Map1
+        )
+    ),
     ok.
 
 pull_data(Config) ->
     FakeLNSPid = proplists:get_value(fake_lns, Config),
     {PubKeyBin, _WorkerPid} = proplists:get_value(gateway, Config),
 
-    test_utils:wait_until(
-        fun() ->
-            receive
-                {fake_lns, FakeLNSPid, ?PULL_DATA, {Token, MAC}} ->
-                    erlang:is_binary(Token) andalso
-                        packet_purchaser_utils:pubkeybin_to_mac(PubKeyBin) == MAC
-            end
-        end,
-        5,
-        timer:seconds(1)
-    ),
+    {ok, {Token, MAC}} = fake_lns:rcv(FakeLNSPid, ?PULL_DATA, timer:seconds(5)),
+    ?assert(erlang:is_binary(Token)),
+    ?assertEqual(packet_purchaser_utils:pubkeybin_to_mac(PubKeyBin), MAC),
     ok.
 
 failed_pull_data(Config) ->
@@ -240,18 +223,13 @@ failed_pull_data(Config) ->
     Ref = erlang:monitor(process, WorkerPid),
     ok = fake_lns:delay_next_udp(FakeLNSPid, timer:seconds(5)),
 
-    test_utils:wait_until(
-        fun() ->
-            receive
-                {'DOWN', Ref, process, WorkerPid, pull_data_timeout} ->
-                    true;
-                Msg ->
-                    ct:fail("received unexpected message ~p", [Msg])
-            end
-        end,
-        10,
-        timer:seconds(1)
-    ),
+    receive
+        {'DOWN', Ref, process, WorkerPid, pull_data_timeout} ->
+            true;
+        Msg ->
+            ct:fail("received unexpected message ~p", [Msg])
+    after 5000 -> ct:fail("down timeout")
+    end,
 
     ok.
 
