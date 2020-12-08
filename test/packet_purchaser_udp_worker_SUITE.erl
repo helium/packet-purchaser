@@ -15,7 +15,8 @@
 -export([
     push_data/1,
     delay_push_data/1,
-    pull_data/1
+    pull_data/1,
+    failed_pull_data/1
 ]).
 
 -record(state, {
@@ -24,7 +25,8 @@
     address :: inet:socket_address() | inet:hostname(),
     port :: inet:port_number(),
     push_data = #{} :: #{binary() => {binary(), reference()}},
-    pull_data :: {reference(), binary()} | undefined
+    pull_data :: {reference(), binary()} | undefined,
+    pull_data_timer :: non_neg_integer()
 }).
 
 %%--------------------------------------------------------------------
@@ -38,7 +40,7 @@
 %% @end
 %%--------------------------------------------------------------------
 all() ->
-    [push_data, delay_push_data, pull_data].
+    [push_data, delay_push_data, pull_data, failed_pull_data].
 
 %%--------------------------------------------------------------------
 %% TEST CASE SETUP
@@ -180,7 +182,7 @@ delay_push_data(Config) ->
     after 500 -> ct:fail("fake_lns timeout")
     end,
 
-    ok = fake_lns:delay_next_udp(FakeLNSPid),
+    ok = fake_lns:delay_next_udp(FakeLNSPid, timer:seconds(3)),
     ok = packet_purchaser_sc_packet_handler:handle_packet(
         SCPacket,
         erlang:system_time(millisecond),
@@ -217,16 +219,41 @@ delay_push_data(Config) ->
 pull_data(Config) ->
     FakeLNSPid = proplists:get_value(fake_lns, Config),
     {PubKeyBin, _WorkerPid} = proplists:get_value(gateway, Config),
-    receive
-        {fake_lns, FakeLNSPid, ?PULL_DATA, {Token, MAC}} ->
-            ?assert(erlang:is_binary(Token)),
-            ?assertEqual(packet_purchaser_utils:pubkeybin_to_mac(PubKeyBin), MAC),
-            ok
-    after 10500 -> ct:fail("fake_lns timeout")
-    end,
+
+    test_utils:wait_until(
+        fun() ->
+            receive
+                {fake_lns, FakeLNSPid, ?PULL_DATA, {Token, MAC}} ->
+                    erlang:is_binary(Token) andalso
+                        packet_purchaser_utils:pubkeybin_to_mac(PubKeyBin) == MAC
+            end
+        end,
+        5,
+        timer:seconds(1)
+    ),
     ok.
 
-% TODO: test failed pull_data
+failed_pull_data(Config) ->
+    FakeLNSPid = proplists:get_value(fake_lns, Config),
+    {_PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
+
+    Ref = erlang:monitor(process, WorkerPid),
+    ok = fake_lns:delay_next_udp(FakeLNSPid, timer:seconds(5)),
+
+    test_utils:wait_until(
+        fun() ->
+            receive
+                {'DOWN', Ref, process, WorkerPid, pull_data_timeout} ->
+                    true;
+                Msg ->
+                    ct:fail("received unexpected message ~p", [Msg])
+            end
+        end,
+        10,
+        timer:seconds(1)
+    ),
+
+    ok.
 
 % TODO: Test downlink
 

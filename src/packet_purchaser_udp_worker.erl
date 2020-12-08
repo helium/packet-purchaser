@@ -44,7 +44,8 @@
     address :: inet:socket_address() | inet:hostname(),
     port :: inet:port_number(),
     push_data = #{} :: #{binary() => {binary(), reference()}},
-    pull_data :: {reference(), binary()} | undefined
+    pull_data :: {reference(), binary()} | undefined,
+    pull_data_timer :: non_neg_integer()
 }).
 
 %% ------------------------------------------------------------------
@@ -69,9 +70,16 @@ init(Args) ->
     lager:info("~p init with ~p", [?SERVER, Args]),
     Address = maps:get(address, Args),
     Port = maps:get(port, Args),
+    PullDataTimer = maps:get(pull_data_timer, Args, ?PULL_DATA_TIMER),
     {ok, Socket} = gen_udp:open(0, [binary, {active, true}]),
-    _ = schedule_pull_data(),
-    {ok, #state{pubkeybin = PubKeyBin, socket = Socket, address = Address, port = Port}}.
+    _ = schedule_pull_data(PullDataTimer),
+    {ok, #state{
+        pubkeybin = PubKeyBin,
+        socket = Socket,
+        address = Address,
+        port = Port,
+        pull_data_timer = PullDataTimer
+    }}.
 
 handle_call(
     {push_data, Token, Data},
@@ -95,7 +103,8 @@ handle_info(
         address = Address,
         port = Port,
         push_data = PushData,
-        pull_data = PullData
+        pull_data = PullData,
+        pull_data_timer = PullDataTimer
     } = State
 ) ->
     case semtech_udp:identifier(Data) of
@@ -116,7 +125,7 @@ handle_info(
                 PullDataToken ->
                     erlang:cancel_timer(PullDataRef),
                     lager:debug("got pull ack for ~p", [PullDataToken]),
-                    _ = schedule_pull_data(),
+                    _ = schedule_pull_data(PullDataTimer),
                     {noreply, State#state{pull_data = undefined}};
                 _UnknownToken ->
                     lager:warning("got unknown pull ack for ~p", [_UnknownToken]),
@@ -157,6 +166,7 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 terminate(_Reason, #state{socket = Socket}) ->
+    lager:info("going down ~p", [_Reason]),
     ok = gen_udp:close(Socket),
     ok.
 
@@ -164,20 +174,26 @@ terminate(_Reason, #state{socket = Socket}) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
--spec schedule_pull_data() -> reference().
-schedule_pull_data() ->
-    _ = erlang:send_after(?PULL_DATA_TIMER, self(), ?PULL_DATA_TICK).
+-spec schedule_pull_data(non_neg_integer()) -> reference().
+schedule_pull_data(PullDataTimer) ->
+    _ = erlang:send_after(PullDataTimer, self(), ?PULL_DATA_TICK).
 
 -spec send_pull_data(#state{}) -> {ok, {reference(), binary()}} | {error, any()}.
 send_pull_data(
-    #state{pubkeybin = PubKeyBin, socket = Socket, address = Address, port = Port}
+    #state{
+        pubkeybin = PubKeyBin,
+        socket = Socket,
+        address = Address,
+        port = Port,
+        pull_data_timer = PullDataTimer
+    }
 ) ->
     Token = semtech_udp:token(),
     Data = semtech_udp:pull_data(Token, packet_purchaser_utils:pubkeybin_to_mac(PubKeyBin)),
     case gen_udp:send(Socket, Address, Port, Data) of
         ok ->
             lager:debug("sent pull data keepalive ~p", [Token]),
-            TimerRef = erlang:send_after(?PULL_DATA_TIMER, self(), ?PULL_DATA_TIMEOUT_TICK),
+            TimerRef = erlang:send_after(PullDataTimer, self(), ?PULL_DATA_TIMEOUT_TICK),
             {ok, {TimerRef, Token}};
         Error ->
             lager:warning("failed to send pull data keepalive ~p: ~p", [Token, Error]),

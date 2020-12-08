@@ -7,8 +7,9 @@
 
 -export([
     init_per_testcase/2,
+    end_per_testcase/2,
     match_map/2,
-    end_per_testcase/2
+    wait_until/1, wait_until/3
 ]).
 
 -spec init_per_testcase(atom(), list()) -> list().
@@ -46,7 +47,11 @@ init_per_testcase(TestCase, Config) ->
         _ ->
             ok = application:set_env(lager, log_root, "/log")
     end,
-    ok = application:set_env(?APP, ?UDP_WORKER, [{address, {127, 0, 0, 1}}, {port, 1680}]),
+    ok = application:set_env(?APP, ?UDP_WORKER, [
+        {address, {127, 0, 0, 1}},
+        {port, 1680},
+        {pull_data_timer, timer:seconds(2)}
+    ]),
     {ok, _} = application:ensure_all_started(?APP),
     {ok, FakeLNSPid} = fake_lns:start_link(#{port => 1680, forward => self()}),
     {PubKeyBin, WorkerPid} = start_gateway(),
@@ -103,6 +108,21 @@ match_map(Expected, Got) when is_map(Got) ->
     end;
 match_map(_Expected, _Got) ->
     {false, not_map}.
+
+wait_until(Fun) ->
+    wait_until(Fun, 100, 100).
+
+wait_until(Fun, Retry, Delay) when Retry > 0 ->
+    Res = Fun(),
+    case Res of
+        true ->
+            ok;
+        _ when Retry == 1 ->
+            {fail, Res};
+        _ ->
+            timer:sleep(Delay),
+            wait_until(Fun, Retry - 1, Delay)
+    end.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
