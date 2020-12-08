@@ -18,7 +18,8 @@
         observer_cli,
         jsx,
         iso8601,
-        poolboy
+        poolboy,
+        xxhash
     ]},
     {included_applications, [blockchain]},
     {env, []},

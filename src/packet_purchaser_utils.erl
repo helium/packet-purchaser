@@ -23,8 +23,7 @@ get_oui(Chain) ->
 
 -spec pubkeybin_to_mac(binary()) -> binary().
 pubkeybin_to_mac(PubKeyBin) ->
-    <<_:8/integer, MAC:8/binary, _/binary>> = PubKeyBin,
-    MAC.
+    <<(xxhash:hash64(PubKeyBin)):64/unsigned-integer>>.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
