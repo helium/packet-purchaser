@@ -40,9 +40,9 @@ handle_packet(SCPacket, _PacketTime, _Pid) ->
             data => base64:encode(Payload)
         }
     ),
-    case packet_purchaser_connector_udp_sup:maybe_start_worker(PubKeyBin, #{}) of
+    case packet_purchaser_udp_sup:maybe_start_worker(PubKeyBin, #{}) of
         {ok, WorkerPid} ->
-            packet_purchaser_connector_udp:push_data(WorkerPid, Token, UDPData);
+            packet_purchaser_udp_worker:push_data(WorkerPid, Token, UDPData);
         {error, _Reason} = Error ->
             lager:error("failed to start udp connector for ~p: ~p", [
                 blockchain_utils:addr2name(PubKeyBin),

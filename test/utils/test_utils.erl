@@ -46,6 +46,7 @@ init_per_testcase(TestCase, Config) ->
         _ ->
             ok = application:set_env(lager, log_root, "/log")
     end,
+    ok = application:set_env(?APP, ?UDP_WORKER, [{address, {127, 0, 0, 1}}, {port, 1680}]),
     {ok, _} = application:ensure_all_started(?APP),
     {ok, FakeLNSPid} = fake_lns:start_link(#{port => 1680, forward => self()}),
     {PubKeyBin, WorkerPid} = start_gateway(),
@@ -111,5 +112,5 @@ match_map(_Expected, _Got) ->
 start_gateway() ->
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
-    {ok, WorkerPid} = packet_purchaser_connector_udp_sup:maybe_start_worker(PubKeyBin, #{}),
+    {ok, WorkerPid} = packet_purchaser_udp_sup:maybe_start_worker(PubKeyBin, #{}),
     {PubKeyBin, WorkerPid}.

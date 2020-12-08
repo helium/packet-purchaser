@@ -71,7 +71,7 @@ init([]) ->
     ChildSpecs = [
         ?SUP(blockchain_sup, [BlockchainOpts]),
         ?WORKER(packet_purchaser_sc_worker, [SCWorkerOpts]),
-        ?SUP(packet_purchaser_connector_udp_sup, [])
+        ?SUP(packet_purchaser_udp_sup, [])
     ],
     {ok, {?FLAGS, ChildSpecs}}.
 

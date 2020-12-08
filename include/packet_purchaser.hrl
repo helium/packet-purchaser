@@ -1,2 +1,3 @@
 -define(APP, packet_purchaser).
 -define(APP_STRING, "packet_purchaser").
+-define(UDP_WORKER, packet_purchaser_udp_worker).

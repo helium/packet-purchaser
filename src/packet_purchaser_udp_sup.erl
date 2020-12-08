@@ -1,6 +1,8 @@
--module(packet_purchaser_connector_udp_sup).
+-module(packet_purchaser_udp_sup).
 
 -behaviour(supervisor).
+
+-include("packet_purchaser.hrl").
 
 %% API
 -export([
@@ -27,7 +29,7 @@
     period => 60
 }).
 
--define(ETS, packet_purchaser_connector_udp_sup_ets).
+-define(ETS, packet_purchaser_udp_sup_ets).
 
 %%====================================================================
 %% API functions
@@ -69,7 +71,7 @@ lookup_worker(ID) ->
 
 init([]) ->
     ets:new(?ETS, [public, named_table, set]),
-    {ok, {?FLAGS, [?WORKER(packet_purchaser_connector_udp)]}}.
+    {ok, {?FLAGS, [?WORKER(?UDP_WORKER)]}}.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
@@ -77,7 +79,8 @@ init([]) ->
 
 -spec start_worker(binary(), map()) -> {ok, pid()} | {error, any()}.
 start_worker(ID, Args) ->
-    Map = maps:merge(#{pubkeybin => ID}, Args),
+    AppArgs = maps:from_list(application:get_env(?APP, ?UDP_WORKER, [])),
+    Map = maps:merge(#{pubkeybin => ID}, maps:merge(AppArgs, Args)),
     case supervisor:start_child(?MODULE, [Map]) of
         {error, _Err} = Err ->
             Err;

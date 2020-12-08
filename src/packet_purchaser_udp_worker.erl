@@ -1,4 +1,4 @@
--module(packet_purchaser_connector_udp).
+-module(packet_purchaser_udp_worker).
 
 -behavior(gen_server).
 
@@ -30,11 +30,6 @@
 ]).
 
 -define(SERVER, ?MODULE).
--define(POOL, packet_purchaser_connector_udp_pool).
--define(DEFAULT_ADDRESS, {127, 0, 0, 1}).
--define(DEFAULT_PORT, 1680).
--define(DEFAULT_SIZE, 1).
--define(DEFAULT_MAX_OVERFLOW, 0).
 
 -define(PUSH_DATA_TICK, push_data_tick).
 -define(PUSH_DATA_TIMER, timer:seconds(2)).
@@ -72,8 +67,8 @@ init(Args) ->
     PubKeyBin = maps:get(pubkeybin, Args),
     lager:md([{gateway_id, blockchain_utils:addr2name(PubKeyBin)}]),
     lager:info("~p init with ~p", [?SERVER, Args]),
-    Address = maps:get(address, Args, ?DEFAULT_ADDRESS),
-    Port = maps:get(port, Args, ?DEFAULT_PORT),
+    Address = maps:get(address, Args),
+    Port = maps:get(port, Args),
     {ok, Socket} = gen_udp:open(0, [binary, {active, true}]),
     _ = schedule_pull_data(),
     {ok, #state{pubkeybin = PubKeyBin, socket = Socket, address = Address, port = Port}}.

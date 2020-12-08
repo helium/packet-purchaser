@@ -1,4 +1,4 @@
--module(packet_purchaser_connector_udp_SUITE).
+-module(packet_purchaser_udp_worker_SUITE).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("eunit/include/eunit.hrl").
