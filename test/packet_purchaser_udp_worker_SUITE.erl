@@ -16,7 +16,8 @@
     push_data/1,
     delay_push_data/1,
     pull_data/1,
-    failed_pull_data/1
+    failed_pull_data/1,
+    pull_resp/1
 ]).
 
 -record(state, {
@@ -40,7 +41,7 @@
 %% @end
 %%--------------------------------------------------------------------
 all() ->
-    [push_data, delay_push_data, pull_data, failed_pull_data].
+    [push_data, delay_push_data, pull_data, failed_pull_data, pull_resp].
 
 %%--------------------------------------------------------------------
 %% TEST CASE SETUP
@@ -233,7 +234,20 @@ failed_pull_data(Config) ->
 
     ok.
 
-% TODO: Test downlink
+pull_resp(Config) ->
+    FakeLNSPid = proplists:get_value(fake_lns, Config),
+    {PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
+
+    #state{socket = Socket} = sys:get_state(WorkerPid),
+    {ok, Port} = inet:port(Socket),
+
+    Token = semtech_udp:token(),
+    ok = fake_lns:pull_resp(FakeLNSPid, {127, 0, 0, 1}, Port, Token, #{}),
+    MAC = packet_purchaser_utils:pubkeybin_to_mac(PubKeyBin),
+    Map = #{<<"txpk_ack">> => #{<<"error">> => <<"NONE">>}},
+
+    ?assertEqual({ok, {Token, MAC, Map}}, fake_lns:rcv(FakeLNSPid, ?TX_ACK)),
+    ok.
 
 %% ------------------------------------------------------------------
 %% Helper functions

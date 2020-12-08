@@ -10,6 +10,7 @@
 -export([
     start_link/1,
     delay_next_udp/2,
+    pull_resp/5,
     rcv/2, rcv/3
 ]).
 
@@ -44,6 +45,9 @@ start_link(Args) ->
 delay_next_udp(Pid, Delay) ->
     gen_server:cast(Pid, {delay_next_udp, Delay}).
 
+pull_resp(Pid, IP, Port, Token, Map) ->
+    gen_server:cast(Pid, {pull_resp, IP, Port, Token, Map}).
+
 rcv(Pid, Type) ->
     rcv(Pid, Type, timer:seconds(1)).
 
@@ -71,6 +75,10 @@ handle_call(_Msg, _From, State) ->
 handle_cast({delay_next_udp, Delay}, State) ->
     lager:info("delaying next udp by ~p", [Delay]),
     {noreply, State#state{delay_next_udp = Delay}};
+handle_cast({pull_resp, IP, Port, Token, Map}, #state{socket = Socket} = State) ->
+    lager:info("pull_resp ~p", [{IP, Port, Token, Map}]),
+    _ = gen_udp:send(Socket, IP, Port, semtech_udp:pull_resp(Token, Map)),
+    {noreply, State};
 handle_cast(_Msg, State) ->
     lager:warning("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
@@ -131,10 +139,15 @@ handle_udp(
         self(),
         {send, IP, Port, ?PULL_DATA, {Token, MAC}, semtech_udp:pull_ack(Token)}
     ),
+    ok;
+handle_udp(
+    _IP,
+    _Port,
+    <<?PROTOCOL_2:8/integer-unsigned, Token:2/binary, ?TX_ACK:8/integer-unsigned, MAC:8/binary,
+        BinJSX/binary>>,
+    #state{forward = Pid} = _State
+) ->
+    Map = jsx:decode(BinJSX),
+    lager:info("got TX_ACK: ~p", [Token]),
+    Pid ! {?MODULE, self(), ?TX_ACK, {Token, MAC, Map}},
     ok.
-
-%% ------------------------------------------------------------------
-%% EUNIT Tests
-%% ------------------------------------------------------------------
--ifdef(TEST).
--endif.

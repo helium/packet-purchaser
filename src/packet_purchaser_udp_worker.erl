@@ -131,6 +131,11 @@ handle_info(
                     lager:warning("got unknown pull ack for ~p", [_UnknownToken]),
                     {noreply, State}
             end;
+        ?PULL_RESP ->
+            % TODO: Send pull resp data to state channels
+            Token = semtech_udp:token(Data),
+            _ = send_tx_ack(Token, State),
+            {noreply, State};
         _ ->
             {noreply, State}
     end;
@@ -210,6 +215,16 @@ send_push_data(
     TimerRef = erlang:send_after(?PUSH_DATA_TIMER, self(), {?PUSH_DATA_TICK, Token}),
     lager:debug("sent ~p/~p to ~p:~p replied: ~p", [Token, Data, Address, Port, Reply]),
     {Reply, TimerRef}.
+
+-spec send_tx_ack(binary(), #state{}) -> ok | {error, any()}.
+send_tx_ack(
+    Token,
+    #state{pubkeybin = PubKeyBin, socket = Socket, address = Address, port = Port}
+) ->
+    Data = semtech_udp:tx_ack(Token, packet_purchaser_utils:pubkeybin_to_mac(PubKeyBin)),
+    Reply = gen_udp:send(Socket, Address, Port, Data),
+    lager:debug("sent ~p/~p to ~p:~p replied: ~p", [Token, Data, Address, Port, Reply]),
+    Reply.
 
 %% ------------------------------------------------------------------
 %% EUNIT Tests
