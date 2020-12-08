@@ -20,16 +20,24 @@ handle_offer(_Offer, _HandlerPid) ->
 handle_packet(SCPacket, _PacketTime, _Pid) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     Hotspot = blockchain_state_channel_packet_v1:hotspot(SCPacket),
-    MAC = packet_purchaser_utils:pubkeybin_to_mac(Hotspot),
     Token = semtech_udp:token(),
+    MAC = packet_purchaser_utils:pubkeybin_to_mac(Hotspot),
+    Tmst = blockchain_helium_packet_v1:timestamp(Packet),
+    Payload = blockchain_helium_packet_v1:payload(Packet),
     UDPData = semtech_udp:push_data(
+        Token,
         MAC,
-        blockchain_helium_packet_v1:timestamp(Packet),
-        blockchain_helium_packet_v1:frequency(Packet),
-        blockchain_helium_packet_v1:datarate(Packet),
-        blockchain_helium_packet_v1:signal_strength(Packet),
-        blockchain_helium_packet_v1:snr(Packet),
-        blockchain_helium_packet_v1:payload(Packet),
-        Token
+        #{
+            time => iso8601:format(calendar:system_time_to_universal_time(Tmst, millisecond)),
+            tmst => Tmst,
+            freq => blockchain_helium_packet_v1:frequency(Packet),
+            stat => 0,
+            modu => <<"LORA">>,
+            datr => blockchain_helium_packet_v1:datarate(Packet),
+            rssi => blockchain_helium_packet_v1:signal_strength(Packet),
+            lsnr => blockchain_helium_packet_v1:snr(Packet),
+            size => erlang:byte_size(Payload),
+            data => base64:encode(Payload)
+        }
     ),
     packet_purchaser_connector_udp:push_data(Token, UDPData).

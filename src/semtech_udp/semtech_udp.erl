@@ -13,13 +13,12 @@
 -endif.
 
 -export([
-    push_data/8,
+    push_data/3,
     push_ack/1,
     pull_data/2,
     pull_ack/1,
     pull_resp/2,
-    pull_resp/2,
-    tx_ack/3,
+    tx_ack/2, tx_ack/3,
     token/0,
     token/1,
     identifier/1
@@ -33,28 +32,11 @@
 %%%-------------------------------------------------------------------
 -spec push_data(
     binary(),
-    non_neg_integer(),
-    float(),
-    string(),
-    float(),
-    float(),
     binary(),
-    binary()
+    map()
 ) -> binary().
-push_data(MAC, Tmst, Freq, Datr, RSSI, SNR, Payload, Token) ->
-    Data = #{
-        time => iso8601:format(calendar:system_time_to_universal_time(Tmst, millisecond)),
-        tmst => Tmst,
-        freq => Freq,
-        stat => 0,
-        modu => <<"LORA">>,
-        datr => Datr,
-        rssi => RSSI,
-        lsnr => SNR,
-        size => erlang:byte_size(Payload),
-        data => base64:encode(Payload)
-    },
-    BinJSX = jsx:encode(#{rxpk => [Data]}),
+push_data(Token, MAC, Map) ->
+    BinJSX = jsx:encode(#{rxpk => [Map]}),
     <<?PROTOCOL_2:8/integer-unsigned, Token/binary, ?PUSH_DATA:8/integer-unsigned, MAC:8/binary,
         BinJSX/binary>>.
 
@@ -117,7 +99,7 @@ pull_resp(Token, Map) ->
     binary()
 ) -> binary().
 tx_ack(Token, MAC) ->
-    tx_ack(Token, MAC, <<"NONE">>).
+    tx_ack(Token, MAC, ?TX_ACK_ERROR_NONE).
 
 -spec tx_ack(
     binary(),
@@ -154,20 +136,25 @@ identifier(
 -ifdef(TEST).
 
 push_data_test() ->
-    MAC0 = crypto:strong_rand_bytes(8),
     Token0 = token(),
+    MAC0 = crypto:strong_rand_bytes(8),
     Tmst = erlang:system_time(millisecond),
     Payload = <<"payload">>,
-    PushData = push_data(
-        MAC0,
-        Tmst,
-        915.2,
-        <<"datr">>,
-        -80.0,
-        -10,
-        Payload,
-        Token0
-    ),
+    Map = #{
+        time => iso8601:format(
+            calendar:system_time_to_universal_time(Tmst, millisecond)
+        ),
+        tmst => Tmst,
+        freq => 915.2,
+        stat => 0,
+        modu => <<"LORA">>,
+        datr => <<"datr">>,
+        rssi => -80.0,
+        lsnr => -10,
+        size => erlang:byte_size(Payload),
+        data => base64:encode(Payload)
+    },
+    PushData = push_data(Token0, MAC0, Map),
     <<?PROTOCOL_2:8/integer-unsigned, Token1:2/binary, Id:8/integer-unsigned, MAC1:8/binary,
         BinJSX/binary>> = PushData,
     ?assertEqual(Token1, Token0),
@@ -276,7 +263,7 @@ tx_ack_test() ->
     ?assertEqual(
         #{
             <<"txpk_ack">> => #{
-                <<"error">> => <<"NONE">>
+                <<"error">> => ?TX_ACK_ERROR_NONE
             }
         },
         jsx:decode(BinJSX)
@@ -286,18 +273,7 @@ tx_ack_test() ->
 token_test() ->
     Token = token(),
     ?assertEqual(2, erlang:byte_size(Token)),
-    ?assertEqual(Token, token(push_ack(Token))),
-    PushData = push_data(
-        crypto:strong_rand_bytes(8),
-        erlang:system_time(millisecond),
-        915.2,
-        <<"datr">>,
-        -80.0,
-        -10,
-        <<"payload">>,
-        Token
-    ),
-    ?assertEqual(Token, token(PushData)),
+    ?assertEqual(Token, token(push_data(Token, crypto:strong_rand_bytes(8), #{}))),
     ?assertEqual(Token, token(push_ack(Token))),
     ?assertEqual(Token, token(pull_data(Token, crypto:strong_rand_bytes(8)))),
     ?assertEqual(Token, token(pull_ack(Token))),
@@ -308,18 +284,7 @@ token_test() ->
 
 identifier_test() ->
     Token = token(),
-    ?assertEqual(?PUSH_ACK, identifier(push_ack(Token))),
-    PushData = push_data(
-        crypto:strong_rand_bytes(8),
-        erlang:system_time(millisecond),
-        915.2,
-        <<"datr">>,
-        -80.0,
-        -10,
-        <<"payload">>,
-        Token
-    ),
-    ?assertEqual(?PUSH_DATA, identifier(PushData)),
+    ?assertEqual(?PUSH_DATA, identifier(push_data(Token, crypto:strong_rand_bytes(8), #{}))),
     ?assertEqual(?PUSH_ACK, identifier(push_ack(Token))),
     ?assertEqual(?PULL_DATA, identifier(pull_data(Token, crypto:strong_rand_bytes(8)))),
     ?assertEqual(?PULL_ACK, identifier(pull_ack(Token))),
