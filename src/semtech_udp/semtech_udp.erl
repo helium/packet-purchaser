@@ -159,6 +159,26 @@ push_ack_test() ->
     ),
     ok.
 
+pull_data_test() ->
+    Token = token(),
+    MAC = crypto:strong_rand_bytes(8),
+    PullData = pull_data(Token, MAC),
+    ?assertEqual(
+        <<?PROTOCOL_2:8/integer-unsigned, Token:2/binary, ?PULL_DATA:8/integer-unsigned,
+            MAC:8/binary>>,
+        PullData
+    ),
+    ok.
+
+pull_ack_test() ->
+    Token = token(),
+    PushAck = pull_ack(Token),
+    ?assertEqual(
+        <<?PROTOCOL_2:8/integer-unsigned, Token:2/binary, ?PULL_ACK:8/integer-unsigned>>,
+        PushAck
+    ),
+    ok.
+
 token_test() ->
     Token = token(),
     ?assertEqual(2, erlang:byte_size(Token)),
@@ -174,6 +194,9 @@ token_test() ->
         Token
     ),
     ?assertEqual(Token, token(PushData)),
+    ?assertEqual(Token, token(push_ack(Token))),
+    ?assertEqual(Token, token(pull_data(Token, crypto:strong_rand_bytes(8)))),
+    ?assertEqual(Token, token(pull_ack(Token))),
     ?assertException(error, function_clause, token(<<"some unknown stuff">>)),
     ok.
 
@@ -191,6 +214,9 @@ identifier_test() ->
         Token
     ),
     ?assertEqual(?PUSH_DATA, identifier(PushData)),
+    ?assertEqual(?PUSH_ACK, identifier(push_ack(Token))),
+    ?assertEqual(?PULL_DATA, identifier(pull_data(Token, crypto:strong_rand_bytes(8)))),
+    ?assertEqual(?PULL_ACK, identifier(pull_ack(Token))),
     ?assertException(error, function_clause, token(<<"some unknown stuff">>)),
     ok.
 
