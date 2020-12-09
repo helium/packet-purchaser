@@ -64,7 +64,6 @@ push_data(Pid, Token, Data, SCPid) ->
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 init(Args) ->
-    % TODO: Add lager MD here for hotspot name
     process_flag(trap_exit, true),
     PubKeyBin = maps:get(pubkeybin, Args),
     lager:md([{gateway_id, blockchain_utils:addr2name(PubKeyBin)}]),
@@ -108,7 +107,13 @@ handle_info(
         port = Port
     } = State
 ) ->
-    handle_udp(Data, State);
+    try handle_udp(Data, State) of
+        {noreply, _} = NoReply -> NoReply
+    catch
+        _E:_R ->
+            lager:error("failed to handle UDP packet ~p: ~p/~p", [Data, _E, _R]),
+            {noreply, State}
+    end;
 handle_info(
     {?PUSH_DATA_TICK, Token},
     #state{push_data = PushData} = State
@@ -151,6 +156,8 @@ terminate(_Reason, #state{socket = Socket}) ->
 
 -spec handle_udp(binary(), #state{}) -> {noreply, #state{}}.
 handle_udp(Data, State) ->
+    Identifier = semtech_udp:identifier(Data),
+    lager:debug("got udp ~p / ~p", [semtech_udp:identifier_to_atom(Identifier), Data]),
     case semtech_udp:identifier(Data) of
         ?PUSH_ACK ->
             handle_push_ack(Data, State);
@@ -158,8 +165,8 @@ handle_udp(Data, State) ->
             handle_pull_ack(Data, State);
         ?PULL_RESP ->
             handle_pull_resp(Data, State);
-        _ ->
-            lager:warning("got unknown identifier for ~p", [Data]),
+        _Id ->
+            lager:warning("got unknown identifier ~p for ~p", [_Id, Data]),
             {noreply, State}
     end.
 
@@ -208,12 +215,24 @@ handle_pull_ack(
             {noreply, State}
     end.
 
+% TODO: Handle queueing downlinks
 -spec handle_pull_resp(binary(), #state{}) -> {noreply, #state{}}.
 handle_pull_resp(
     Data,
-    State
-) ->
-    % TODO: Send pull resp data to state channels
+    #state{sc_pid = SCPid} = State
+) when is_pid(SCPid) ->
+    Map = maps:get(<<"txpk">>, semtech_udp:json_data(Data)),
+    DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
+        maps:get(<<"data">>, Map),
+        27,
+        maps:get(<<"tmst">>, Map),
+        maps:get(<<"freq">>, Map),
+        erlang:binary_to_list(maps:get(<<"datr">>, Map))
+    ),
+    catch blockchain_state_channel_handler:send_response(
+        SCPid,
+        blockchain_state_channel_response_v1:new(true, DownlinkPacket)
+    ),
     Token = semtech_udp:token(Data),
     _ = send_tx_ack(Token, State),
     {noreply, State}.

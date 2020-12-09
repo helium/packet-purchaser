@@ -240,15 +240,68 @@ pull_resp(Config) ->
     FakeLNSPid = proplists:get_value(fake_lns, Config),
     {PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
 
+    Payload = <<"payload">>,
+    Timestamp = erlang:system_time(millisecond),
+    RSSI = -80.0,
+    Frequency = 904.299,
+    DataRate = "SF10BW125",
+    SNR = 6.199,
+    Packet = blockchain_helium_packet_v1:new(
+        lorawan,
+        Payload,
+        Timestamp,
+        RSSI,
+        Frequency,
+        DataRate,
+        SNR,
+        {devaddr, 16#deadbeef}
+    ),
+    Region = 'US915',
+    SCPacket = blockchain_state_channel_packet_v1:new(
+        Packet,
+        PubKeyBin,
+        Region
+    ),
+
+    ok = packet_purchaser_sc_packet_handler:handle_packet(
+        SCPacket,
+        erlang:system_time(millisecond),
+        self()
+    ),
+
     #state{socket = Socket} = sys:get_state(WorkerPid),
     {ok, Port} = inet:port(Socket),
 
     Token = semtech_udp:token(),
-    ok = fake_lns:pull_resp(FakeLNSPid, {127, 0, 0, 1}, Port, Token, #{}),
+    DownlinkPayload = <<"downlink_payload">>,
+    DownlinkTimestamp = erlang:system_time(millisecond),
+    DownlinkFreq = 915.0,
+    DownlinkDatr = <<"SF11BW125">>,
+    ok = fake_lns:pull_resp(FakeLNSPid, {127, 0, 0, 1}, Port, Token, #{
+        data => DownlinkPayload,
+        tmst => DownlinkTimestamp,
+        freq => DownlinkFreq,
+        datr => DownlinkDatr
+    }),
     MAC = packet_purchaser_utils:pubkeybin_to_mac(PubKeyBin),
     Map = #{<<"txpk_ack">> => #{<<"error">> => <<"NONE">>}},
 
     ?assertEqual({ok, {Token, MAC, Map}}, fake_lns:rcv(FakeLNSPid, ?TX_ACK)),
+
+    receive
+        {send_response, SCResp} ->
+            Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
+            ?assertEqual(DownlinkPayload, blockchain_helium_packet_v1:payload(Downlink)),
+            ?assertEqual(DownlinkTimestamp, blockchain_helium_packet_v1:timestamp(Downlink)),
+            ?assertEqual(DownlinkFreq, blockchain_helium_packet_v1:frequency(Downlink)),
+            ?assertEqual(27, blockchain_helium_packet_v1:signal_strength(Downlink)),
+            ?assertEqual(
+                erlang:binary_to_list(DownlinkDatr),
+                blockchain_helium_packet_v1:datarate(Downlink)
+            )
+    after 3000 -> ct:fail("sc resp timeout")
+    end,
+
     ok.
 
 %% ------------------------------------------------------------------

@@ -21,7 +21,9 @@
     tx_ack/2, tx_ack/3,
     token/0,
     token/1,
-    identifier/1
+    identifier/1,
+    identifier_to_atom/1,
+    json_data/1
 ]).
 
 %%%-------------------------------------------------------------------
@@ -79,8 +81,6 @@ pull_ack(Token) ->
     binary(),
     map()
 ) -> binary().
-%% TODO: We might need to expand this to add the gateway MAC in there otherwise
-%% I don't know where to send donwlink
 pull_resp(Token, Map) ->
     BinJSX = jsx:encode(#{txpk => Map}),
     <<?PROTOCOL_2:8/integer-unsigned, Token/binary, ?PULL_RESP:8/integer-unsigned, BinJSX/binary>>.
@@ -125,6 +125,39 @@ identifier(
     <<?PROTOCOL_2:8/integer-unsigned, _Token:2/binary, Identifier:8/integer-unsigned, _/binary>>
 ) ->
     Identifier.
+
+-spec identifier_to_atom(non_neg_integer()) -> atom().
+identifier_to_atom(?PUSH_DATA) ->
+    push_data;
+identifier_to_atom(?PUSH_ACK) ->
+    push_ack;
+identifier_to_atom(?PULL_DATA) ->
+    pull_data;
+identifier_to_atom(?PULL_RESP) ->
+    pull_resp;
+identifier_to_atom(?PULL_ACK) ->
+    pull_ack;
+identifier_to_atom(?TX_ACK) ->
+    tx_ack.
+
+-spec json_data(
+    binary()
+) -> map().
+json_data(
+    <<?PROTOCOL_2:8/integer-unsigned, _Token:2/binary, ?PUSH_DATA:8/integer-unsigned, _MAC:8/binary,
+        BinJSX/binary>>
+) ->
+    jsx:decode(BinJSX);
+json_data(
+    <<?PROTOCOL_2:8/integer-unsigned, _Token:2/binary, ?PULL_RESP:8/integer-unsigned,
+        BinJSX/binary>>
+) ->
+    jsx:decode(BinJSX);
+json_data(
+    <<?PROTOCOL_2:8/integer-unsigned, _Token:2/binary, ?TX_ACK:8/integer-unsigned, _MAC:8/binary,
+        BinJSX/binary>>
+) ->
+    jsx:decode(BinJSX).
 
 %%====================================================================
 %% Internal functions
@@ -291,6 +324,28 @@ identifier_test() ->
     ?assertEqual(?PULL_RESP, identifier(pull_resp(Token, #{}))),
     ?assertEqual(?TX_ACK, identifier(tx_ack(Token, crypto:strong_rand_bytes(8)))),
     ?assertException(error, function_clause, token(<<"some unknown stuff">>)),
+    ok.
+
+identifier_to_atom_test() ->
+    ?assertEqual(push_data, identifier_to_atom(?PUSH_DATA)),
+    ?assertEqual(push_ack, identifier_to_atom(?PUSH_ACK)),
+    ?assertEqual(pull_data, identifier_to_atom(?PULL_DATA)),
+    ?assertEqual(pull_resp, identifier_to_atom(?PULL_RESP)),
+    ?assertEqual(pull_ack, identifier_to_atom(?PULL_ACK)),
+    ?assertEqual(tx_ack, identifier_to_atom(?TX_ACK)),
+    ok.
+
+json_data_test() ->
+    Token = token(),
+    ?assertEqual(
+        #{<<"rxpk">> => [#{}]},
+        json_data(push_data(Token, crypto:strong_rand_bytes(8), #{}))
+    ),
+    ?assertEqual(#{<<"txpk">> => #{}}, json_data(pull_resp(Token, #{}))),
+    ?assertEqual(
+        #{<<"txpk_ack">> => #{<<"error">> => <<"NONE">>}},
+        json_data(tx_ack(Token, crypto:strong_rand_bytes(8)))
+    ),
     ok.
 
 -endif.
