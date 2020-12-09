@@ -17,7 +17,7 @@ handle_offer(_Offer, _HandlerPid) ->
     ok.
 
 -spec handle_packet(blockchain_state_channel_packet_v1:packet(), pos_integer(), pid()) -> ok.
-handle_packet(SCPacket, _PacketTime, _Pid) ->
+handle_packet(SCPacket, _PacketTime, Pid) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
     Token = semtech_udp:token(),
@@ -42,7 +42,7 @@ handle_packet(SCPacket, _PacketTime, _Pid) ->
     ),
     case packet_purchaser_udp_sup:maybe_start_worker(PubKeyBin, #{}) of
         {ok, WorkerPid} ->
-            packet_purchaser_udp_worker:push_data(WorkerPid, Token, UDPData);
+            packet_purchaser_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
         {error, _Reason} = Error ->
             lager:error("failed to start udp connector for ~p: ~p", [
                 blockchain_utils:addr2name(PubKeyBin),

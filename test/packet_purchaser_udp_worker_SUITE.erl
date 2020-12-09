@@ -26,6 +26,7 @@
     address :: inet:socket_address() | inet:hostname(),
     port :: inet:port_number(),
     push_data = #{} :: #{binary() => {binary(), reference()}},
+    sc_pid :: undefined | pid(),
     pull_data :: {reference(), binary()} | undefined,
     pull_data_timer :: non_neg_integer()
 }).
@@ -118,6 +119,7 @@ push_data(Config) ->
     %% Chekcing that the push data cache is empty as we should have gotten the push ack
     State = sys:get_state(WorkerPid),
     ?assertEqual(#{}, State#state.push_data),
+    ?assertEqual(self(), State#state.sc_pid),
 
     ok.
 

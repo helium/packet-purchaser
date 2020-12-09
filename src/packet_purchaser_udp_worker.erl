@@ -14,7 +14,7 @@
 %% ------------------------------------------------------------------
 -export([
     start_link/1,
-    push_data/3
+    push_data/4
 ]).
 
 %% ------------------------------------------------------------------
@@ -44,6 +44,7 @@
     address :: inet:socket_address() | inet:hostname(),
     port :: inet:port_number(),
     push_data = #{} :: #{binary() => {binary(), reference()}},
+    sc_pid :: undefined | pid(),
     pull_data :: {reference(), binary()} | undefined,
     pull_data_timer :: non_neg_integer()
 }).
@@ -55,9 +56,9 @@
 start_link(Args) ->
     gen_server:start_link(?SERVER, Args, []).
 
--spec push_data(pid(), binary(), binary()) -> ok | {error, any()}.
-push_data(Pid, Token, Data) ->
-    gen_server:call(Pid, {push_data, Token, Data}).
+-spec push_data(pid(), binary(), binary(), pid()) -> ok | {error, any()}.
+push_data(Pid, Token, Data, SCPid) ->
+    gen_server:call(Pid, {push_data, Token, Data, SCPid}).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -82,12 +83,15 @@ init(Args) ->
     }}.
 
 handle_call(
-    {push_data, Token, Data},
+    {push_data, Token, Data, SCPid},
     _From,
     #state{push_data = PushData} = State
 ) ->
     {Reply, TimerRef} = send_push_data(Token, Data, State),
-    {reply, Reply, State#state{push_data = maps:put(Token, {Data, TimerRef}, PushData)}};
+    {reply, Reply, State#state{
+        push_data = maps:put(Token, {Data, TimerRef}, PushData),
+        sc_pid = SCPid
+    }};
 handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
     {reply, ok, State}.
@@ -101,44 +105,10 @@ handle_info(
     #state{
         socket = Socket,
         address = Address,
-        port = Port,
-        push_data = PushData,
-        pull_data = PullData,
-        pull_data_timer = PullDataTimer
+        port = Port
     } = State
 ) ->
-    case semtech_udp:identifier(Data) of
-        ?PUSH_ACK ->
-            Token = semtech_udp:token(Data),
-            case maps:get(Token, PushData, undefined) of
-                undefined ->
-                    lager:debug("got unkown push ack ~p", [Token]),
-                    {noreply, State};
-                {_, TimerRef} ->
-                    lager:debug("got push ack ~p", [Token]),
-                    _ = erlang:cancel_timer(TimerRef),
-                    {noreply, State#state{push_data = maps:remove(Token, PushData)}}
-            end;
-        ?PULL_ACK ->
-            {PullDataRef, PullDataToken} = PullData,
-            case semtech_udp:token(Data) of
-                PullDataToken ->
-                    erlang:cancel_timer(PullDataRef),
-                    lager:debug("got pull ack for ~p", [PullDataToken]),
-                    _ = schedule_pull_data(PullDataTimer),
-                    {noreply, State#state{pull_data = undefined}};
-                _UnknownToken ->
-                    lager:warning("got unknown pull ack for ~p", [_UnknownToken]),
-                    {noreply, State}
-            end;
-        ?PULL_RESP ->
-            % TODO: Send pull resp data to state channels
-            Token = semtech_udp:token(Data),
-            _ = send_tx_ack(Token, State),
-            {noreply, State};
-        _ ->
-            {noreply, State}
-    end;
+    handle_udp(Data, State);
 handle_info(
     {?PUSH_DATA_TICK, Token},
     #state{push_data = PushData} = State
@@ -178,6 +148,75 @@ terminate(_Reason, #state{socket = Socket}) ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
+
+-spec handle_udp(binary(), #state{}) -> {noreply, #state{}}.
+handle_udp(Data, State) ->
+    case semtech_udp:identifier(Data) of
+        ?PUSH_ACK ->
+            handle_push_ack(Data, State);
+        ?PULL_ACK ->
+            handle_pull_ack(Data, State);
+        ?PULL_RESP ->
+            handle_pull_resp(Data, State);
+        _ ->
+            lager:warning("got unknown identifier for ~p", [Data]),
+            {noreply, State}
+    end.
+
+-spec handle_push_ack(binary(), #state{}) -> {noreply, #state{}}.
+handle_push_ack(
+    Data,
+    #state{
+        push_data = PushData
+    } = State
+) ->
+    Token = semtech_udp:token(Data),
+    case maps:get(Token, PushData, undefined) of
+        undefined ->
+            lager:debug("got unkown push ack ~p", [Token]),
+            {noreply, State};
+        {_, TimerRef} ->
+            lager:debug("got push ack ~p", [Token]),
+            _ = erlang:cancel_timer(TimerRef),
+            {noreply, State#state{push_data = maps:remove(Token, PushData)}}
+    end.
+
+-spec handle_pull_ack(binary(), #state{}) -> {noreply, #state{}}.
+handle_pull_ack(
+    _Data,
+    #state{
+        pull_data = undefined
+    } = State
+) ->
+    lager:warning("got unknown pull ack for ~p", [_Data]),
+    {noreply, State};
+handle_pull_ack(
+    Data,
+    #state{
+        pull_data = {PullDataRef, PullDataToken},
+        pull_data_timer = PullDataTimer
+    } = State
+) ->
+    case semtech_udp:token(Data) of
+        PullDataToken ->
+            erlang:cancel_timer(PullDataRef),
+            lager:debug("got pull ack for ~p", [PullDataToken]),
+            _ = schedule_pull_data(PullDataTimer),
+            {noreply, State#state{pull_data = undefined}};
+        _UnknownToken ->
+            lager:warning("got unknown pull ack for ~p", [_UnknownToken]),
+            {noreply, State}
+    end.
+
+-spec handle_pull_resp(binary(), #state{}) -> {noreply, #state{}}.
+handle_pull_resp(
+    Data,
+    State
+) ->
+    % TODO: Send pull resp data to state channels
+    Token = semtech_udp:token(Data),
+    _ = send_tx_ack(Token, State),
+    {noreply, State}.
 
 -spec schedule_pull_data(non_neg_integer()) -> reference().
 schedule_pull_data(PullDataTimer) ->
