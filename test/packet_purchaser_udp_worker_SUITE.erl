@@ -17,7 +17,8 @@
     delay_push_data/1,
     pull_data/1,
     failed_pull_data/1,
-    pull_resp/1
+    pull_resp/1,
+    multi_hotspots/1
 ]).
 
 -record(state, {
@@ -42,7 +43,7 @@
 %% @end
 %%--------------------------------------------------------------------
 all() ->
-    [push_data, delay_push_data, pull_data, failed_pull_data, pull_resp].
+    [push_data, delay_push_data, pull_data, failed_pull_data, pull_resp, multi_hotspots].
 
 %%--------------------------------------------------------------------
 %% TEST CASE SETUP
@@ -117,9 +118,10 @@ push_data(Config) ->
     ),
 
     %% Chekcing that the push data cache is empty as we should have gotten the push ack
-    State = sys:get_state(WorkerPid),
-    ?assertEqual(#{}, State#state.push_data),
-    ?assertEqual(self(), State#state.sc_pid),
+    test_utils:wait_until(fun() ->
+        State = sys:get_state(WorkerPid),
+        State#state.push_data == #{} andalso self() == State#state.sc_pid
+    end),
 
     ok.
 
@@ -302,6 +304,127 @@ pull_resp(Config) ->
     after 3000 -> ct:fail("sc resp timeout")
     end,
 
+    ok.
+
+multi_hotspots(Config) ->
+    FakeLNSPid = proplists:get_value(fake_lns, Config),
+    {PubKeyBin1, WorkerPid1} = proplists:get_value(gateway, Config),
+
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin2 = libp2p_crypto:pubkey_to_bin(PubKey),
+    {ok, WorkerPid2} = packet_purchaser_udp_sup:maybe_start_worker(PubKeyBin2, #{}),
+
+    Payload1 = <<"payload1">>,
+    Timestamp = erlang:system_time(millisecond),
+    RSSI = -80.0,
+    Frequency = 904.299,
+    DataRate = "SF10BW125",
+    SNR = 6.199,
+    Packet1 = blockchain_helium_packet_v1:new(
+        lorawan,
+        Payload1,
+        Timestamp,
+        RSSI,
+        Frequency,
+        DataRate,
+        SNR,
+        {devaddr, 16#deadbeef}
+    ),
+    Region = 'US915',
+    SCPacket1 = blockchain_state_channel_packet_v1:new(
+        Packet1,
+        PubKeyBin1,
+        Region
+    ),
+
+    Payload2 = <<"payload2">>,
+    Packet2 = blockchain_helium_packet_v1:new(
+        lorawan,
+        Payload2,
+        Timestamp,
+        RSSI,
+        Frequency,
+        DataRate,
+        SNR,
+        {devaddr, 16#deadbeef}
+    ),
+    SCPacket2 = blockchain_state_channel_packet_v1:new(
+        Packet2,
+        PubKeyBin2,
+        Region
+    ),
+
+    ok = packet_purchaser_sc_packet_handler:handle_packet(
+        SCPacket1,
+        erlang:system_time(millisecond),
+        self()
+    ),
+
+    ok = packet_purchaser_sc_packet_handler:handle_packet(
+        SCPacket2,
+        erlang:system_time(millisecond),
+        self()
+    ),
+
+    {ok, Map0} = fake_lns:rcv(FakeLNSPid, ?PUSH_DATA),
+    ?assert(
+        test_utils:match_map(
+            #{
+                <<"rxpk">> => [
+                    #{
+                        <<"data">> => base64:encode(Payload1),
+                        <<"datr">> => DataRate,
+                        <<"freq">> => Frequency,
+                        <<"stat">> => 0,
+                        <<"lsnr">> => SNR,
+                        <<"modu">> => <<"LORA">>,
+                        <<"rssi">> => RSSI,
+                        <<"size">> => erlang:byte_size(Payload1),
+                        <<"time">> => fun erlang:is_binary/1,
+                        <<"tmst">> => Timestamp
+                    }
+                ]
+            },
+            Map0
+        )
+    ),
+
+    {ok, Map1} = fake_lns:rcv(FakeLNSPid, ?PUSH_DATA),
+    ?assert(
+        test_utils:match_map(
+            #{
+                <<"rxpk">> => [
+                    #{
+                        <<"data">> => base64:encode(Payload2),
+                        <<"datr">> => DataRate,
+                        <<"freq">> => Frequency,
+                        <<"stat">> => 0,
+                        <<"lsnr">> => SNR,
+                        <<"modu">> => <<"LORA">>,
+                        <<"rssi">> => RSSI,
+                        <<"size">> => erlang:byte_size(Payload2),
+                        <<"time">> => fun erlang:is_binary/1,
+                        <<"tmst">> => Timestamp
+                    }
+                ]
+            },
+            Map1
+        )
+    ),
+
+    %% Chekcing that the push data cache is empty as we should have gotten the push ack
+
+    test_utils:wait_until(fun() ->
+        State1 = sys:get_state(WorkerPid1),
+        State1#state.push_data == #{} andalso self() == State1#state.sc_pid
+    end),
+
+    test_utils:wait_until(fun() ->
+        State2 = sys:get_state(WorkerPid2),
+        State2#state.push_data == #{} andalso self() == State2#state.sc_pid
+    end),
+
+    _ = gen_server:stop(WorkerPid2),
     ok.
 
 %% ------------------------------------------------------------------
