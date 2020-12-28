@@ -1,0 +1,11 @@
+version: '3'
+services:
+  packet_purchaser:
+    build: .
+    image: helium/packet_purchaser:latest
+    container_name: helium_packet_purchaser
+    restart: always
+    env_file: .env
+    network_mode: host
+    volumes:
+      - "/var/data:/var/data"
