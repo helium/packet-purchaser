@@ -102,4 +102,12 @@ handle_udp(
     _State
 ) ->
     lager:info("got TX_ACK: ~p ~p from ~p", [Token, jsx:decode(BinJSX), MAC]),
+    ok;
+handle_udp(
+    _IP,
+    _Port,
+    _UnkownUDPPacket,
+    _State
+) ->
+    lager:warning("got an unkown udp packet: ~p  from ~p", [_UnkownUDPPacket, {_IP, _Port}]),
     ok.
