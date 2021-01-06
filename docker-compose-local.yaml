@@ -2,8 +2,9 @@ version: '3'
 services:
   packet_purchaser:
     build: .
-    image: helium/packet_purchaser:latest
+    image: helium/packet_purchaser:local
     container_name: helium_packet_purchaser
+    network_mode: host
     volumes:
       - ./data:/var/data
     environment:
