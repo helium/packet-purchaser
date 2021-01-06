@@ -103,13 +103,13 @@ push_data(Config) ->
                         <<"data">> => base64:encode(Payload),
                         <<"datr">> => DataRate,
                         <<"freq">> => Frequency,
-                        <<"stat">> => 0,
+                        <<"rfch">> => 0,
                         <<"lsnr">> => SNR,
                         <<"modu">> => <<"LORA">>,
-                        <<"rssi">> => RSSI,
+                        <<"rssi">> => erlang:trunc(RSSI),
                         <<"size">> => erlang:byte_size(Payload),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => Timestamp
+                        <<"tmst">> => erlang:trunc(Timestamp / 1000)
                     }
                 ]
             },
@@ -167,13 +167,13 @@ delay_push_data(Config) ->
                         <<"data">> => base64:encode(Payload),
                         <<"datr">> => DataRate,
                         <<"freq">> => Frequency,
-                        <<"stat">> => 0,
+                        <<"rfch">> => 0,
                         <<"lsnr">> => SNR,
                         <<"modu">> => <<"LORA">>,
-                        <<"rssi">> => RSSI,
+                        <<"rssi">> => erlang:trunc(RSSI),
                         <<"size">> => erlang:byte_size(Payload),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => Timestamp
+                        <<"tmst">> => erlang:trunc(Timestamp / 1000)
                     }
                 ]
             },
@@ -197,13 +197,13 @@ delay_push_data(Config) ->
                         <<"data">> => base64:encode(Payload),
                         <<"datr">> => DataRate,
                         <<"freq">> => Frequency,
-                        <<"stat">> => 0,
+                        <<"rfch">> => 0,
                         <<"lsnr">> => SNR,
                         <<"modu">> => <<"LORA">>,
-                        <<"rssi">> => RSSI,
+                        <<"rssi">> => erlang:trunc(RSSI),
                         <<"size">> => erlang:byte_size(Payload),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => Timestamp
+                        <<"tmst">> => erlang:trunc(Timestamp / 1000)
                     }
                 ]
             },
@@ -375,13 +375,13 @@ multi_hotspots(Config) ->
                         <<"data">> => base64:encode(Payload1),
                         <<"datr">> => DataRate,
                         <<"freq">> => Frequency,
-                        <<"stat">> => 0,
+                        <<"rfch">> => 0,
                         <<"lsnr">> => SNR,
                         <<"modu">> => <<"LORA">>,
-                        <<"rssi">> => RSSI,
+                        <<"rssi">> => erlang:trunc(RSSI),
                         <<"size">> => erlang:byte_size(Payload1),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => Timestamp
+                        <<"tmst">> => erlang:trunc(Timestamp / 1000)
                     }
                 ]
             },
@@ -398,13 +398,13 @@ multi_hotspots(Config) ->
                         <<"data">> => base64:encode(Payload2),
                         <<"datr">> => DataRate,
                         <<"freq">> => Frequency,
-                        <<"stat">> => 0,
+                        <<"rfch">> => 0,
                         <<"lsnr">> => SNR,
                         <<"modu">> => <<"LORA">>,
-                        <<"rssi">> => RSSI,
+                        <<"rssi">> => erlang:trunc(RSSI),
                         <<"size">> => erlang:byte_size(Payload2),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => Timestamp
+                        <<"tmst">> => erlang:trunc(Timestamp / 1000)
                     }
                 ]
             },

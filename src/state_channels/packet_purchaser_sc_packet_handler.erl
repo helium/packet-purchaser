@@ -29,12 +29,12 @@ handle_packet(SCPacket, _PacketTime, Pid) ->
         MAC,
         #{
             time => iso8601:format(calendar:system_time_to_universal_time(Tmst, millisecond)),
-            tmst => Tmst,
+            tmst => erlang:trunc(Tmst / 1000),
             freq => blockchain_helium_packet_v1:frequency(Packet),
-            stat => 0,
+            rfch => 0,
             modu => <<"LORA">>,
             datr => blockchain_helium_packet_v1:datarate(Packet),
-            rssi => blockchain_helium_packet_v1:signal_strength(Packet),
+            rssi => erlang:trunc(blockchain_helium_packet_v1:signal_strength(Packet)),
             lsnr => blockchain_helium_packet_v1:snr(Packet),
             size => erlang:byte_size(Payload),
             data => base64:encode(Payload)
