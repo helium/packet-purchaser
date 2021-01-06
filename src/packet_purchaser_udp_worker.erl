@@ -5,10 +5,6 @@
 -include("packet_purchaser.hrl").
 -include("semtech_udp.hrl").
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
-
 %% ------------------------------------------------------------------
 %% API Function Exports
 %% ------------------------------------------------------------------
@@ -100,13 +96,13 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info(
-    {udp, Socket, Address, Port, Data},
+    {udp, Socket, _Address, Port, Data},
     #state{
         socket = Socket,
-        address = Address,
         port = Port
     } = State
 ) ->
+    lager:debug("got udp packet ~p from ~p:~p", [Data, _Address, Port]),
     try handle_udp(Data, State) of
         {noreply, _} = NoReply -> NoReply
     catch
@@ -283,9 +279,3 @@ send_tx_ack(
     Reply = gen_udp:send(Socket, Address, Port, Data),
     lager:debug("sent ~p/~p to ~p:~p replied: ~p", [Token, Data, Address, Port, Reply]),
     Reply.
-
-%% ------------------------------------------------------------------
-%% EUNIT Tests
-%% ------------------------------------------------------------------
--ifdef(TEST).
--endif.

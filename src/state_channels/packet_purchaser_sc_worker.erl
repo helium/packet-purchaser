@@ -22,10 +22,6 @@
 
 -include("packet_purchaser.hrl").
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
-
 %% ------------------------------------------------------------------
 %% API
 %% ------------------------------------------------------------------
@@ -350,9 +346,3 @@ handle_sc_result(ok, Id) ->
     ?SERVER ! {sc_open_success, Id};
 handle_sc_result(_Error, Id) ->
     ?SERVER ! {sc_open_failure, Id}.
-
-%% ------------------------------------------------------------------
-%% EUNIT Tests
-%% ------------------------------------------------------------------
--ifdef(TEST).
--endif.

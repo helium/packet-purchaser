@@ -8,10 +8,6 @@
 
 -include("semtech_udp.hrl").
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
-
 -export([
     push_data/3,
     push_ack/1,
@@ -167,6 +163,8 @@ json_data(
 %% EUNIT Tests
 %% ------------------------------------------------------------------
 -ifdef(TEST).
+
+-include_lib("eunit/include/eunit.hrl").
 
 push_data_test() ->
     Token0 = token(),

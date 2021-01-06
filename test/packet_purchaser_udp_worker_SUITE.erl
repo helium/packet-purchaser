@@ -279,7 +279,7 @@ pull_resp(Config) ->
     DownlinkTimestamp = erlang:system_time(millisecond),
     DownlinkFreq = 915.0,
     DownlinkDatr = <<"SF11BW125">>,
-    ok = fake_lns:pull_resp(FakeLNSPid, {127, 0, 0, 1}, Port, Token, #{
+    ok = fake_lns:pull_resp(FakeLNSPid, "127.0.0.1", Port, Token, #{
         data => DownlinkPayload,
         tmst => DownlinkTimestamp,
         freq => DownlinkFreq,

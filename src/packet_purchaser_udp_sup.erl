@@ -79,9 +79,9 @@ init([]) ->
 
 -spec start_worker(binary(), map()) -> {ok, pid()} | {error, any()}.
 start_worker(ID, Args) ->
-    AppArgs = maps:from_list(application:get_env(?APP, ?UDP_WORKER, [])),
-    Map = maps:merge(#{pubkeybin => ID}, maps:merge(AppArgs, Args)),
-    case supervisor:start_child(?MODULE, [Map]) of
+    AppArgs = get_app_args(),
+    ChildArgs = maps:merge(#{pubkeybin => ID}, maps:merge(AppArgs, Args)),
+    case supervisor:start_child(?MODULE, [ChildArgs]) of
         {error, _Err} = Err ->
             Err;
         {ok, Pid} = OK ->
@@ -93,3 +93,33 @@ start_worker(ID, Args) ->
                     maybe_start_worker(ID, Args)
             end
     end.
+
+-spec get_app_args() -> map().
+get_app_args() ->
+    AppArgs = maps:from_list(application:get_env(?APP, ?UDP_WORKER, [])),
+    Port =
+        case maps:get(port, AppArgs, 1700) of
+            PortAsList when is_list(PortAsList) ->
+                erlang:list_to_integer(PortAsList);
+            P ->
+                P
+        end,
+    maps:put(port, Port, AppArgs).
+
+%% ------------------------------------------------------------------
+%% EUNIT Tests
+%% ------------------------------------------------------------------
+-ifdef(TEST).
+
+-include_lib("eunit/include/eunit.hrl").
+
+get_app_args_test() ->
+    application:set_env(?APP, ?UDP_WORKER, []),
+    ?assertEqual(#{port => 1700}, get_app_args()),
+    application:set_env(?APP, ?UDP_WORKER, [{address, "127.0.0.1"}, {port, 1700}]),
+    ?assertEqual(#{address => "127.0.0.1", port => 1700}, get_app_args()),
+    application:set_env(?APP, ?UDP_WORKER, [{address, "127.0.0.1"}, {port, "1700"}]),
+    ?assertEqual(#{address => "127.0.0.1", port => 1700}, get_app_args()),
+    ok.
+
+-endif.

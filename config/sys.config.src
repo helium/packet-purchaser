@@ -1,7 +1,7 @@
 %% -*- erlang -*-
 [
     {packet_purchaser, [
-        {packet_purchaser_udp_worker, [{address, {127, 0, 0, 1}}, {port, 1680}]},
+        {packet_purchaser_udp_worker, [{address, "${PP_LNS_ADDRESS}"}, {port, ${PP_LNS_PORT}}]},
         {packet_purchaser_simple_lns, "${PP_SIMPLE_LNS}"}
     ]},
     {blockchain, [
@@ -19,7 +19,7 @@
     {libp2p, [{max_tcp_connections, 50000}]},
     {lager, [
         {suppress_supervisor_start_stop, true},
-        {log_root, ""${PP_BASE_DIR}/log"},
+        {log_root, "${PP_BASE_DIR}/log"},
         {crash_log, "crash.log"},
         {colored, true},
         {handlers, [

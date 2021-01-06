@@ -48,12 +48,12 @@ init_per_testcase(TestCase, Config) ->
             ok = application:set_env(lager, log_root, "/log")
     end,
     ok = application:set_env(?APP, ?UDP_WORKER, [
-        {address, {127, 0, 0, 1}},
-        {port, 1680},
+        {address, "127.0.0.1"},
+        {port, 1700},
         {pull_data_timer, timer:seconds(2)}
     ]),
     {ok, _} = application:ensure_all_started(?APP),
-    {ok, FakeLNSPid} = fake_lns:start_link(#{port => 1680, forward => self()}),
+    {ok, FakeLNSPid} = fake_lns:start_link(#{port => 1700, forward => self()}),
     {PubKeyBin, WorkerPid} = start_gateway(),
     lager:info("starting test ~p", [TestCase]),
     [{fake_lns, FakeLNSPid}, {gateway, {PubKeyBin, WorkerPid}} | Config].
