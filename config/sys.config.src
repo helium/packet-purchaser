@@ -21,11 +21,13 @@
         {suppress_supervisor_start_stop, true},
         {log_root, "${PP_BASE_DIR}/log"},
         {crash_log, "crash.log"},
-        {colored, true},
         {handlers, [
             {lager_file_backend, [
-                {file, "info.log"},
-                {level, info},
+                {file, "packet_purchaser.log"},
+                {level, warning},
+                {size, 0},
+                {date, "$D0"},
+                {count, 7},
                 {formatter_config, [
                     "[",
                     date,
@@ -46,6 +48,9 @@
                     "\n"
                 ]}
             ]}
+        ]},
+        {traces, [
+            {{lager_file_backend, "packet_purchaser.log"}, [{application, packet_purchaser}], debug}
         ]}
     ]}
 ].
