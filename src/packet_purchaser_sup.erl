@@ -68,12 +68,11 @@ init([]) ->
         {update_dir, application:get_env(blockchain, update_dir, undefined)}
     ],
 
-    ChildSpecs =
-        [
-            ?SUP(blockchain_sup, [BlockchainOpts]),
-            ?WORKER(packet_purchaser_sc_worker, [#{}]),
-            ?SUP(packet_purchaser_udp_sup, [])
-        ] ++ maybe_load_simple_lns(),
+    ChildSpecs = [
+        ?SUP(blockchain_sup, [BlockchainOpts]),
+        ?WORKER(packet_purchaser_sc_worker, [#{}]),
+        ?SUP(packet_purchaser_udp_sup, [])
+    ],
     {ok, {?FLAGS, ChildSpecs}}.
 
 %%====================================================================
@@ -104,16 +103,3 @@ get_seed_nodes() ->
         {ok, Seeds} -> string:split(Seeds, ",", all);
         _ -> []
     end.
-
--spec maybe_load_simple_lns() -> list().
-maybe_load_simple_lns() ->
-    maybe_load_simple_lns(application:get_env(?APP, packet_purchaser_simple_lns, false)).
-
--spec maybe_load_simple_lns(any()) -> list().
-maybe_load_simple_lns(List) when is_list(List) ->
-    maybe_load_simple_lns(erlang:list_to_atom(List));
-maybe_load_simple_lns(true) ->
-    Args = maps:from_list(application:get_env(?APP, ?UDP_WORKER, [])),
-    [?WORKER(packet_purchaser_simple_lns, [Args])];
-maybe_load_simple_lns(_) ->
-    [].

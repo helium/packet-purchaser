@@ -5,8 +5,6 @@
 %%%-------------------------------------------------------------------
 -module(packet_purchaser_sc_packet_handler).
 
--include("lorawan.hrl").
-
 -export([
     handle_offer/2,
     handle_packet/3

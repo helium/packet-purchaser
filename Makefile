@@ -1,12 +1,6 @@
-.PHONY: compile test typecheck ci
+.PHONY: compile clean test rel run docker-build docker-test docker-run docker-exec
 
 REBAR=./rebar3
-ifeq ($(BUILDKITE), true)
-  # get branch name and replace any forward slashes it may contain
-  CIBRANCH=$(subst /,-,$(BUILDKITE_BRANCH))
-else
-  CIBRANCH=$(shell git rev-parse --abbrev-ref HEAD | sed 's/\//-/')
-endif
 
 compile:
 	$(REBAR) compile && $(REBAR) format
@@ -15,16 +9,28 @@ clean:
 	git clean -dXfffffffffff
 
 test:
-	$(REBAR) fmt --verbose --check rebar.config && \
-	$(REBAR) fmt --verbose --check "{src,include,test}/**/*.{hrl,erl,app.src}" && \
-	$(REBAR) fmt --verbose --check "config/sys.{config,config.src}" && \
-	$(REBAR) xref && \
-	$(REBAR) dialyzer && \
-	$(REBAR) eunit && \
+	$(REBAR) fmt --verbose --check rebar.config
+	$(REBAR) fmt --verbose --check "{src,include,test}/**/*.{hrl,erl,app.src}"
+	$(REBAR) fmt --verbose --check "config/{test,sys}.{config,config.src}"
+	$(REBAR) xref
+	$(REBAR) eunit
 	$(REBAR) ct
+	$(REBAR) dialyzer
 
 rel:
 	$(REBAR) release
 
 run:
 	_build/default/rel/packet_purchaser/bin/packet_purchaser foreground
+
+docker-build:
+	docker build -f Dockerfile-local --force-rm -t quay.io/team-helium/packet_purchaser:local .
+
+docker-test:
+	docker run --rm -it --init --name=helium_packet_purchaser_test quay.io/team-helium/packet_purchaser:local make test
+
+docker-run: 
+	docker run --rm -it --init --env-file=.env --network=host --volume=data:/var/data --name=helium_packet_purchaser quay.io/team-helium/packet_purchaser:local
+
+docker-exec: 
+	docker exec -it helium_packet_purchaser _build/default/rel/packet_purchaser/bin/packet_purchaser remote_console

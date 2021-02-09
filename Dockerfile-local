@@ -18,4 +18,8 @@ RUN make
 ADD config/ config/
 RUN make rel
 
+ADD test/ test/
+# This is only to fetch tests dependencies
+RUN ./rebar3 as test compile
+
 CMD ["make", "run"]

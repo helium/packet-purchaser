@@ -3,45 +3,64 @@ name: CI
 on:
   push:
     branches: master
-    tags: '*'
   pull_request:
     branches: master
+  # Run every day at midnight PST (0800 UTC)
+  # https://crontab.guru/#0_8_*_*_*
+  schedule:
+    - cron: '0 8 * * *'
 
 jobs:
   CI:
     runs-on: ubuntu-latest
     container:
-      image: heliumsystems/builder-erlang:1
+      image: heliumsystems/builder-erlang:latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - name: Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.5.0
         with:
-          profile: minimal
-          toolchain: stable
+          access_token: ${{ github.token }}
+
+      # For some reason the toolchain is no installed properly so lets add it...
+      - name: rustup default stable
+        run: rustup default stable
+
+      - name: checkout
+        uses: actions/checkout@v2
 
       - name: Build
         env:
           SANITIZE_ERLANG_NIFS: 1
-        run: ./rebar3 compile
-      
+        run: |
+          ./rebar3 get-deps
+          ./rebar3 compile
+
       - name: Check formatting
-        run: ./rebar3 fmt --verbose --check rebar.config && rebar3 fmt --verbose --check "{src,include,test}/**/*.{hrl,erl,app.src}" && rebar3 fmt --verbose --check "config/sys.{config,config.src}"
-      
+        run: |
+          ./rebar3 fmt --verbose --check rebar.config
+          ./rebar3 fmt --verbose --check "{src,include,test}/**/*.{hrl,erl,app.src}"
+          ./rebar3 fmt --verbose --check "config/{test,sys}.{config,config.src}"
+
       - name: Run xref
         run: ./rebar3 xref
 
       - name: Run EUnit tests
         env:
+          SANITIZE_ERLANG_NIFS: 1
           ASAN_OPTIONS: detect_leaks=0
         run: LD_PRELOAD="$(cc --print-file libasan.so)" ./rebar3 eunit
 
       - name: Run CT tests
         env:
+          SANITIZE_ERLANG_NIFS: 1
           # We turn off leak detection to reduce noise from leaking
           # processes that rebar exec()s before it actually runs the
           # tests.
           ASAN_OPTIONS: detect_leaks=0
         run: LD_PRELOAD="$(cc --print-file libasan.so)" ./rebar3 ct
-      
+
       - name: Run Dialyzer
         run: ./rebar3 dialyzer
+
+      - name: Check Documentation
+        run: ./rebar3 edoc

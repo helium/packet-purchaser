@@ -118,6 +118,8 @@ handle_info(post_init, #state{chain = undefined} = State) ->
                     end
             end
     end;
+handle_info(post_init, State) ->
+    {noreply, State};
 handle_info({blockchain_event, {new_chain, NC}}, State) ->
     {noreply, State#state{chain = NC}};
 handle_info(
@@ -147,13 +149,15 @@ handle_info(
     end;
 handle_info({sc_open_success, Id}, #state{is_active = false} = State) ->
     lager:error(
-        "Got an sc_open_success though the sc_worker is inactive. This should never happen. txn id: ~p",
+        "Got an sc_open_success though the sc_worker is inactive." ++
+            " This should never happen. txn id: ~p",
         [Id]
     ),
     {noreply, State};
 handle_info({sc_open_failure, Id}, #state{is_active = false} = State) ->
     lager:error(
-        "Got an sc_open_failure though the sc_worker is inactive. This should never happen. txn id: ~p",
+        "Got an sc_open_failure though the sc_worker is inactive." ++
+            " This should never happen. txn id: ~p",
         [Id]
     ),
     {noreply, State};
@@ -249,8 +253,8 @@ open_next_state_channel(#state{oui = OUI, chain = Chain}) ->
                 %% Just set it to expiration_interval
                 get_sc_expiration_interval();
             {ok, ActiveSCExpiration} ->
-                %% We set the next SC expiration to the difference between current chain height and active
-                %% plus the expiration_interval
+                %% We set the next SC expiration to the difference between
+                %% current chain height and active plus the expiration_interval
                 abs(ActiveSCExpiration - ChainHeight) + get_sc_expiration_interval()
         end,
 
@@ -288,7 +292,7 @@ create_and_send_sc_open_txn(PubkeyBin, SigFun, Nonce, OUI, Expiration, Amount, C
         blockchain_txn_state_channel_open_v1:fee(Txn, Fee),
         SigFun
     ),
-    lager:info("opening state channel for packet_purchaser: ~p, oui: ~p, nonce: ~p, id: ~p", [
+    lager:info("Opening state channel for router: ~p, oui: ~p, nonce: ~p, id: ~p", [
         ?TO_B58(PubkeyBin),
         OUI,
         Nonce,

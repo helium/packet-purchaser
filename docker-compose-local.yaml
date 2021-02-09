@@ -1,13 +1,13 @@
 version: '3'
 services:
   packet_purchaser:
-    build: .
-    image: helium/packet_purchaser:local
+    build:
+      context: .
+      dockerfile: Dockerfile-local
+    image:  quay.io/team-helium/packet_purchaser:local
     container_name: helium_packet_purchaser
+    restart: always
+    env_file: .env
     network_mode: host
     volumes:
-      - ./data:/var/data
-    environment:
-      - PP_BASE_DIR=/var/data
-      - PP_LNS_ADDRESS=127.0.0.1
-      - PP_LNS_PORT=1700
+      - /var/data:/var/data

@@ -62,54 +62,26 @@ end_per_testcase(TestCase, Config) ->
 %%--------------------------------------------------------------------
 
 push_data(Config) ->
-    FakeLNSPid = proplists:get_value(fake_lns, Config),
+    FakeLNSPid = proplists:get_value(lns, Config),
     {PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
 
-    Payload = <<"payload">>,
-    Timestamp = erlang:system_time(millisecond),
-    RSSI = -80.0,
-    Frequency = 904.299,
-    DataRate = "SF10BW125",
-    SNR = 6.199,
-    Packet = blockchain_helium_packet_v1:new(
-        lorawan,
-        Payload,
-        Timestamp,
-        RSSI,
-        Frequency,
-        DataRate,
-        SNR,
-        {devaddr, 16#deadbeef}
-    ),
-    Region = 'US915',
-    SCPacket = blockchain_state_channel_packet_v1:new(
-        Packet,
-        PubKeyBin,
-        Region
-    ),
-
-    ok = packet_purchaser_sc_packet_handler:handle_packet(
-        SCPacket,
-        erlang:system_time(millisecond),
-        self()
-    ),
-
-    {ok, Map0} = fake_lns:rcv(FakeLNSPid, ?PUSH_DATA),
+    Opts = test_utils:send_packet(PubKeyBin, #{}),
+    {ok, Map0} = packet_purchaser_lns:rcv(FakeLNSPid, ?PUSH_DATA),
     ?assert(
         test_utils:match_map(
             #{
                 <<"rxpk">> => [
                     #{
-                        <<"data">> => base64:encode(Payload),
-                        <<"datr">> => DataRate,
-                        <<"freq">> => Frequency,
+                        <<"data">> => base64:encode(maps:get(payload, Opts)),
+                        <<"datr">> => maps:get(dr, Opts),
+                        <<"freq">> => maps:get(freq, Opts),
                         <<"rfch">> => 0,
-                        <<"lsnr">> => SNR,
+                        <<"lsnr">> => maps:get(snr, Opts),
                         <<"modu">> => <<"LORA">>,
-                        <<"rssi">> => erlang:trunc(RSSI),
-                        <<"size">> => erlang:byte_size(Payload),
+                        <<"rssi">> => erlang:trunc(maps:get(rssi, Opts)),
+                        <<"size">> => erlang:byte_size(maps:get(payload, Opts)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => erlang:trunc(Timestamp / 1000)
+                        <<"tmst">> => erlang:trunc(maps:get(timestamp, Opts) / 1000)
                     }
                 ]
             },
@@ -126,54 +98,26 @@ push_data(Config) ->
     ok.
 
 delay_push_data(Config) ->
-    FakeLNSPid = proplists:get_value(fake_lns, Config),
+    FakeLNSPid = proplists:get_value(lns, Config),
     {PubKeyBin, _WorkerPid} = proplists:get_value(gateway, Config),
 
-    Payload = <<"payload">>,
-    Timestamp = erlang:system_time(millisecond),
-    RSSI = -80.0,
-    Frequency = 904.299,
-    DataRate = "SF10BW125",
-    SNR = 6.199,
-    Packet = blockchain_helium_packet_v1:new(
-        lorawan,
-        Payload,
-        Timestamp,
-        RSSI,
-        Frequency,
-        DataRate,
-        SNR,
-        {devaddr, 16#deadbeef}
-    ),
-    Region = 'US915',
-    SCPacket = blockchain_state_channel_packet_v1:new(
-        Packet,
-        PubKeyBin,
-        Region
-    ),
-
-    ok = packet_purchaser_sc_packet_handler:handle_packet(
-        SCPacket,
-        erlang:system_time(millisecond),
-        self()
-    ),
-
-    {ok, Map0} = fake_lns:rcv(FakeLNSPid, ?PUSH_DATA),
+    Opts0 = test_utils:send_packet(PubKeyBin, #{}),
+    {ok, Map0} = packet_purchaser_lns:rcv(FakeLNSPid, ?PUSH_DATA),
     ?assert(
         test_utils:match_map(
             #{
                 <<"rxpk">> => [
                     #{
-                        <<"data">> => base64:encode(Payload),
-                        <<"datr">> => DataRate,
-                        <<"freq">> => Frequency,
+                        <<"data">> => base64:encode(maps:get(payload, Opts0)),
+                        <<"datr">> => maps:get(dr, Opts0),
+                        <<"freq">> => maps:get(freq, Opts0),
                         <<"rfch">> => 0,
-                        <<"lsnr">> => SNR,
+                        <<"lsnr">> => maps:get(snr, Opts0),
                         <<"modu">> => <<"LORA">>,
-                        <<"rssi">> => erlang:trunc(RSSI),
-                        <<"size">> => erlang:byte_size(Payload),
+                        <<"rssi">> => erlang:trunc(maps:get(rssi, Opts0)),
+                        <<"size">> => erlang:byte_size(maps:get(payload, Opts0)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => erlang:trunc(Timestamp / 1000)
+                        <<"tmst">> => erlang:trunc(maps:get(timestamp, Opts0) / 1000)
                     }
                 ]
             },
@@ -181,29 +125,25 @@ delay_push_data(Config) ->
         )
     ),
 
-    ok = fake_lns:delay_next_udp(FakeLNSPid, timer:seconds(3)),
-    ok = packet_purchaser_sc_packet_handler:handle_packet(
-        SCPacket,
-        erlang:system_time(millisecond),
-        self()
-    ),
+    ok = packet_purchaser_lns:delay_next_udp(FakeLNSPid, timer:seconds(3)),
+    Opts1 = test_utils:send_packet(PubKeyBin, #{}),
 
-    {ok, Map1} = fake_lns:rcv(FakeLNSPid, ?PUSH_DATA, timer:seconds(4)),
+    {ok, Map1} = packet_purchaser_lns:rcv(FakeLNSPid, ?PUSH_DATA, timer:seconds(4)),
     ?assert(
         test_utils:match_map(
             #{
                 <<"rxpk">> => [
                     #{
-                        <<"data">> => base64:encode(Payload),
-                        <<"datr">> => DataRate,
-                        <<"freq">> => Frequency,
+                        <<"data">> => base64:encode(maps:get(payload, Opts1)),
+                        <<"datr">> => maps:get(dr, Opts1),
+                        <<"freq">> => maps:get(freq, Opts1),
                         <<"rfch">> => 0,
-                        <<"lsnr">> => SNR,
+                        <<"lsnr">> => maps:get(snr, Opts1),
                         <<"modu">> => <<"LORA">>,
-                        <<"rssi">> => erlang:trunc(RSSI),
-                        <<"size">> => erlang:byte_size(Payload),
+                        <<"rssi">> => erlang:trunc(maps:get(rssi, Opts1)),
+                        <<"size">> => erlang:byte_size(maps:get(payload, Opts1)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => erlang:trunc(Timestamp / 1000)
+                        <<"tmst">> => erlang:trunc(maps:get(timestamp, Opts1) / 1000)
                     }
                 ]
             },
@@ -213,20 +153,20 @@ delay_push_data(Config) ->
     ok.
 
 pull_data(Config) ->
-    FakeLNSPid = proplists:get_value(fake_lns, Config),
+    FakeLNSPid = proplists:get_value(lns, Config),
     {PubKeyBin, _WorkerPid} = proplists:get_value(gateway, Config),
 
-    {ok, {Token, MAC}} = fake_lns:rcv(FakeLNSPid, ?PULL_DATA, timer:seconds(5)),
+    {ok, {Token, MAC}} = packet_purchaser_lns:rcv(FakeLNSPid, ?PULL_DATA, timer:seconds(5)),
     ?assert(erlang:is_binary(Token)),
     ?assertEqual(packet_purchaser_utils:pubkeybin_to_mac(PubKeyBin), MAC),
     ok.
 
 failed_pull_data(Config) ->
-    FakeLNSPid = proplists:get_value(fake_lns, Config),
+    FakeLNSPid = proplists:get_value(lns, Config),
     {_PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
 
     Ref = erlang:monitor(process, WorkerPid),
-    ok = fake_lns:delay_next_udp(FakeLNSPid, timer:seconds(5)),
+    ok = packet_purchaser_lns:delay_next_udp(FakeLNSPid, timer:seconds(5)),
 
     receive
         {'DOWN', Ref, process, WorkerPid, pull_data_timeout} ->
@@ -239,38 +179,10 @@ failed_pull_data(Config) ->
     ok.
 
 pull_resp(Config) ->
-    FakeLNSPid = proplists:get_value(fake_lns, Config),
+    FakeLNSPid = proplists:get_value(lns, Config),
     {PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
 
-    Payload = <<"payload">>,
-    Timestamp = erlang:system_time(millisecond),
-    RSSI = -80.0,
-    Frequency = 904.299,
-    DataRate = "SF10BW125",
-    SNR = 6.199,
-    Packet = blockchain_helium_packet_v1:new(
-        lorawan,
-        Payload,
-        Timestamp,
-        RSSI,
-        Frequency,
-        DataRate,
-        SNR,
-        {devaddr, 16#deadbeef}
-    ),
-    Region = 'US915',
-    SCPacket = blockchain_state_channel_packet_v1:new(
-        Packet,
-        PubKeyBin,
-        Region
-    ),
-
-    ok = packet_purchaser_sc_packet_handler:handle_packet(
-        SCPacket,
-        erlang:system_time(millisecond),
-        self()
-    ),
-
+    _Opts = test_utils:send_packet(PubKeyBin, #{}),
     #state{socket = Socket} = sys:get_state(WorkerPid),
     {ok, Port} = inet:port(Socket),
 
@@ -279,7 +191,7 @@ pull_resp(Config) ->
     DownlinkTimestamp = erlang:system_time(millisecond),
     DownlinkFreq = 915.0,
     DownlinkDatr = <<"SF11BW125">>,
-    ok = fake_lns:pull_resp(FakeLNSPid, "127.0.0.1", Port, Token, #{
+    ok = packet_purchaser_lns:pull_resp(FakeLNSPid, "127.0.0.1", Port, Token, #{
         data => DownlinkPayload,
         tmst => DownlinkTimestamp,
         freq => DownlinkFreq,
@@ -288,7 +200,7 @@ pull_resp(Config) ->
     MAC = packet_purchaser_utils:pubkeybin_to_mac(PubKeyBin),
     Map = #{<<"txpk_ack">> => #{<<"error">> => <<"NONE">>}},
 
-    ?assertEqual({ok, {Token, MAC, Map}}, fake_lns:rcv(FakeLNSPid, ?TX_ACK)),
+    ?assertEqual({ok, {Token, MAC, Map}}, packet_purchaser_lns:rcv(FakeLNSPid, ?TX_ACK)),
 
     receive
         {send_response, SCResp} ->
@@ -307,81 +219,32 @@ pull_resp(Config) ->
     ok.
 
 multi_hotspots(Config) ->
-    FakeLNSPid = proplists:get_value(fake_lns, Config),
+    FakeLNSPid = proplists:get_value(lns, Config),
     {PubKeyBin1, WorkerPid1} = proplists:get_value(gateway, Config),
 
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin2 = libp2p_crypto:pubkey_to_bin(PubKey),
     {ok, WorkerPid2} = packet_purchaser_udp_sup:maybe_start_worker(PubKeyBin2, #{}),
 
-    Payload1 = <<"payload1">>,
-    Timestamp = erlang:system_time(millisecond),
-    RSSI = -80.0,
-    Frequency = 904.299,
-    DataRate = "SF10BW125",
-    SNR = 6.199,
-    Packet1 = blockchain_helium_packet_v1:new(
-        lorawan,
-        Payload1,
-        Timestamp,
-        RSSI,
-        Frequency,
-        DataRate,
-        SNR,
-        {devaddr, 16#deadbeef}
-    ),
-    Region = 'US915',
-    SCPacket1 = blockchain_state_channel_packet_v1:new(
-        Packet1,
-        PubKeyBin1,
-        Region
-    ),
+    Opts1 = test_utils:send_packet(PubKeyBin1, #{payload => <<"payload1">>}),
+    Opts2 = test_utils:send_packet(PubKeyBin2, #{payload => <<"payload2">>}),
 
-    Payload2 = <<"payload2">>,
-    Packet2 = blockchain_helium_packet_v1:new(
-        lorawan,
-        Payload2,
-        Timestamp,
-        RSSI,
-        Frequency,
-        DataRate,
-        SNR,
-        {devaddr, 16#deadbeef}
-    ),
-    SCPacket2 = blockchain_state_channel_packet_v1:new(
-        Packet2,
-        PubKeyBin2,
-        Region
-    ),
-
-    ok = packet_purchaser_sc_packet_handler:handle_packet(
-        SCPacket1,
-        erlang:system_time(millisecond),
-        self()
-    ),
-
-    ok = packet_purchaser_sc_packet_handler:handle_packet(
-        SCPacket2,
-        erlang:system_time(millisecond),
-        self()
-    ),
-
-    {ok, Map0} = fake_lns:rcv(FakeLNSPid, ?PUSH_DATA),
+    {ok, Map0} = packet_purchaser_lns:rcv(FakeLNSPid, ?PUSH_DATA),
     ?assert(
         test_utils:match_map(
             #{
                 <<"rxpk">> => [
                     #{
-                        <<"data">> => base64:encode(Payload1),
-                        <<"datr">> => DataRate,
-                        <<"freq">> => Frequency,
+                        <<"data">> => base64:encode(maps:get(payload, Opts1)),
+                        <<"datr">> => maps:get(dr, Opts1),
+                        <<"freq">> => maps:get(freq, Opts1),
                         <<"rfch">> => 0,
-                        <<"lsnr">> => SNR,
+                        <<"lsnr">> => maps:get(snr, Opts1),
                         <<"modu">> => <<"LORA">>,
-                        <<"rssi">> => erlang:trunc(RSSI),
-                        <<"size">> => erlang:byte_size(Payload1),
+                        <<"rssi">> => erlang:trunc(maps:get(rssi, Opts1)),
+                        <<"size">> => erlang:byte_size(maps:get(payload, Opts1)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => erlang:trunc(Timestamp / 1000)
+                        <<"tmst">> => erlang:trunc(maps:get(timestamp, Opts1) / 1000)
                     }
                 ]
             },
@@ -389,22 +252,22 @@ multi_hotspots(Config) ->
         )
     ),
 
-    {ok, Map1} = fake_lns:rcv(FakeLNSPid, ?PUSH_DATA),
+    {ok, Map1} = packet_purchaser_lns:rcv(FakeLNSPid, ?PUSH_DATA),
     ?assert(
         test_utils:match_map(
             #{
                 <<"rxpk">> => [
                     #{
-                        <<"data">> => base64:encode(Payload2),
-                        <<"datr">> => DataRate,
-                        <<"freq">> => Frequency,
+                        <<"data">> => base64:encode(maps:get(payload, Opts2)),
+                        <<"datr">> => maps:get(dr, Opts2),
+                        <<"freq">> => maps:get(freq, Opts2),
                         <<"rfch">> => 0,
-                        <<"lsnr">> => SNR,
+                        <<"lsnr">> => maps:get(snr, Opts2),
                         <<"modu">> => <<"LORA">>,
-                        <<"rssi">> => erlang:trunc(RSSI),
-                        <<"size">> => erlang:byte_size(Payload2),
+                        <<"rssi">> => erlang:trunc(maps:get(rssi, Opts2)),
+                        <<"size">> => erlang:byte_size(maps:get(payload, Opts2)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => erlang:trunc(Timestamp / 1000)
+                        <<"tmst">> => erlang:trunc(maps:get(timestamp, Opts2) / 1000)
                     }
                 ]
             },

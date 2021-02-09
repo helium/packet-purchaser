@@ -9,59 +9,26 @@
     init_per_testcase/2,
     end_per_testcase/2,
     match_map/2,
-    wait_until/1, wait_until/3
+    wait_until/1, wait_until/3,
+    send_packet/2
 ]).
 
 -spec init_per_testcase(atom(), list()) -> list().
 init_per_testcase(TestCase, Config) ->
-    case os:getenv("CT_LAGER", "NONE") of
-        "DEBUG" ->
-            FormatStr = [
-                "[",
-                erlang:atom_to_list(TestCase),
-                "] ",
-                "[",
-                date,
-                " ",
-                time,
-                "] ",
-                pid,
-                " [",
-                severity,
-                "]",
-                {gateway_id, [" [", gateway_id, "]"], ""},
-                " [",
-                {module, ""},
-                {function, [":", function], ""},
-                {line, [":", line], ""},
-                "] ",
-                message,
-                "\n"
-            ],
-            ok = application:set_env(lager, handlers, [
-                {lager_console_backend, [
-                    {level, debug},
-                    {formatter_config, FormatStr}
-                ]}
-            ]);
-        _ ->
-            ok = application:set_env(lager, log_root, "/log")
-    end,
-    ok = application:set_env(?APP, ?UDP_WORKER, [
-        {address, "127.0.0.1"},
-        {port, 1700},
-        {pull_data_timer, timer:seconds(2)}
-    ]),
+    BaseDir = erlang:atom_to_list(TestCase),
+    ok = application:set_env(blockchain, base_dir, BaseDir ++ "/blockchain_data"),
+    ok = application:set_env(lager, log_root, BaseDir ++ "/log"),
+    ok = application:set_env(lager, crash_log, "crash.log"),
     {ok, _} = application:ensure_all_started(?APP),
-    {ok, FakeLNSPid} = fake_lns:start_link(#{port => 1700, forward => self()}),
+    {ok, FakeLNSPid} = packet_purchaser_lns:start_link(#{port => 1700, forward => self()}),
     {PubKeyBin, WorkerPid} = start_gateway(),
     lager:info("starting test ~p", [TestCase]),
-    [{fake_lns, FakeLNSPid}, {gateway, {PubKeyBin, WorkerPid}} | Config].
+    [{lns, FakeLNSPid}, {gateway, {PubKeyBin, WorkerPid}} | Config].
 
 -spec end_per_testcase(atom(), list()) -> ok.
 end_per_testcase(TestCase, Config) ->
     lager:info("stopping test ~p", [TestCase]),
-    FakeLNSPid = proplists:get_value(fake_lns, Config),
+    FakeLNSPid = proplists:get_value(lns, Config),
     ok = gen_server:stop(FakeLNSPid),
     ok = application:stop(?APP),
     ok = application:stop(lager),
@@ -123,6 +90,41 @@ wait_until(Fun, Retry, Delay) when Retry > 0 ->
             timer:sleep(Delay),
             wait_until(Fun, Retry - 1, Delay)
     end.
+
+-spec send_packet(PubKeyBin :: libp2p_crypto:pubkey_bin(), Opts :: map()) -> map().
+send_packet(PubKeyBin, Opts0) ->
+    DefaultOpts = #{
+        payload => <<"payload">>,
+        rssi => -80.0,
+        freq => 904.299,
+        dr => "SF10BW125",
+        snr => 6.199,
+        routing => {devaddr, 16#deadbeef},
+        region => 'US915',
+        timestamp => erlang:system_time(millisecond)
+    },
+    Opts1 = maps:merge(DefaultOpts, Opts0),
+    Packet = blockchain_helium_packet_v1:new(
+        lorawan,
+        maps:get(payload, Opts1),
+        maps:get(timestamp, Opts1),
+        maps:get(rssi, Opts1),
+        maps:get(freq, Opts1),
+        maps:get(dr, Opts1),
+        maps:get(snr, Opts1),
+        maps:get(routing, Opts1)
+    ),
+    SCPacket = blockchain_state_channel_packet_v1:new(
+        Packet,
+        PubKeyBin,
+        maps:get(region, Opts1)
+    ),
+    ok = packet_purchaser_sc_packet_handler:handle_packet(
+        SCPacket,
+        maps:get(timestamp, Opts1),
+        self()
+    ),
+    Opts1.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
