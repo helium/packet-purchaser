@@ -9,8 +9,7 @@
     init_per_testcase/2,
     end_per_testcase/2,
     match_map/2,
-    wait_until/1, wait_until/3,
-    send_packet/2
+    wait_until/1, wait_until/3
 ]).
 
 -spec init_per_testcase(atom(), list()) -> list().
@@ -90,41 +89,6 @@ wait_until(Fun, Retry, Delay) when Retry > 0 ->
             timer:sleep(Delay),
             wait_until(Fun, Retry - 1, Delay)
     end.
-
--spec send_packet(PubKeyBin :: libp2p_crypto:pubkey_bin(), Opts :: map()) -> map().
-send_packet(PubKeyBin, Opts0) ->
-    DefaultOpts = #{
-        payload => <<"payload">>,
-        rssi => -80.0,
-        freq => 904.299,
-        dr => "SF10BW125",
-        snr => 6.199,
-        routing => {devaddr, 16#deadbeef},
-        region => 'US915',
-        timestamp => erlang:system_time(millisecond)
-    },
-    Opts1 = maps:merge(DefaultOpts, Opts0),
-    Packet = blockchain_helium_packet_v1:new(
-        lorawan,
-        maps:get(payload, Opts1),
-        maps:get(timestamp, Opts1),
-        maps:get(rssi, Opts1),
-        maps:get(freq, Opts1),
-        maps:get(dr, Opts1),
-        maps:get(snr, Opts1),
-        maps:get(routing, Opts1)
-    ),
-    SCPacket = blockchain_state_channel_packet_v1:new(
-        Packet,
-        PubKeyBin,
-        maps:get(region, Opts1)
-    ),
-    ok = packet_purchaser_sc_packet_handler:handle_packet(
-        SCPacket,
-        maps:get(timestamp, Opts1),
-        self()
-    ),
-    Opts1.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions

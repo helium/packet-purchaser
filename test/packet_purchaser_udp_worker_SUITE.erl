@@ -65,7 +65,7 @@ push_data(Config) ->
     FakeLNSPid = proplists:get_value(lns, Config),
     {PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
 
-    Opts = test_utils:send_packet(PubKeyBin, #{}),
+    Opts = packet_purchaser_lns:send_packet(PubKeyBin, #{}),
     {ok, Map0} = packet_purchaser_lns:rcv(FakeLNSPid, ?PUSH_DATA),
     ?assert(
         test_utils:match_map(
@@ -101,7 +101,7 @@ delay_push_data(Config) ->
     FakeLNSPid = proplists:get_value(lns, Config),
     {PubKeyBin, _WorkerPid} = proplists:get_value(gateway, Config),
 
-    Opts0 = test_utils:send_packet(PubKeyBin, #{}),
+    Opts0 = packet_purchaser_lns:send_packet(PubKeyBin, #{}),
     {ok, Map0} = packet_purchaser_lns:rcv(FakeLNSPid, ?PUSH_DATA),
     ?assert(
         test_utils:match_map(
@@ -126,7 +126,7 @@ delay_push_data(Config) ->
     ),
 
     ok = packet_purchaser_lns:delay_next_udp(FakeLNSPid, timer:seconds(3)),
-    Opts1 = test_utils:send_packet(PubKeyBin, #{}),
+    Opts1 = packet_purchaser_lns:send_packet(PubKeyBin, #{}),
 
     {ok, Map1} = packet_purchaser_lns:rcv(FakeLNSPid, ?PUSH_DATA, timer:seconds(4)),
     ?assert(
@@ -182,7 +182,7 @@ pull_resp(Config) ->
     FakeLNSPid = proplists:get_value(lns, Config),
     {PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
 
-    _Opts = test_utils:send_packet(PubKeyBin, #{}),
+    _Opts = packet_purchaser_lns:send_packet(PubKeyBin, #{}),
     #state{socket = Socket} = sys:get_state(WorkerPid),
     {ok, Port} = inet:port(Socket),
 
@@ -226,8 +226,8 @@ multi_hotspots(Config) ->
     PubKeyBin2 = libp2p_crypto:pubkey_to_bin(PubKey),
     {ok, WorkerPid2} = packet_purchaser_udp_sup:maybe_start_worker(PubKeyBin2, #{}),
 
-    Opts1 = test_utils:send_packet(PubKeyBin1, #{payload => <<"payload1">>}),
-    Opts2 = test_utils:send_packet(PubKeyBin2, #{payload => <<"payload2">>}),
+    Opts1 = packet_purchaser_lns:send_packet(PubKeyBin1, #{payload => <<"payload1">>}),
+    Opts2 = packet_purchaser_lns:send_packet(PubKeyBin2, #{payload => <<"payload2">>}),
 
     {ok, Map0} = packet_purchaser_lns:rcv(FakeLNSPid, ?PUSH_DATA),
     ?assert(
