@@ -2,23 +2,23 @@ FROM heliumsystems/builder-erlang:latest
 
 WORKDIR /opt/packet_purchaser
 
-ADD Makefile Makefile
-ADD rebar3 rebar3
-ADD rebar.config rebar.config
-ADD rebar.lock rebar.lock
+COPY Makefile Makefile
+COPY rebar3 rebar3
+COPY rebar.config rebar.config
+COPY rebar.lock rebar.lock
 RUN ./rebar3 get-deps
 RUN make
 
-ADD include/ include/
-ADD priv/ priv/
-ADD src/ src/
-ADD test/ test/
+COPY include/ include/
+COPY priv/ priv/
+COPY src/ src/
+COPY test/utils/packet_purchaser_lns.erl src/packet_purchaser_lns.erl
 RUN make
 
-ADD config/ config/
+COPY config/ config/
 RUN make rel
 
-ADD test/ test/
+COPY test/ test/
 # This is only to fetch tests dependencies
 RUN ./rebar3 as test compile
 
