@@ -52,9 +52,9 @@ start_link() ->
 %% Supervisor callbacks
 %%====================================================================
 init([]) ->
-    lager:info("init ~p", [?SERVER]),
     {ok, _} = application:ensure_all_started(lager),
     {ok, _} = application:ensure_all_started(ranch),
+    lager:info("init ~p", [?SERVER]),
 
     BaseDir = application:get_env(blockchain, base_dir, "data"),
     Key = load_key(BaseDir),
