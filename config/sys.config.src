@@ -37,7 +37,7 @@
                     " [",
                     severity,
                     "]",
-                    {gateway_id, [" [", device_id, "]"], ""},
+                    {gateway_id, [" [", gateway_id, "]"], ""},
                     " [",
                     {module, ""},
                     {function, [":", function], ""},
