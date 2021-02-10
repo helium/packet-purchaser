@@ -30,7 +30,7 @@ docker-test:
 	docker run --rm -it --init --name=helium_packet_purchaser_test quay.io/team-helium/packet_purchaser:local make test
 
 docker-run: 
-	docker run --rm -it --init --env-file=.env --network=host --volume=data:/var/data --name=helium_packet_purchaser quay.io/team-helium/packet_purchaser:local
+	docker run --rm -it --init --env-file=.env --network=host --mount "type=bind,source=$(CURDIR)/data,target=/var/data" --name=helium_packet_purchaser quay.io/team-helium/packet_purchaser:local
 
 docker-exec: 
 	docker exec -it helium_packet_purchaser _build/default/rel/packet_purchaser/bin/packet_purchaser remote_console
