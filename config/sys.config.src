@@ -4,7 +4,8 @@
         {pp_udp_worker, [
             {address, "${PP_LNS_ADDRESS}"},
             {port, "${PP_LNS_PORT}"}
-        ]}
+        ]},
+        {pp_xor_filter_worker, "${PP_ENABLE_XOR_FILTER}"}
     ]},
     {blockchain, [
         {port, 2154},

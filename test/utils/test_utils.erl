@@ -18,11 +18,32 @@ init_per_testcase(TestCase, Config) ->
     ok = application:set_env(blockchain, base_dir, BaseDir ++ "/blockchain_data"),
     ok = application:set_env(lager, log_root, BaseDir ++ "/log"),
     ok = application:set_env(lager, crash_log, "crash.log"),
+
     {ok, _} = application:ensure_all_started(?APP),
+
+    SwarmKey = filename:join([
+        application:get_env(blockchain, base_dir, "data"),
+        "blockchain",
+        "swarm_key"
+    ]),
+    ok = filelib:ensure_dir(SwarmKey),
+    {ok, PPKeys} = libp2p_crypto:load_keys(SwarmKey),
+    #{public := PPPubKey, secret := PPPrivKey} = PPKeys,
+    {ok, _GenesisMembers, ConsensusMembers, _Keys} = blockchain_test_utils:init_chain(
+        5000,
+        [{PPPrivKey, PPPubKey}]
+    ),
+
     {ok, FakeLNSPid} = pp_lns:start_link(#{port => 1700, forward => self()}),
     {PubKeyBin, WorkerPid} = start_gateway(),
+
     lager:info("starting test ~p", [TestCase]),
-    [{lns, FakeLNSPid}, {gateway, {PubKeyBin, WorkerPid}} | Config].
+    [
+        {lns, FakeLNSPid},
+        {gateway, {PubKeyBin, WorkerPid}},
+        {consensus_member, ConsensusMembers}
+        | Config
+    ].
 
 -spec end_per_testcase(atom(), list()) -> ok.
 end_per_testcase(TestCase, Config) ->

@@ -292,7 +292,7 @@ create_and_send_sc_open_txn(PubkeyBin, SigFun, Nonce, OUI, Expiration, Amount, C
         blockchain_txn_state_channel_open_v1:fee(Txn, Fee),
         SigFun
     ),
-    lager:info("Opening state channel for router: ~p, oui: ~p, nonce: ~p, id: ~p", [
+    lager:info("Opening state channel for packet purchaser: ~p, oui: ~p, nonce: ~p, id: ~p", [
         ?TO_B58(PubkeyBin),
         OUI,
         Nonce,
