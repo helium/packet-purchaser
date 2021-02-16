@@ -1,4 +1,4 @@
--module(packet_purchaser_udp_sup).
+-module(pp_udp_sup).
 
 -behaviour(supervisor).
 
@@ -29,7 +29,7 @@
     period => 60
 }).
 
--define(ETS, packet_purchaser_udp_sup_ets).
+-define(ETS, pp_udp_sup_ets).
 
 %%====================================================================
 %% API functions

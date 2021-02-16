@@ -3,7 +3,7 @@
 %% @end
 %%%-------------------------------------------------------------------
 
--module(packet_purchaser_sup).
+-module(pp_sup).
 
 -behaviour(supervisor).
 
@@ -70,8 +70,8 @@ init([]) ->
 
     ChildSpecs = [
         ?SUP(blockchain_sup, [BlockchainOpts]),
-        ?WORKER(packet_purchaser_sc_worker, [#{}]),
-        ?SUP(packet_purchaser_udp_sup, [])
+        ?WORKER(pp_sc_worker, [#{}]),
+        ?SUP(pp_udp_sup, [])
     ],
     {ok, {?FLAGS, ChildSpecs}}.
 

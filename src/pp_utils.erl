@@ -1,4 +1,4 @@
--module(packet_purchaser_utils).
+-module(pp_utils).
 
 -include("packet_purchaser.hrl").
 

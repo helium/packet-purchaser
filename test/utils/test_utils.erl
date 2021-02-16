@@ -19,7 +19,7 @@ init_per_testcase(TestCase, Config) ->
     ok = application:set_env(lager, log_root, BaseDir ++ "/log"),
     ok = application:set_env(lager, crash_log, "crash.log"),
     {ok, _} = application:ensure_all_started(?APP),
-    {ok, FakeLNSPid} = packet_purchaser_lns:start_link(#{port => 1700, forward => self()}),
+    {ok, FakeLNSPid} = pp_lns:start_link(#{port => 1700, forward => self()}),
     {PubKeyBin, WorkerPid} = start_gateway(),
     lager:info("starting test ~p", [TestCase]),
     [{lns, FakeLNSPid}, {gateway, {PubKeyBin, WorkerPid}} | Config].
@@ -98,5 +98,5 @@ wait_until(Fun, Retry, Delay) when Retry > 0 ->
 start_gateway() ->
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
-    {ok, WorkerPid} = packet_purchaser_udp_sup:maybe_start_worker(PubKeyBin, #{}),
+    {ok, WorkerPid} = pp_udp_sup:maybe_start_worker(PubKeyBin, #{}),
     {PubKeyBin, WorkerPid}.

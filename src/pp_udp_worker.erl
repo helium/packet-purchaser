@@ -1,4 +1,4 @@
--module(packet_purchaser_udp_worker).
+-module(pp_udp_worker).
 
 -behavior(gen_server).
 
@@ -248,7 +248,7 @@ send_pull_data(
     }
 ) ->
     Token = semtech_udp:token(),
-    Data = semtech_udp:pull_data(Token, packet_purchaser_utils:pubkeybin_to_mac(PubKeyBin)),
+    Data = semtech_udp:pull_data(Token, pp_utils:pubkeybin_to_mac(PubKeyBin)),
     case gen_udp:send(Socket, Address, Port, Data) of
         ok ->
             lager:debug("sent pull data keepalive ~p", [Token]),
@@ -275,7 +275,7 @@ send_tx_ack(
     Token,
     #state{pubkeybin = PubKeyBin, socket = Socket, address = Address, port = Port}
 ) ->
-    Data = semtech_udp:tx_ack(Token, packet_purchaser_utils:pubkeybin_to_mac(PubKeyBin)),
+    Data = semtech_udp:tx_ack(Token, pp_utils:pubkeybin_to_mac(PubKeyBin)),
     Reply = gen_udp:send(Socket, Address, Port, Data),
     lager:debug("sent ~p/~p to ~p:~p replied: ~p", [Token, Data, Address, Port, Reply]),
     Reply.

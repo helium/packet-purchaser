@@ -1,4 +1,4 @@
--module(packet_purchaser_udp_worker_SUITE).
+-module(pp_udp_worker_SUITE).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("eunit/include/eunit.hrl").
@@ -65,8 +65,8 @@ push_data(Config) ->
     FakeLNSPid = proplists:get_value(lns, Config),
     {PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
 
-    Opts = packet_purchaser_lns:send_packet(PubKeyBin, #{}),
-    {ok, Map0} = packet_purchaser_lns:rcv(FakeLNSPid, ?PUSH_DATA),
+    Opts = pp_lns:send_packet(PubKeyBin, #{}),
+    {ok, Map0} = pp_lns:rcv(FakeLNSPid, ?PUSH_DATA),
     ?assert(
         test_utils:match_map(
             #{
@@ -101,8 +101,8 @@ delay_push_data(Config) ->
     FakeLNSPid = proplists:get_value(lns, Config),
     {PubKeyBin, _WorkerPid} = proplists:get_value(gateway, Config),
 
-    Opts0 = packet_purchaser_lns:send_packet(PubKeyBin, #{}),
-    {ok, Map0} = packet_purchaser_lns:rcv(FakeLNSPid, ?PUSH_DATA),
+    Opts0 = pp_lns:send_packet(PubKeyBin, #{}),
+    {ok, Map0} = pp_lns:rcv(FakeLNSPid, ?PUSH_DATA),
     ?assert(
         test_utils:match_map(
             #{
@@ -125,10 +125,10 @@ delay_push_data(Config) ->
         )
     ),
 
-    ok = packet_purchaser_lns:delay_next_udp(FakeLNSPid, timer:seconds(3)),
-    Opts1 = packet_purchaser_lns:send_packet(PubKeyBin, #{}),
+    ok = pp_lns:delay_next_udp(FakeLNSPid, timer:seconds(3)),
+    Opts1 = pp_lns:send_packet(PubKeyBin, #{}),
 
-    {ok, Map1} = packet_purchaser_lns:rcv(FakeLNSPid, ?PUSH_DATA, timer:seconds(4)),
+    {ok, Map1} = pp_lns:rcv(FakeLNSPid, ?PUSH_DATA, timer:seconds(4)),
     ?assert(
         test_utils:match_map(
             #{
@@ -156,9 +156,9 @@ pull_data(Config) ->
     FakeLNSPid = proplists:get_value(lns, Config),
     {PubKeyBin, _WorkerPid} = proplists:get_value(gateway, Config),
 
-    {ok, {Token, MAC}} = packet_purchaser_lns:rcv(FakeLNSPid, ?PULL_DATA, timer:seconds(5)),
+    {ok, {Token, MAC}} = pp_lns:rcv(FakeLNSPid, ?PULL_DATA, timer:seconds(5)),
     ?assert(erlang:is_binary(Token)),
-    ?assertEqual(packet_purchaser_utils:pubkeybin_to_mac(PubKeyBin), MAC),
+    ?assertEqual(pp_utils:pubkeybin_to_mac(PubKeyBin), MAC),
     ok.
 
 failed_pull_data(Config) ->
@@ -166,7 +166,7 @@ failed_pull_data(Config) ->
     {_PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
 
     Ref = erlang:monitor(process, WorkerPid),
-    ok = packet_purchaser_lns:delay_next_udp(FakeLNSPid, timer:seconds(5)),
+    ok = pp_lns:delay_next_udp(FakeLNSPid, timer:seconds(5)),
 
     receive
         {'DOWN', Ref, process, WorkerPid, pull_data_timeout} ->
@@ -182,7 +182,7 @@ pull_resp(Config) ->
     FakeLNSPid = proplists:get_value(lns, Config),
     {PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
 
-    _Opts = packet_purchaser_lns:send_packet(PubKeyBin, #{}),
+    _Opts = pp_lns:send_packet(PubKeyBin, #{}),
     #state{socket = Socket} = sys:get_state(WorkerPid),
     {ok, Port} = inet:port(Socket),
 
@@ -191,16 +191,16 @@ pull_resp(Config) ->
     DownlinkTimestamp = erlang:system_time(millisecond),
     DownlinkFreq = 915.0,
     DownlinkDatr = <<"SF11BW125">>,
-    ok = packet_purchaser_lns:pull_resp(FakeLNSPid, "127.0.0.1", Port, Token, #{
+    ok = pp_lns:pull_resp(FakeLNSPid, "127.0.0.1", Port, Token, #{
         data => DownlinkPayload,
         tmst => DownlinkTimestamp,
         freq => DownlinkFreq,
         datr => DownlinkDatr
     }),
-    MAC = packet_purchaser_utils:pubkeybin_to_mac(PubKeyBin),
+    MAC = pp_utils:pubkeybin_to_mac(PubKeyBin),
     Map = #{<<"txpk_ack">> => #{<<"error">> => <<"NONE">>}},
 
-    ?assertEqual({ok, {Token, MAC, Map}}, packet_purchaser_lns:rcv(FakeLNSPid, ?TX_ACK)),
+    ?assertEqual({ok, {Token, MAC, Map}}, pp_lns:rcv(FakeLNSPid, ?TX_ACK)),
 
     receive
         {send_response, SCResp} ->
@@ -224,12 +224,12 @@ multi_hotspots(Config) ->
 
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin2 = libp2p_crypto:pubkey_to_bin(PubKey),
-    {ok, WorkerPid2} = packet_purchaser_udp_sup:maybe_start_worker(PubKeyBin2, #{}),
+    {ok, WorkerPid2} = pp_udp_sup:maybe_start_worker(PubKeyBin2, #{}),
 
-    Opts1 = packet_purchaser_lns:send_packet(PubKeyBin1, #{payload => <<"payload1">>}),
-    Opts2 = packet_purchaser_lns:send_packet(PubKeyBin2, #{payload => <<"payload2">>}),
+    Opts1 = pp_lns:send_packet(PubKeyBin1, #{payload => <<"payload1">>}),
+    Opts2 = pp_lns:send_packet(PubKeyBin2, #{payload => <<"payload2">>}),
 
-    {ok, Map0} = packet_purchaser_lns:rcv(FakeLNSPid, ?PUSH_DATA),
+    {ok, Map0} = pp_lns:rcv(FakeLNSPid, ?PUSH_DATA),
     ?assert(
         test_utils:match_map(
             #{
@@ -252,7 +252,7 @@ multi_hotspots(Config) ->
         )
     ),
 
-    {ok, Map1} = packet_purchaser_lns:rcv(FakeLNSPid, ?PUSH_DATA),
+    {ok, Map1} = pp_lns:rcv(FakeLNSPid, ?PUSH_DATA),
     ?assert(
         test_utils:match_map(
             #{

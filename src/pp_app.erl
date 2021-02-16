@@ -3,7 +3,7 @@
 %% @end
 %%%-------------------------------------------------------------------
 
--module(packet_purchaser_app).
+-module(pp_app).
 
 -behaviour(application).
 
@@ -15,7 +15,7 @@
 %%====================================================================
 
 start(_StartType, _StartArgs) ->
-    packet_purchaser_sup:start_link().
+    pp_sup:start_link().
 
 %%--------------------------------------------------------------------
 stop(_State) ->

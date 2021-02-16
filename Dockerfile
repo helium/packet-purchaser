@@ -12,7 +12,7 @@ RUN make
 COPY include/ include/
 COPY priv/ priv/
 COPY src/ src/
-COPY test/utils/packet_purchaser_lns.erl src/packet_purchaser_lns.erl
+COPY test/utils/pp_lns.erl src/pp_lns.erl
 RUN make
 
 COPY config/ config/

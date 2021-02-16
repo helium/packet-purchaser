@@ -1,4 +1,4 @@
--module(packet_purchaser_lns).
+-module(pp_lns).
 
 -behavior(gen_server).
 
@@ -55,7 +55,7 @@ rcv(Pid, Type) ->
 rcv(Pid, Type, Delay) ->
     receive
         {?MODULE, Pid, Type, Data} -> {ok, Data}
-    after Delay -> ct:fail("packet_purchaser_lns rcv timeout")
+    after Delay -> ct:fail("pp_lns rcv timeout")
     end.
 
 -spec send_packet(PubKeyBin :: libp2p_crypto:pubkey_bin(), Opts :: map()) -> map().
@@ -86,7 +86,7 @@ send_packet(PubKeyBin, Opts0) ->
         PubKeyBin,
         maps:get(region, Opts1)
     ),
-    ok = packet_purchaser_sc_packet_handler:handle_packet(
+    ok = pp_sc_packet_handler:handle_packet(
         SCPacket,
         maps:get(timestamp, Opts1),
         self()

@@ -14,7 +14,7 @@
 %%
 %% @end
 %%%-------------------------------------------------------------------
--module(packet_purchaser_sc_worker).
+-module(pp_sc_worker).
 
 -behavior(gen_server).
 
@@ -54,7 +54,7 @@
 % budget 100 data credits
 -define(SC_AMOUNT, 100).
 -define(SC_TICK_INTERVAL, timer:seconds(15)).
--define(SC_TICK, '__packet_purchaser_sc_worker_tick').
+-define(SC_TICK, '__pp_sc_worker_tick').
 
 -record(state, {
     oui = undefined :: undefined | non_neg_integer(),
@@ -104,7 +104,7 @@ handle_info(post_init, #state{chain = undefined} = State) ->
             erlang:send_after(500, self(), post_init),
             {noreply, State};
         Chain ->
-            case packet_purchaser_utils:get_oui(Chain) of
+            case pp_utils:get_oui(Chain) of
                 undefined ->
                     {noreply, State#state{chain = Chain}};
                 OUI ->
@@ -134,7 +134,7 @@ handle_info(
     #state{is_active = false, chain = Chain} = State
 ) ->
     %% We're inactive, check if we have an oui
-    case packet_purchaser_utils:get_oui(Chain) of
+    case pp_utils:get_oui(Chain) of
         undefined ->
             %% stay inactive
             {noreply, State};
