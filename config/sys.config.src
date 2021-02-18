@@ -5,7 +5,14 @@
             {address, "${PP_LNS_ADDRESS}"},
             {port, "${PP_LNS_PORT}"}
         ]},
-        {pp_xor_filter_worker, "${PP_ENABLE_XOR_FILTER}"}
+        {pp_xor_filter_worker, "${PP_ENABLE_XOR_FILTER}"},
+        {pp_integration, pp_integration_chirpstack},
+        {pp_integration_chirpstack, [
+            {endpoint, "${PP_CHIRPSTACK_ENPOINT}"},
+            {app_id, "${PP_CHIRPSTACK_APP_ID}"},
+            {api_key, "${PP_CHIRPSTACK_API_KEY}"},
+            {app_eui, "${PP_CHIRPSTACK_APP_EUI}"}
+        ]}
     ]},
     {blockchain, [
         {port, 2154},

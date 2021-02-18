@@ -67,12 +67,14 @@ init([]) ->
         {base_dir, BaseDir},
         {update_dir, application:get_env(blockchain, update_dir, undefined)}
     ],
-
+    IntegrationModule = pp_integration:module(),
+    IntegrationArgs = maps:from_list(application:get_env(?APP, IntegrationModule, [])),
     ChildSpecs = [
         ?SUP(blockchain_sup, [BlockchainOpts]),
         ?WORKER(pp_sc_worker, [#{}]),
         ?WORKER(pp_xor_filter_worker, [#{}]),
-        ?SUP(pp_udp_sup, [])
+        ?SUP(pp_udp_sup, []),
+        ?WORKER(IntegrationModule, [IntegrationArgs])
     ],
     {ok, {?FLAGS, ChildSpecs}}.
 

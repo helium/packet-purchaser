@@ -18,7 +18,8 @@
         observer_cli,
         jsx,
         iso8601,
-        xxhash
+        xxhash,
+        hackney
     ]},
     {included_applications, [blockchain]},
     {env, []},
