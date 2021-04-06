@@ -11,7 +11,8 @@
 %% API Function Exports
 %% ------------------------------------------------------------------
 -export([
-    start_link/1
+    start_link/1,
+    check_filters/0
 ]).
 
 %% ------------------------------------------------------------------
@@ -43,7 +44,8 @@
     pending_txns = #{} :: #{
         blockchain_txn:hash() => {non_neg_integer(), devices_dev_eui_app_eui()}
     },
-    filter_to_devices = #{} :: #{non_neg_integer() => devices_dev_eui_app_eui()}
+    filter_to_devices = #{} :: #{non_neg_integer() => devices_dev_eui_app_eui()},
+    check_filters_ref :: undefined | reference()
 }).
 
 %% ------------------------------------------------------------------
@@ -52,17 +54,17 @@
 start_link(Args) ->
     gen_server:start_link({local, ?SERVER}, ?SERVER, Args, []).
 
+-spec check_filters() -> ok.
+check_filters() ->
+    ?SERVER ! ?CHECK_FILTERS_TICK,
+    ok.
+
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 init(Args) ->
     lager:info("~p init with ~p", [?SERVER, Args]),
-    case enabled() of
-        true ->
-            ok = schedule_post_init();
-        false ->
-            ok
-    end,
+    ok = schedule_post_init(),
     {ok, #state{}}.
 
 handle_call(_Msg, _From, State) ->
@@ -84,8 +86,17 @@ handle_info(post_init, #state{chain = undefined} = State) ->
                     ok = schedule_post_init(),
                     {noreply, State};
                 OUI ->
-                    ok = schedule_check_filters(1),
-                    {noreply, State#state{chain = Chain, oui = OUI}}
+                    case enabled() of
+                        true ->
+                            Ref = schedule_check_filters(1),
+                            {noreply, State#state{
+                                chain = Chain,
+                                oui = OUI,
+                                check_filters_ref = Ref
+                            }};
+                        false ->
+                            {noreply, State#state{chain = Chain, oui = OUI}}
+                    end
             end
     end;
 handle_info(
@@ -94,14 +105,19 @@ handle_info(
         chain = Chain,
         oui = OUI,
         filter_to_devices = FilterToDevices,
-        pending_txns = Pendings0
+        pending_txns = Pendings0,
+        check_filters_ref = OldRef
     } = State
 ) ->
+    case erlang:is_reference(OldRef) of
+        false -> ok;
+        true -> erlang:cancel_timer(OldRef)
+    end,
     case should_update_filters(Chain, OUI, FilterToDevices) of
         noop ->
             lager:info("filters are still up to date"),
-            ok = schedule_check_filters(default_timer()),
-            {noreply, State};
+            Ref = schedule_check_filters(default_timer()),
+            {noreply, State#state{check_filters_ref = Ref}};
         {Routing, Updates} ->
             CurrNonce = blockchain_ledger_routing_v1:nonce(Routing),
             {Pendings1, _} = lists:foldl(
@@ -153,12 +169,13 @@ handle_info(
     },
     case State1#state.pending_txns == #{} of
         false ->
-            lager:info("waiting for more txn to clear");
+            lager:info("waiting for more txn to clear"),
+            {noreply, State1};
         true ->
             lager:info("all txns cleared"),
-            schedule_check_filters(default_timer())
-    end,
-    {noreply, State1};
+            Ref = schedule_check_filters(default_timer()),
+            {noreply, State1#state{check_filters_ref = Ref}}
+    end;
 handle_info(
     {?SUBMIT_RESULT, Hash, Return},
     #state{
@@ -172,12 +189,13 @@ handle_info(
     State1 = State0#state{pending_txns = maps:remove(Hash, Pendings)},
     case State1#state.pending_txns == #{} of
         false ->
-            lager:info("waiting for more txn to clear");
+            lager:info("waiting for more txn to clear"),
+            {noreply, State1};
         true ->
             lager:info("all txns cleared"),
-            schedule_check_filters(1)
-    end,
-    {noreply, State1};
+            Ref = schedule_check_filters(1),
+            {noreply, State1#state{check_filters_ref = Ref}}
+    end;
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p", [_Msg]),
     {noreply, State}.
@@ -220,12 +238,16 @@ should_update_filters(Chain, OUI, FilterToDevices) ->
                         true ->
                             {Routing, [{new, Added}]};
                         false ->
-                            [{Index, SmallestDevicesDevEuiAppEui} | _] = smallest_first(
-                                maps:to_list(Map)
-                            ),
-                            {Routing, [
-                                {update, Index, Added ++ SmallestDevicesDevEuiAppEui}
-                            ]}
+                            case smallest_first(maps:to_list(Map)) of
+                                [] ->
+                                    {Routing, [
+                                        {update, 0, Added}
+                                    ]};
+                                [{Index, SmallestDevicesDevEuiAppEui} | _] ->
+                                    {Routing, [
+                                        {update, Index, Added ++ SmallestDevicesDevEuiAppEui}
+                                    ]}
+                            end
                     end;
                 {Map, [], Removed} ->
                     {Routing, craft_remove_updates(Map, Removed)};
@@ -275,7 +297,7 @@ craft_remove_updates(Map, RemovedDevicesDevEuiAppEuiMap) ->
         non_neg_integer() => devices_dev_eui_app_eui()
     }}.
 contained_in_filters(BinFilters, FilterToDevices, DevicesDevEuiAppEui) ->
-    BinFiltersWithIndex = lists:zip(lists:seq(1, erlang:length(BinFilters)), BinFilters),
+    BinFiltersWithIndex = lists:zip(lists:seq(0, erlang:length(BinFilters) - 1), BinFilters),
     ContainedBy = fun(Filter) -> fun(Bin) -> xor16:contain({Filter, ?HASH_FUN}, Bin) end end,
     {CurrFilter, Removed, Added, _} =
         lists:foldl(
@@ -359,10 +381,9 @@ schedule_post_init() ->
     {ok, _} = timer:send_after(?POST_INIT_TIMER, self(), ?POST_INIT_TICK),
     ok.
 
--spec schedule_check_filters(non_neg_integer()) -> ok.
+-spec schedule_check_filters(non_neg_integer()) -> reference().
 schedule_check_filters(Timer) ->
-    _Ref = erlang:send_after(Timer, self(), ?CHECK_FILTERS_TICK),
-    ok.
+    erlang:send_after(Timer, self(), ?CHECK_FILTERS_TICK).
 
 -spec enabled() -> boolean().
 enabled() ->
@@ -374,13 +395,7 @@ enabled() ->
 
 -spec default_timer() -> non_neg_integer().
 default_timer() ->
-    case
-        application:get_env(
-            packet_purchaser,
-            pp_xor_filter_worker_timer,
-            ?CHECK_FILTERS_TIMER
-        )
-    of
+    case application:get_env(packet_purchaser, pp_xor_filter_worker_timer, ?CHECK_FILTERS_TIMER) of
         Str when is_list(Str) -> erlang:list_to_integer(Str);
         I -> I
     end.
@@ -392,6 +407,8 @@ default_timer() ->
 -include_lib("eunit/include/eunit.hrl").
 
 should_update_filters_test() ->
+    {timeout, 15, fun test_for_should_update_filters_test/0}.
+test_for_should_update_filters_test() ->
     OUI = 1,
 
     meck:new(blockchain, [passthrough]),
@@ -449,7 +466,7 @@ should_update_filters_test() ->
     end),
 
     ?assertEqual(
-        {Routing0, [{update, 1, [Device1, Device0]}]},
+        {Routing0, [{update, 0, [Device1, Device0]}]},
         should_update_filters(chain, OUI, #{})
     ),
 
@@ -461,9 +478,9 @@ should_update_filters_test() ->
     end),
 
     ?assertEqual(
-        {Routing0, [{update, 1, [Device1]}]},
+        {Routing0, [{update, 0, [Device1]}]},
         should_update_filters(chain, OUI, #{
-            1 => [Device0]
+            0 => [Device0]
         })
     ),
 
@@ -475,9 +492,9 @@ should_update_filters_test() ->
     end),
 
     ?assertEqual(
-        {Routing0, [{update, 1, [Device1, Device2]}]},
+        {Routing0, [{update, 0, [Device1, Device2]}]},
         should_update_filters(chain, OUI, #{
-            1 => [Device0]
+            0 => [Device0]
         })
     ),
 
@@ -491,7 +508,7 @@ should_update_filters_test() ->
     RoutingRemoved1 = blockchain_ledger_routing_v1:update(
         RoutingRemoved0,
         {new_xor, BinFilter1},
-        2
+        1
     ),
     meck:expect(blockchain_ledger_v1, find_routing, fun(_OUI, _Ledger) ->
         {ok, RoutingRemoved1}
@@ -502,11 +519,46 @@ should_update_filters_test() ->
     end),
 
     ?assertEqual(
-        {RoutingRemoved1, [{update, 2, []}, {update, 1, []}]},
+        {RoutingRemoved1, [{update, 1, []}, {update, 0, []}]},
         should_update_filters(chain, OUI, #{
-            1 => [Device0],
-            2 => [Device1]
+            0 => [Device0],
+            1 => [Device1]
         })
+    ),
+
+    %% ------------------------
+    % Testing with a device that has bad app eui or dev eui
+    %% FIXME: How does this test fit in without access to `router_device' module.
+    %% Device3 = <<"deveui3app_eui3 that is very long">>,
+    %% meck:expect(pp_integration, get_devices, fun() ->
+    %%     {ok, [Device3]}
+    %% end),
+
+    %% ?assertEqual(
+    %%     noop,
+    %%     should_update_filters(chain, OUI, #{})
+    %% ),
+
+    %% ------------------------
+    % Testing for an empty Map
+    RoutingEmptyMap0 = blockchain_ledger_routing_v1:new(OUI, <<"owner">>, [], BinFilter0, [], 1),
+    RoutingEmptyMap1 = blockchain_ledger_routing_v1:update(
+        RoutingEmptyMap0,
+        {new_xor, BinFilter1},
+        1
+    ),
+    meck:expect(blockchain_ledger_v1, find_routing, fun(_OUI, _Ledger) ->
+        {ok, RoutingEmptyMap1}
+    end),
+
+    Device4 = <<"deveui4app_eui4">>,
+    meck:expect(pp_integration, get_devices, fun() ->
+        {ok, [Device4]}
+    end),
+
+    ?assertEqual(
+        {RoutingEmptyMap1, [{update, 0, [Device4]}]},
+        should_update_filters(chain, OUI, #{})
     ),
 
     meck:unload(blockchain_ledger_v1),
@@ -528,20 +580,20 @@ contained_in_filters_test() ->
     {Filter2, _} = xor16:new(BinDevices2, ?HASH_FUN),
     {BinFilter2, _} = xor16:to_bin({Filter2, ?HASH_FUN}),
     ?assertEqual(
-        {#{1 => BinDevices1, 2 => BinDevices2}, [], #{}},
+        {#{0 => BinDevices1, 1 => BinDevices2}, [], #{}},
         contained_in_filters([BinFilter1, BinFilter2], #{}, BinDevices)
     ),
     ?assertEqual(
-        {#{1 => BinDevices1}, BinDevices2, #{}},
+        {#{0 => BinDevices1}, BinDevices2, #{}},
         contained_in_filters([BinFilter1], #{}, BinDevices)
     ),
     ?assertEqual(
-        {#{1 => BinDevices1}, [], #{2 => BinDevices2}},
-        contained_in_filters([BinFilter1, BinFilter2], #{1 => BinDevices2}, BinDevices1)
+        {#{0 => BinDevices1}, [], #{1 => BinDevices2}},
+        contained_in_filters([BinFilter1, BinFilter2], #{0 => BinDevices2}, BinDevices1)
     ),
     ?assertEqual(
-        {#{}, BinDevices2, #{1 => BinDevices1}},
-        contained_in_filters([BinFilter1], #{1 => BinDevices1}, BinDevices2)
+        {#{}, BinDevices2, #{0 => BinDevices1}},
+        contained_in_filters([BinFilter1], #{0 => BinDevices1}, BinDevices2)
     ),
     ok.
 
