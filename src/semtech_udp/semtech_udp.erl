@@ -198,7 +198,7 @@ push_data_test() ->
                     <<"time">> => iso8601:format(
                         calendar:system_time_to_universal_time(Tmst, millisecond)
                     ),
-                    <<"tmst">> => Tmst,
+                    <<"tmst">> => Tmst band 4294967295,
                     <<"freq">> => 915.2,
                     <<"rfch">> => 0,
                     <<"modu">> => <<"LORA">>,
