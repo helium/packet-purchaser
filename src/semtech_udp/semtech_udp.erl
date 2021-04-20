@@ -203,7 +203,7 @@ push_data_test() ->
                     <<"rfch">> => 0,
                     <<"modu">> => <<"LORA">>,
                     <<"datr">> => <<"datr">>,
-                    <<"rssi">> => -80.0,
+                    <<"rssi">> => -80,
                     <<"lsnr">> => -10,
                     <<"size">> => erlang:byte_size(Payload),
                     <<"data">> => base64:encode(Payload)
