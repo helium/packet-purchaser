@@ -11,7 +11,8 @@
 -export([
     start_link/1,
     push_data/4,
-         simple_test/0
+    simple_test/0,
+    send_join/1
 ]).
 
 %% ------------------------------------------------------------------
@@ -76,6 +77,15 @@ simple_test() ->
     pp_udp_worker:push_data(Pid, Token, Packet, self()),
 
     {ok, Pid}.
+
+send_join(Pid) ->
+    DevEUI = <<"a5e802b270dd196e">>,
+    DevNonce = crypto:strong_rand_bytes(2),
+    AppKey = <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>,
+
+    Join = semtech_udp:make_join_payload(AppKey, DevEUI, DevNonce),
+    {ok, Token, Packet} = semtech_udp:craft_push_data(Join),
+    pp_udp_worker:push_data(Pid, Token, Packet, self()).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
