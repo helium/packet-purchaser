@@ -66,7 +66,7 @@ simple_test() ->
     UDPArgs = #{
         address => {0, 0, 0, 0},
         port => 1701,
-        pubkeybin => pp_utils:hex_to_bin_lsb(GatewayID)
+        pubkeybin => pp_utils:hex_to_bin(GatewayID)
     },
 
     {ok, Pid} = pp_udp_worker:start_link(UDPArgs),
@@ -269,7 +269,8 @@ send_pull_data(
     }
 ) ->
     Token = semtech_udp:token(),
-    Data = semtech_udp:pull_data(Token, pp_utils:pubkeybin_to_mac(PubKeyBin)),
+    %% Data = semtech_udp:pull_data(Token, pp_utils:pubkeybin_to_mac(PubKeyBin)),
+    Data = semtech_udp:pull_data(Token, PubKeyBin),
     case gen_udp:send(Socket, Address, Port, Data) of
         ok ->
             lager:debug("sent pull data keepalive ~p", [Token]),
