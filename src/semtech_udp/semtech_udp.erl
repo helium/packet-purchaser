@@ -44,10 +44,8 @@ craft_push_data(Payload) ->
         data => base64:encode(Payload)
     },
 
-    #{
-        token => Token0,
-        packet => ?MODULE:push_data(Token0, MAC0, Map)
-    }.
+    Packet = ?MODULE:push_data(Token0, MAC0, Map),
+    {ok, Token0, Packet}.
 
 make_join_payload(AppKey, DevEUI0, DevNonce) ->
     MType = 2#000,

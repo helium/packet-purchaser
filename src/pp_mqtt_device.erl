@@ -9,7 +9,7 @@
 
 -export([activate/1, deactivate/1]).
 
--export([handle_downlink/2, make_join_payload/3]).
+-export([handle_downlink/2]).
 
 %% gen_server callbacks
 -export([
