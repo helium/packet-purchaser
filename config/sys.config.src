@@ -12,7 +12,8 @@
             {app_id, "${PP_CHIRPSTACK_APP_ID}"},
             {api_key, "${PP_CHIRPSTACK_API_KEY}"},
             {app_eui, "${PP_CHIRPSTACK_APP_EUI}"}
-        ]}
+        ]},
+        {accept_joins, "${PP_ACCEPT_JOINS}"}
     ]},
     {blockchain, [
         {port, 2154},
