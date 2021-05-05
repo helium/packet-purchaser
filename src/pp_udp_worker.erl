@@ -99,6 +99,7 @@ init(Args) ->
     Port = maps:get(port, Args),
     PullDataTimer = maps:get(pull_data_timer, Args, ?PULL_DATA_TIMER),
     {ok, Socket} = gen_udp:open(0, [binary, {active, true}]),
+    %% TODO: PUll data immediately so we can establish a connection for the first pull_response
     _ = schedule_pull_data(PullDataTimer),
     {ok, #state{
         pubkeybin = PubKeyBin,
