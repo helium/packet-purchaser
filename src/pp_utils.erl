@@ -4,7 +4,9 @@
 
 -export([
     get_oui/1,
-    pubkeybin_to_mac/1
+    pubkeybin_to_mac/1,
+    accept_joins/0,
+    allowed_net_ids/0
 ]).
 
 -spec get_oui(Chain :: blockchain:blockchain()) -> non_neg_integer() | undefined.
@@ -59,3 +61,15 @@ check_oui_on_chain(OUI, OUIsOnChain) ->
         true ->
             OUI
     end.
+
+-spec accept_joins() -> boolean().
+accept_joins() ->
+    case application:get_env(packet_purchaser, accept_joins, true) of
+        "false" -> false;
+        false -> false;
+        _ -> true
+    end.
+
+-spec allowed_net_ids() -> list(integer()).
+allowed_net_ids() ->
+    application:get_env(packet_purchaser, net_ids, []).

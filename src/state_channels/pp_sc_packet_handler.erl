@@ -5,14 +5,38 @@
 %%%-------------------------------------------------------------------
 -module(pp_sc_packet_handler).
 
+-include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
+
 -export([
     handle_offer/2,
     handle_packet/3
 ]).
 
+%% Offer rejected reasons
+-define(NOT_ACCEPTING_JOINS, not_accepting_joins).
+-define(NET_ID_REJECTED, net_id_rejected).
+
 -spec handle_offer(blockchain_state_channel_offer_v1:offer(), pid()) -> ok.
-handle_offer(_Offer, _HandlerPid) ->
-    ok.
+handle_offer(Offer, _HandlerPid) ->
+    case blockchain_state_channel_offer_v1:routing(Offer) of
+        #routing_information_pb{data = {eui, _EUI}} ->
+            case pp_utils:accept_joins() of
+                true -> ok;
+                false -> {error, ?NOT_ACCEPTING_JOINS}
+            end;
+        #routing_information_pb{data = {devaddr, DevAddr}} ->
+            case pp_utils:allowed_net_ids() of
+                [] ->
+                    ok;
+                IDs ->
+                    <<_AddrBase:25/integer-unsigned-little, NetID:7/integer-unsigned-little>> =
+                        <<DevAddr:32/integer-unsigned-little>>,
+                    case lists:member(NetID, IDs) of
+                        true -> ok;
+                        false -> {error, ?NET_ID_REJECTED}
+                    end
+            end
+    end.
 
 -spec handle_packet(blockchain_state_channel_packet_v1:packet(), pos_integer(), pid()) -> ok.
 handle_packet(SCPacket, _PacketTime, Pid) ->

@@ -70,7 +70,7 @@ publish_xor_test(Config) ->
             {error, _Reason} = Error ->
                 Callback(Error);
             {ok, Block} ->
-                _ = blockchain_gossip_handler:add_block(
+                _ = blockchain_test_utils:add_block(
                     Block,
                     blockchain_worker:blockchain(),
                     self(),
@@ -97,7 +97,7 @@ publish_xor_test(Config) ->
     SignedOUITxn = blockchain_txn_oui_v1:sign(OUITxn1, SignFun),
 
     {ok, Block0} = blockchain_test_utils:create_block(ConsensusMembers, [SignedOUITxn]),
-    _ = blockchain_gossip_handler:add_block(Block0, Chain, self(), blockchain_swarm:swarm()),
+    _ = blockchain_test_utils:add_block(Block0, Chain, self(), blockchain_swarm:swarm()),
     %% We going to add multiple blocks so we need to release the lock
     blockchain_lock:release(),
 
