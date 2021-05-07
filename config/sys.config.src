@@ -14,7 +14,7 @@
             {app_eui, "${PP_CHIRPSTACK_APP_EUI}"}
         ]},
         {accept_joins, "${PP_ACCEPT_JOINS}"},
-        {net_ids, "${PP_NET_IDS}"}
+        {net_ids, [${PP_NET_IDS}]}
     ]},
     {blockchain, [
         {port, 2154},
