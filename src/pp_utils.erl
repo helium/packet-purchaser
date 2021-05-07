@@ -72,4 +72,17 @@ accept_joins() ->
 
 -spec allowed_net_ids() -> list(integer()).
 allowed_net_ids() ->
-    application:get_env(packet_purchaser, net_ids, []).
+    case application:get_env(packet_purchaser, net_ids, []) of
+        [] -> allow_all;
+        [allow_all] ->
+            allow_all;
+        %% What you put in the list is what you get out.
+        %% Ex: [16#000001, 16#000002]
+        [ID | _] = IDS when erlang:is_number(ID) ->
+            IDS;
+        %% Comma separated string, will be turned into base-16 integers.
+        %% ex: "000001, 0000002"
+        IDS when erlang:is_list(IDS) ->
+            Nums = string:split(IDS, ",", all),
+            lists:map(fun(Num) -> erlang:list_to_integer(string:trim(Num), 16) end, Nums)
+    end.

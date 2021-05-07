@@ -26,7 +26,7 @@ handle_offer(Offer, _HandlerPid) ->
             end;
         #routing_information_pb{data = {devaddr, DevAddr}} ->
             case pp_utils:allowed_net_ids() of
-                [] ->
+                allow_all ->
                     ok;
                 IDs ->
                     <<_AddrBase:25/integer-unsigned-little, NetID:7/integer-unsigned-little>> =
