@@ -15,6 +15,7 @@
 %% Offer rejected reasons
 -define(NOT_ACCEPTING_JOINS, not_accepting_joins).
 -define(NET_ID_REJECTED, net_id_rejected).
+-define(NOT_ACCEPTING_PACKETS, not_accepting_packets).
 
 -spec handle_offer(blockchain_state_channel_offer_v1:offer(), pid()) -> ok.
 handle_offer(Offer, _HandlerPid) ->
@@ -26,6 +27,8 @@ handle_offer(Offer, _HandlerPid) ->
             end;
         #routing_information_pb{data = {devaddr, DevAddr}} ->
             case pp_utils:allowed_net_ids() of
+                allow_none ->
+                    {error, ?NOT_ACCEPTING_PACKETS};
                 allow_all ->
                     ok;
                 IDs ->

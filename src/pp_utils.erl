@@ -96,9 +96,12 @@ accept_joins() ->
 -spec allowed_net_ids() -> list(integer()).
 allowed_net_ids() ->
     case application:get_env(packet_purchaser, net_ids, []) of
-        [] -> allow_all;
+        [] ->
+            allow_all;
         [allow_all] ->
             allow_all;
+        [allow_none] ->
+            allow_none;
         %% What you put in the list is what you get out.
         %% Ex: [16#000001, 16#000002]
         [ID | _] = IDS when erlang:is_number(ID) ->
