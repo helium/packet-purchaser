@@ -54,7 +54,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
         MAC,
         #{
             time => iso8601:format(calendar:system_time_to_universal_time(Tmst, millisecond)),
-            tmst => PacketTime,
+            tmst => PacketTime band 4294967295,
             freq => blockchain_helium_packet_v1:frequency(Packet),
             rfch => 0,
             modu => <<"LORA">>,
