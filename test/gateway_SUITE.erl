@@ -44,19 +44,28 @@ end_per_testcase(TestCase, Config) ->
 pubkey_bin_test(_Config) ->
 
     DevEUI = <<"a5e802b270dd196e">>,
-    GatewayID = <<"c360747576ca24e2">>,
+
     DevNonce = crypto:strong_rand_bytes(2),
     AppKey = <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>,
 
     {ok, Socket} = gen_udp:open(0, [binary, {active, true}]),
 
-    PubKeyBin = pp_utils:hex_to_bin(GatewayID),
+    %% Chirpstack local testing gateway_id
+    %% GatewayID = <<"c360747576ca24e2">>,
+    %% PubKeyBin = pp_utils:hex_to_bin(GatewayID),
 
-    PullDataPacket = semtech_udp:pull_data(semtech_udp:token(), PubKeyBin),
+    %% jolly-bloody-condor
+    %% PubKeyBin = <<0,53,88,135,139,114,108,118,52,64,241,19,167,238,15,14,189,5,47,221,252,101,253,217,142,71,113,165,71,115,145,172,60>>,
+
+    %% amusing-felt-locust
+    PubKeyBin = <<0,97,6,18,79,240,99,255,196,76,155,129,218,223,22,235,57,180,244,232,142,120,120,58,206,246,188,125,38,161,39,35,133>>,
+    Mac = pp_utils:pubkeybin_to_mac(PubKeyBin),
+
+    PullDataPacket = semtech_udp:pull_data(semtech_udp:token(), Mac),
     JoinPayload = semtech_udp:make_join_payload(AppKey, DevEUI, DevNonce),
-    {ok, Token, JoinPacket} = semtech_udp:craft_push_data(JoinPayload),
+    {ok, Token, JoinPacket} = semtech_udp:craft_push_data(JoinPayload, Mac),
 
-    ?debugFmt("GatewayID: ~p", [GatewayID]),
+    %% ?debugFmt("GatewayID: ~p", [GatewayID]),
     ?debugFmt("Token used: ~p", [Token]),
 
     ?debugFmt("Pull Data: ~p", [PullDataPacket]),
