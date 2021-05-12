@@ -286,8 +286,8 @@ send_pull_data(
     }
 ) ->
     Token = semtech_udp:token(),
-    %% Data = semtech_udp:pull_data(Token, pp_utils:pubkeybin_to_mac(PubKeyBin)),
-    Data = semtech_udp:pull_data(Token, PubKeyBin),
+    Data = semtech_udp:pull_data(Token, pp_utils:pubkeybin_to_mac(PubKeyBin)),
+    %% Data = semtech_udp:pull_data(Token, PubKeyBin),
     case gen_udp:send(Socket, Address, Port, Data) of
         ok ->
             lager:debug("sent pull data keepalive ~p", [Token]),
