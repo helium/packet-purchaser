@@ -20,14 +20,13 @@
     identifier/1,
     identifier_to_atom/1,
     json_data/1,
-    craft_push_data/1,
+    craft_push_data/2,
     make_join_payload/3
 ]).
 
-craft_push_data(Payload) ->
+craft_push_data(Payload, MAC0) ->
     Token0 = token(),
-    %% MAC0 = crypto:strong_rand_bytes(8),
-    MAC0 = <<195, 96, 116, 117, 118, 202, 36, 226>>,
+
     Tmst = erlang:system_time(millisecond),
     Map = #{
         time => iso8601:format(
