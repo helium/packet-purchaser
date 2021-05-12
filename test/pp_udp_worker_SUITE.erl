@@ -81,7 +81,7 @@ push_data(Config) ->
                         <<"rssi">> => erlang:trunc(maps:get(rssi, Opts)),
                         <<"size">> => erlang:byte_size(maps:get(payload, Opts)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => erlang:trunc(maps:get(timestamp, Opts) / 1000)
+                        <<"tmst">> => maps:get(timestamp, Opts) band 4294967295
                     }
                 ]
             },
@@ -117,7 +117,7 @@ delay_push_data(Config) ->
                         <<"rssi">> => erlang:trunc(maps:get(rssi, Opts0)),
                         <<"size">> => erlang:byte_size(maps:get(payload, Opts0)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => erlang:trunc(maps:get(timestamp, Opts0) / 1000)
+                        <<"tmst">> => maps:get(timestamp, Opts0) band 4294967295
                     }
                 ]
             },
@@ -143,7 +143,7 @@ delay_push_data(Config) ->
                         <<"rssi">> => erlang:trunc(maps:get(rssi, Opts1)),
                         <<"size">> => erlang:byte_size(maps:get(payload, Opts1)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => erlang:trunc(maps:get(timestamp, Opts1) / 1000)
+                        <<"tmst">> => maps:get(timestamp, Opts1) band 4294967295
                     }
                 ]
             },
@@ -158,7 +158,7 @@ pull_data(Config) ->
 
     {ok, {Token, MAC}} = pp_lns:rcv(FakeLNSPid, ?PULL_DATA, timer:seconds(5)),
     ?assert(erlang:is_binary(Token)),
-    ?assertEqual(pp_utils:pubkeybin_to_mac(PubKeyBin), MAC),
+    ?assertEqual(PubKeyBin, MAC),
     ok.
 
 failed_pull_data(Config) ->
@@ -244,7 +244,7 @@ multi_hotspots(Config) ->
                         <<"rssi">> => erlang:trunc(maps:get(rssi, Opts1)),
                         <<"size">> => erlang:byte_size(maps:get(payload, Opts1)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => erlang:trunc(maps:get(timestamp, Opts1) / 1000)
+                        <<"tmst">> => maps:get(timestamp, Opts1) band 4294967295
                     }
                 ]
             },
@@ -267,7 +267,7 @@ multi_hotspots(Config) ->
                         <<"rssi">> => erlang:trunc(maps:get(rssi, Opts2)),
                         <<"size">> => erlang:byte_size(maps:get(payload, Opts2)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => erlang:trunc(maps:get(timestamp, Opts2) / 1000)
+                        <<"tmst">> => maps:get(timestamp, Opts2) band 4294967295
                     }
                 ]
             },
