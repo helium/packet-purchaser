@@ -227,7 +227,7 @@ handle_pull_resp(
     Map = maps:get(<<"txpk">>, semtech_udp:json_data(Data)),
     DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
         maps:get(<<"data">>, Map),
-        27,
+        maps:get(<<"powe">>, Map),
         maps:get(<<"tmst">>, Map),
         maps:get(<<"freq">>, Map),
         erlang:binary_to_list(maps:get(<<"datr">>, Map))

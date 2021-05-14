@@ -195,7 +195,8 @@ pull_resp(Config) ->
         data => DownlinkPayload,
         tmst => DownlinkTimestamp,
         freq => DownlinkFreq,
-        datr => DownlinkDatr
+        datr => DownlinkDatr,
+        powe => 27
     }),
     MAC = pp_utils:pubkeybin_to_mac(PubKeyBin),
     Map = #{<<"txpk_ack">> => #{<<"error">> => <<"NONE">>}},
