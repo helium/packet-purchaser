@@ -8,7 +8,10 @@
 
 -export([
     accept_joins_test/1,
-    net_ids_test/1
+    net_ids_env_offer_test/1,
+    net_ids_map_offer_test/1,
+    net_ids_map_packet_test/1,
+    net_ids_env_packet_test/1
 ]).
 
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
@@ -37,7 +40,13 @@
 %% @end
 %%--------------------------------------------------------------------
 all() ->
-    [accept_joins_test, net_ids_test].
+    [
+        accept_joins_test,
+        net_ids_env_offer_test,
+        net_ids_map_offer_test,
+        net_ids_map_packet_test,
+        net_ids_env_packet_test
+    ].
 
 %%--------------------------------------------------------------------
 %% TEST CASE SETUP
@@ -84,7 +93,64 @@ accept_joins_test(_Config) ->
 
     ok.
 
-net_ids_test(_Config) ->
+net_ids_map_offer_test(_Config) ->
+    SendPacketOfferFun = fun(NetId) ->
+        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+        Offer = packet_offer(PubKeyBin, NetId),
+        pp_sc_packet_handler:handle_offer(Offer, self())
+    end,
+
+    %% Buy all NetIDs
+    ok = application:set_env(packet_purchaser, net_ids, [allow_all]),
+    ?assertMatch(ok, SendPacketOfferFun(?ACTILITY)),
+    ?assertMatch(ok, SendPacketOfferFun(?TEKTELIC)),
+    ?assertMatch(ok, SendPacketOfferFun(?COMCAST)),
+    ?assertMatch(ok, SendPacketOfferFun(?EXPERIMENTAL)),
+    ?assertMatch(ok, SendPacketOfferFun(?ORANGE)),
+
+    %% Reject all NetIDs
+    ok = application:set_env(packet_purchaser, net_ids, #{}),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?ACTILITY)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?TEKTELIC)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?COMCAST)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?EXPERIMENTAL)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?ORANGE)),
+
+    %% Buy Only Actility1 ID
+    ok = application:set_env(packet_purchaser, net_ids, #{?ACTILITY => test}),
+    ?assertMatch(ok, SendPacketOfferFun(?ACTILITY)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?TEKTELIC)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?COMCAST)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?EXPERIMENTAL)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?ORANGE)),
+
+    %% Buy Multiple IDs
+    ok = application:set_env(packet_purchaser, net_ids, #{?ACTILITY => test, ?ORANGE => test}),
+    ?assertMatch(ok, SendPacketOfferFun(?ACTILITY)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?TEKTELIC)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?COMCAST)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?EXPERIMENTAL)),
+    ?assertMatch(ok, SendPacketOfferFun(?ORANGE)),
+
+    %% Buy all the IDs we know about
+    ok = application:set_env(packet_purchaser, net_ids, #{
+        ?EXPERIMENTAL => test,
+        ?ACTILITY => test,
+        ?TEKTELIC => test,
+        ?ORANGE => test,
+        ?COMCAST => test
+    }),
+    ?assertMatch(ok, SendPacketOfferFun(?ACTILITY)),
+    ?assertMatch(ok, SendPacketOfferFun(?TEKTELIC)),
+    ?assertMatch(ok, SendPacketOfferFun(?COMCAST)),
+    ?assertMatch(ok, SendPacketOfferFun(?EXPERIMENTAL)),
+    ?assertMatch(ok, SendPacketOfferFun(?ORANGE)),
+
+    ok.
+
+net_ids_env_offer_test(_Config) ->
     SendPacketOfferFun = fun(NetId) ->
         #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
         PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
@@ -133,9 +199,92 @@ net_ids_test(_Config) ->
 
     ok.
 
+net_ids_map_packet_test(_Config) ->
+    SendPacketFun = fun(NetId) ->
+        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+        Packet = frame_packet(?UNCONFIRMED_UP, PubKeyBin, NetId, 0, #{dont_encode => true}),
+        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+
+        {ok, Pid} = pp_udp_sup:lookup_worker(PubKeyBin),
+        {state, PubKeyBin, _Socket, Address, Port, _PushData, _ScPid, _PullData, _PullDataTimer} = sys:get_state(
+            Pid
+        ),
+        {Address, Port}
+    end,
+
+    application:set_env(packet_purchaser, net_ids, #{
+        ?ACTILITY => #{address => "1.1.1.1", port => 1111},
+        ?ORANGE => #{address => "2.2.2.2", port => 2222},
+        ?COMCAST => #{address => "3.3.3.3", port => 3333}
+    }),
+
+    ?assertMatch({"1.1.1.1", 1111}, SendPacketFun(?ACTILITY)),
+    ?assertMatch({"2.2.2.2", 2222}, SendPacketFun(?ORANGE)),
+    ?assertMatch({"3.3.3.3", 3333}, SendPacketFun(?COMCAST)),
+    ok.
+
+net_ids_env_packet_test(_Config) ->
+    SendPacketFun = fun(NetId) ->
+        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+        Packet = frame_packet(?UNCONFIRMED_UP, PubKeyBin, NetId, 0, #{dont_encode => true}),
+        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+
+        {ok, Pid} = pp_udp_sup:lookup_worker(PubKeyBin),
+        {state, PubKeyBin, _Socket, Address, Port, _PushData, _ScPid, _PullData, _PullDataTimer} = sys:get_state(
+            Pid
+        ),
+        {Address, Port}
+    end,
+
+    application:set_env(packet_purchaser, net_ids, [?ACTILITY, ?ORANGE, ?COMCAST]),
+    application:set_env(packet_purchaser, pp_udp_worker, [
+        {address, "1.1.1.1"},
+        {port, 1337}
+    ]),
+
+    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?ACTILITY)),
+    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?ORANGE)),
+    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?COMCAST)),
+    ok.
+
 %% ------------------------------------------------------------------
 %% Helper functions
 %% ------------------------------------------------------------------
+
+frame_packet(MType, PubKeyBin, NetId, FCnt, Options) ->
+    NwkSessionKey = <<81, 103, 129, 150, 35, 76, 17, 164, 210, 66, 210, 149, 120, 193, 251, 85>>,
+    AppSessionKey = <<245, 16, 127, 141, 191, 84, 201, 16, 111, 172, 36, 152, 70, 228, 52, 95>>,
+    DevAddr = maps:get(devaddr, Options, <<33554431:25/integer-unsigned-little, NetId:7/integer>>),
+    Payload1 = frame_payload(MType, DevAddr, NwkSessionKey, AppSessionKey, FCnt),
+
+    <<DevNum:32/integer-unsigned-little>> = DevAddr,
+    Routing = blockchain_helium_packet_v1:make_routing_info({devaddr, DevNum}),
+
+    HeliumPacket = #packet_pb{
+        type = lorawan,
+        payload = Payload1,
+        frequency = 923.3,
+        datarate = maps:get(datarate, Options, <<"SF8BW125">>),
+        signal_strength = maps:get(rssi, Options, 0.0),
+        snr = maps:get(snr, Options, 0.0),
+        routing = Routing
+    },
+    Packet = #blockchain_state_channel_packet_v1_pb{
+        packet = HeliumPacket,
+        hotspot = PubKeyBin,
+        region = 'US915'
+    },
+    case maps:get(dont_encode, Options, false) of
+        true ->
+            Packet;
+        false ->
+            Msg = #blockchain_state_channel_message_v1_pb{msg = {packet, Packet}},
+            blockchain_state_channel_v1_pb:encode_msg(Msg)
+    end.
 
 join_offer(PubKeyBin, AppKey, DevNonce) ->
     RoutingInfo = {eui, 1, 1},
