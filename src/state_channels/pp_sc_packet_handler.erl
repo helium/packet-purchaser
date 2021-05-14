@@ -107,7 +107,7 @@ allowed_net_ids() ->
         [allow_all] ->
             allow_all;
         [allow_none] ->
-                allow_none;
+            allow_none;
         NetIdsMap when is_map(NetIdsMap) ->
             maps:keys(NetIdsMap);
         %% What you put in the list is what you get out.
@@ -164,10 +164,18 @@ allowed_net_ids_test() ->
     ?assertEqual([16#000016, 16#000035], allowed_net_ids(), "Base 16 numbers"),
 
     application:set_env(?APP, net_ids, ["000016, 000035"]),
-    ?assertEqual([16#000016, 16#000035], allowed_net_ids(), "Strings numbers get interpreted as base 16"),
+    ?assertEqual(
+        [16#000016, 16#000035],
+        allowed_net_ids(),
+        "Strings numbers get interpreted as base 16"
+    ),
 
     application:set_env(?APP, net_ids, #{16#000016 => test, 16#000035 => test}),
-    ?assertEqual([16#000016, 16#000035], allowed_net_ids(), "Map returns list of configured net ids"),
+    ?assertEqual(
+        [16#000016, 16#000035],
+        allowed_net_ids(),
+        "Map returns list of configured net ids"
+    ),
 
     ok.
 
