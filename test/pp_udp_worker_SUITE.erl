@@ -43,7 +43,14 @@
 %% @end
 %%--------------------------------------------------------------------
 all() ->
-    [push_data, delay_push_data, pull_data, failed_pull_data, pull_resp, multi_hotspots].
+    [
+        push_data,
+        delay_push_data,
+        pull_data,
+        failed_pull_data,
+        pull_resp,
+        multi_hotspots
+    ].
 
 %%--------------------------------------------------------------------
 %% TEST CASE SETUP
@@ -81,7 +88,7 @@ push_data(Config) ->
                         <<"rssi">> => erlang:trunc(maps:get(rssi, Opts)),
                         <<"size">> => erlang:byte_size(maps:get(payload, Opts)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => erlang:trunc(maps:get(timestamp, Opts) / 1000)
+                        <<"tmst">> => maps:get(timestamp, Opts) band 4294967295
                     }
                 ]
             },
@@ -117,7 +124,7 @@ delay_push_data(Config) ->
                         <<"rssi">> => erlang:trunc(maps:get(rssi, Opts0)),
                         <<"size">> => erlang:byte_size(maps:get(payload, Opts0)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => erlang:trunc(maps:get(timestamp, Opts0) / 1000)
+                        <<"tmst">> => maps:get(timestamp, Opts0) band 4294967295
                     }
                 ]
             },
@@ -143,7 +150,7 @@ delay_push_data(Config) ->
                         <<"rssi">> => erlang:trunc(maps:get(rssi, Opts1)),
                         <<"size">> => erlang:byte_size(maps:get(payload, Opts1)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => erlang:trunc(maps:get(timestamp, Opts1) / 1000)
+                        <<"tmst">> => maps:get(timestamp, Opts1) band 4294967295
                     }
                 ]
             },
@@ -168,11 +175,11 @@ failed_pull_data(Config) ->
     Ref = erlang:monitor(process, WorkerPid),
     ok = pp_lns:delay_next_udp(FakeLNSPid, timer:seconds(5)),
 
+    %% We potentially expect pull_data messages to be in the mailbox
+    %% from the lns. As long as we're going down, that's fine.
     receive
         {'DOWN', Ref, process, WorkerPid, pull_data_timeout} ->
-            true;
-        Msg ->
-            ct:fail("received unexpected message ~p", [Msg])
+            true
     after 5000 -> ct:fail("down timeout")
     end,
 
@@ -195,7 +202,8 @@ pull_resp(Config) ->
         data => DownlinkPayload,
         tmst => DownlinkTimestamp,
         freq => DownlinkFreq,
-        datr => DownlinkDatr
+        datr => DownlinkDatr,
+        powe => 27
     }),
     MAC = pp_utils:pubkeybin_to_mac(PubKeyBin),
     Map = #{<<"txpk_ack">> => #{<<"error">> => <<"NONE">>}},
@@ -244,7 +252,7 @@ multi_hotspots(Config) ->
                         <<"rssi">> => erlang:trunc(maps:get(rssi, Opts1)),
                         <<"size">> => erlang:byte_size(maps:get(payload, Opts1)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => erlang:trunc(maps:get(timestamp, Opts1) / 1000)
+                        <<"tmst">> => maps:get(timestamp, Opts1) band 4294967295
                     }
                 ]
             },
@@ -267,7 +275,7 @@ multi_hotspots(Config) ->
                         <<"rssi">> => erlang:trunc(maps:get(rssi, Opts2)),
                         <<"size">> => erlang:byte_size(maps:get(payload, Opts2)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => erlang:trunc(maps:get(timestamp, Opts2) / 1000)
+                        <<"tmst">> => maps:get(timestamp, Opts2) band 4294967295
                     }
                 ]
             },

@@ -5,6 +5,7 @@
 %%%-------------------------------------------------------------------
 -module(pp_sc_packet_handler).
 
+-include("packet_purchaser.hrl").
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
 
 -export([
@@ -20,12 +21,12 @@
 handle_offer(Offer, _HandlerPid) ->
     case blockchain_state_channel_offer_v1:routing(Offer) of
         #routing_information_pb{data = {eui, _EUI}} ->
-            case pp_utils:accept_joins() of
+            case accept_joins() of
                 true -> ok;
                 false -> {error, ?NOT_ACCEPTING_JOINS}
             end;
         #routing_information_pb{data = {devaddr, DevAddr}} ->
-            case pp_utils:allowed_net_ids() of
+            case allowed_net_ids() of
                 allow_all ->
                     ok;
                 IDs ->
@@ -62,7 +63,12 @@ handle_packet(SCPacket, PacketTime, Pid) ->
             data => base64:encode(Payload)
         }
     ),
-    case pp_udp_sup:maybe_start_worker(PubKeyBin, #{}) of
+
+    {devaddr, DevAddr} = blockchain_helium_packet_v1:routing_info(Packet),
+    <<_AddrBase:25/integer-unsigned-little, NetID:7/integer-unsigned-little>> =
+        <<DevAddr:32/integer-unsigned-little>>,
+
+    case pp_udp_sup:maybe_start_worker(PubKeyBin, net_id_udp_args(NetID)) of
         {ok, WorkerPid} ->
             pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
         {error, _Reason} = Error ->
@@ -72,3 +78,96 @@ handle_packet(SCPacket, PacketTime, Pid) ->
             ]),
             Error
     end.
+
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
+
+-spec accept_joins() -> boolean().
+accept_joins() ->
+    case application:get_env(?APP, accept_joins, true) of
+        "false" -> false;
+        false -> false;
+        _ -> true
+    end.
+
+-spec allowed_net_ids() -> list(integer()) | allow_all.
+allowed_net_ids() ->
+    case application:get_env(?APP, net_ids, []) of
+        [] ->
+            allow_all;
+        [allow_all] ->
+            allow_all;
+        NetIdsMap when is_map(NetIdsMap) ->
+            maps:keys(NetIdsMap);
+        %% What you put in the list is what you get out.
+        %% Ex: [16#000001, 16#000002]
+        [ID | _] = IDS when erlang:is_number(ID) ->
+            IDS;
+        %% Comma separated string, will be turned into base-16 integers.
+        %% ex: "000001, 0000002"
+        IDS when erlang:is_list(IDS) ->
+            Nums = string:split(IDS, ",", all),
+            lists:map(fun(Num) -> erlang:list_to_integer(string:trim(Num), 16) end, Nums)
+    end.
+
+-spec net_id_udp_args(non_neg_integer()) -> map().
+net_id_udp_args(NetID) ->
+    case application:get_env(?APP, net_ids, undefined) of
+        Map when erlang:is_map(Map) ->
+            maps:get(NetID, Map);
+        _UndefinedOrList ->
+            #{}
+    end.
+
+%% ------------------------------------------------------------------
+%% EUNIT Tests
+%% ------------------------------------------------------------------
+-ifdef(TEST).
+
+-include_lib("eunit/include/eunit.hrl").
+
+accept_joins_test() ->
+    application:set_env(?APP, accept_joins, "false"),
+    ?assertEqual(false, accept_joins(), "String false is false"),
+
+    application:set_env(?APP, accept_joins, false),
+    ?assertEqual(false, accept_joins(), "Atom false is false"),
+
+    application:set_env(?APP, accept_joins, true),
+    ?assertEqual(true, accept_joins(), "Atom true is true"),
+
+    application:set_env(?APP, accept_joins, "1234567890"),
+    ?assertEqual(true, accept_joins(), "Random data is true"),
+
+    ok.
+
+allowed_net_ids_test() ->
+    application:set_env(?APP, net_ids, []),
+    ?assertEqual(allow_all, allowed_net_ids(), "Empty list is open filter"),
+
+    %% Case to support putting multiple net ids from .env file
+    application:set_env(?APP, net_ids, [allow_all]),
+    ?assertEqual(allow_all, allowed_net_ids(), "allow_all atom in list allows all"),
+
+    application:set_env(?APP, net_ids, [16#000016, 16#000035]),
+    ?assertEqual([16#000016, 16#000035], allowed_net_ids(), "Base 16 numbers"),
+
+    application:set_env(?APP, net_ids, ["000016, 000035"]),
+    ?assertEqual([16#000016, 16#000035], allowed_net_ids(), "Strings numbers get interpreted as base 16"),
+
+    application:set_env(?APP, net_ids, #{16#000016 => test, 16#000035 => test}),
+    ?assertEqual([16#000016, 16#000035], allowed_net_ids(), "Map returns list of configured net ids"),
+
+    ok.
+
+net_id_udp_args_test() ->
+    application:set_env(?APP, net_ids, not_a_map),
+    ?assertEqual(#{}, net_id_udp_args(35), "Anything not a map returns empty args"),
+
+    application:set_env(?APP, net_ids, #{35 => #{address => "one.two", port => 1122}}),
+    ?assertEqual(#{address => "one.two", port => 1122}, net_id_udp_args(35)),
+
+    ok.
+
+-endif.
