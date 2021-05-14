@@ -62,7 +62,12 @@ handle_packet(SCPacket, PacketTime, Pid) ->
             data => base64:encode(Payload)
         }
     ),
-    case pp_udp_sup:maybe_start_worker(PubKeyBin, #{}) of
+
+    {devaddr, DevAddr} = blockchain_helium_packet_v1:routing_info(Packet),
+    <<_AddrBase:25/integer-unsigned-little, NetID:7/integer-unsigned-little>> =
+        <<DevAddr:32/integer-unsigned-little>>,
+
+    case pp_udp_sup:maybe_start_worker(PubKeyBin, net_args(NetID)) of
         {ok, WorkerPid} ->
             pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
         {error, _Reason} = Error ->
@@ -71,4 +76,12 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 _Reason
             ]),
             Error
+    end.
+
+net_args(NetID) ->
+    case application:get_env(packet_purchaser, net_ids, undefined) of
+        undefined ->
+            #{location => "127.0.0.1", port => 1700};
+        Map when erlang:is_map(Map) ->
+            maps:get(NetID, Map)
     end.

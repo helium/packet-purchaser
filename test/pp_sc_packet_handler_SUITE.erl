@@ -8,8 +8,9 @@
 
 -export([
     accept_joins_test/1,
-    net_ids_env_test/1,
-    net_ids_map_test/1
+    net_ids_env_offer_test/1,
+    net_ids_map_offer_test/1,
+    net_ids_map_packet_test/1
 ]).
 
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
@@ -38,7 +39,12 @@
 %% @end
 %%--------------------------------------------------------------------
 all() ->
-    [accept_joins_test, net_ids_env_test, net_ids_map_test].
+    [
+        accept_joins_test,
+        net_ids_env_offer_test,
+        net_ids_map_offer_test,
+        net_ids_map_packet_test
+    ].
 
 %%--------------------------------------------------------------------
 %% TEST CASE SETUP
@@ -85,7 +91,7 @@ accept_joins_test(_Config) ->
 
     ok.
 
-net_ids_map_test(_Config) ->
+net_ids_map_offer_test(_Config) ->
     SendPacketOfferFun = fun(NetId) ->
         #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
         PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
@@ -142,7 +148,7 @@ net_ids_map_test(_Config) ->
 
     ok.
 
-net_ids_env_test(_Config) ->
+net_ids_env_offer_test(_Config) ->
     SendPacketOfferFun = fun(NetId) ->
         #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
         PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
@@ -191,9 +197,66 @@ net_ids_env_test(_Config) ->
 
     ok.
 
+net_ids_map_packet_test(_Config) ->
+    SendPacketFun = fun(NetId) ->
+        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+        Packet = frame_packet(?UNCONFIRMED_UP, PubKeyBin, NetId, 0, #{dont_encode => true}),
+        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+
+        {ok, Pid} = pp_udp_sup:lookup_worker(PubKeyBin),
+        {state, PubKeyBin, _Socket, Address, Port, _PushData, _ScPid, _PullData, _PullDataTimer} = sys:get_state(
+            Pid
+        ),
+        {Address, Port}
+    end,
+
+    application:set_env(packet_purchaser, net_ids, #{
+        ?ACTILITY => #{location => "127.0.0.1", port => 1700},
+        ?ORANGE => #{location => "127.0.0.1", port => 1800},
+        ?COMCAST => #{location => "1.1.1.1", port => 1111}
+    }),
+
+    ?assertMatch({"127.0.0.1", 1700}, SendPacketFun(?ACTILITY)),
+    ?assertMatch({"127.0.0.1", 1800}, SendPacketFun(?ORANGE)),
+    ?assertMatch({"1.1.1.1", 1111}, SendPacketFun(?COMCAST)),
+    ok.
+
 %% ------------------------------------------------------------------
 %% Helper functions
 %% ------------------------------------------------------------------
+
+frame_packet(MType, PubKeyBin, NetId, FCnt, Options) ->
+    NwkSessionKey = <<81, 103, 129, 150, 35, 76, 17, 164, 210, 66, 210, 149, 120, 193, 251, 85>>,
+    AppSessionKey = <<245, 16, 127, 141, 191, 84, 201, 16, 111, 172, 36, 152, 70, 228, 52, 95>>,
+    DevAddr = maps:get(devaddr, Options, <<33554431:25/integer-unsigned-little, NetId:7/integer>>),
+    Payload1 = frame_payload(MType, DevAddr, NwkSessionKey, AppSessionKey, FCnt),
+
+    <<DevNum:32/integer-unsigned-little>> = DevAddr,
+    Routing = blockchain_helium_packet_v1:make_routing_info({devaddr, DevNum}),
+
+    HeliumPacket = #packet_pb{
+        type = lorawan,
+        payload = Payload1,
+        frequency = 923.3,
+        datarate = maps:get(datarate, Options, <<"SF8BW125">>),
+        signal_strength = maps:get(rssi, Options, 0.0),
+        snr = maps:get(snr, Options, 0.0),
+        routing = Routing
+    },
+    Packet = #blockchain_state_channel_packet_v1_pb{
+        packet = HeliumPacket,
+        hotspot = PubKeyBin,
+        region = 'US915'
+    },
+    case maps:get(dont_encode, Options, false) of
+        true ->
+            Packet;
+        false ->
+            Msg = #blockchain_state_channel_message_v1_pb{msg = {packet, Packet}},
+            blockchain_state_channel_v1_pb:encode_msg(Msg)
+    end.
 
 join_offer(PubKeyBin, AppKey, DevNonce) ->
     RoutingInfo = {eui, 1, 1},
