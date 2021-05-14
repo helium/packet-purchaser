@@ -37,11 +37,18 @@ init_per_testcase(TestCase, Config) ->
     {ok, FakeLNSPid} = pp_lns:start_link(#{port => 1700, forward => self()}),
     {PubKeyBin, WorkerPid} = start_gateway(),
 
+    DefaultEnv = application:get_all_env(?APP),
+    ResetEnvFun = fun() ->
+        [application:set_env(?APP, Key, Val) || {Key, Val} <- DefaultEnv],
+        ok
+    end,
+
     lager:info("starting test ~p", [TestCase]),
     [
         {lns, FakeLNSPid},
         {gateway, {PubKeyBin, WorkerPid}},
-        {consensus_member, ConsensusMembers}
+        {consensus_member, ConsensusMembers},
+        {reset_env_fun, ResetEnvFun}
         | Config
     ].
 
@@ -49,6 +56,8 @@ init_per_testcase(TestCase, Config) ->
 end_per_testcase(TestCase, Config) ->
     lager:info("stopping test ~p", [TestCase]),
     FakeLNSPid = proplists:get_value(lns, Config),
+    ResetEnvFun = proplists:get_value(reset_env_fun, Config),
+    ok = ResetEnvFun(),
     ok = gen_server:stop(FakeLNSPid),
     ok = application:stop(?APP),
     ok = application:stop(lager),
