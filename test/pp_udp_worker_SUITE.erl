@@ -165,7 +165,7 @@ pull_data(Config) ->
 
     {ok, {Token, MAC}} = pp_lns:rcv(FakeLNSPid, ?PULL_DATA, timer:seconds(5)),
     ?assert(erlang:is_binary(Token)),
-    ?assertEqual(PubKeyBin, MAC),
+    ?assertEqual(pp_utils:pubkeybin_to_mac(PubKeyBin), MAC),
     ok.
 
 failed_pull_data(Config) ->
