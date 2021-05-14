@@ -43,7 +43,14 @@
 %% @end
 %%--------------------------------------------------------------------
 all() ->
-    [push_data, delay_push_data, pull_data, failed_pull_data, pull_resp, multi_hotspots].
+    [
+        push_data,
+        delay_push_data,
+        pull_data,
+        failed_pull_data,
+        pull_resp,
+        multi_hotspots
+    ].
 
 %%--------------------------------------------------------------------
 %% TEST CASE SETUP
@@ -168,11 +175,11 @@ failed_pull_data(Config) ->
     Ref = erlang:monitor(process, WorkerPid),
     ok = pp_lns:delay_next_udp(FakeLNSPid, timer:seconds(5)),
 
+    %% We potentially expect pull_data messages to be in the mailbox
+    %% from the lns. As long as we're going down, that's fine.
     receive
         {'DOWN', Ref, process, WorkerPid, pull_data_timeout} ->
-            true;
-        Msg ->
-            ct:fail("received unexpected message ~p", [Msg])
+            true
     after 5000 -> ct:fail("down timeout")
     end,
 
