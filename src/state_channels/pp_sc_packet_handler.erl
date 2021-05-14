@@ -71,15 +71,20 @@ handle_packet(SCPacket, PacketTime, Pid) ->
     <<_AddrBase:25/integer-unsigned-little, NetID:7/integer-unsigned-little>> =
         <<DevAddr:32/integer-unsigned-little>>,
 
-    case pp_udp_sup:maybe_start_worker(PubKeyBin, net_id_udp_args(NetID)) of
-        {ok, WorkerPid} ->
-            pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
-        {error, _Reason} = Error ->
-            lager:error("failed to start udp connector for ~p: ~p", [
-                blockchain_utils:addr2name(PubKeyBin),
-                _Reason
-            ]),
-            Error
+    try
+        case pp_udp_sup:maybe_start_worker(PubKeyBin, net_id_udp_args(NetID)) of
+            {ok, WorkerPid} ->
+                pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
+            {error, _Reason} = Error ->
+                lager:error("failed to start udp connector for ~p: ~p", [
+                    blockchain_utils:addr2name(PubKeyBin),
+                    _Reason
+                ]),
+                Error
+        end
+    catch
+        error:{badkey, NetID} ->
+            lager:debug("Ignoring unconfigured NetID ~p", [NetID])
     end.
 
 %% ------------------------------------------------------------------
