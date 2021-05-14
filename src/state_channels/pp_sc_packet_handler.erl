@@ -68,15 +68,20 @@ handle_packet(SCPacket, PacketTime, Pid) ->
     <<_AddrBase:25/integer-unsigned-little, NetID:7/integer-unsigned-little>> =
         <<DevAddr:32/integer-unsigned-little>>,
 
-    case pp_udp_sup:maybe_start_worker(PubKeyBin, net_id_udp_args(NetID)) of
-        {ok, WorkerPid} ->
-            pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
-        {error, _Reason} = Error ->
-            lager:error("failed to start udp connector for ~p: ~p", [
-                blockchain_utils:addr2name(PubKeyBin),
-                _Reason
-            ]),
-            Error
+    try
+        case pp_udp_sup:maybe_start_worker(PubKeyBin, net_id_udp_args(NetID)) of
+            {ok, WorkerPid} ->
+                pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
+            {error, _Reason} = Error ->
+                lager:error("failed to start udp connector for ~p: ~p", [
+                    blockchain_utils:addr2name(PubKeyBin),
+                    _Reason
+                ]),
+                Error
+        end
+    catch
+        error:{badkey, NetID} ->
+            lager:debug("Ignoring unconfigured NetID ~p", [NetID])
     end.
 
 %% ------------------------------------------------------------------
@@ -154,10 +159,18 @@ allowed_net_ids_test() ->
     ?assertEqual([16#000016, 16#000035], allowed_net_ids(), "Base 16 numbers"),
 
     application:set_env(?APP, net_ids, ["000016, 000035"]),
-    ?assertEqual([16#000016, 16#000035], allowed_net_ids(), "Strings numbers get interpreted as base 16"),
+    ?assertEqual(
+        [16#000016, 16#000035],
+        allowed_net_ids(),
+        "Strings numbers get interpreted as base 16"
+    ),
 
     application:set_env(?APP, net_ids, #{16#000016 => test, 16#000035 => test}),
-    ?assertEqual([16#000016, 16#000035], allowed_net_ids(), "Map returns list of configured net ids"),
+    ?assertEqual(
+        [16#000016, 16#000035],
+        allowed_net_ids(),
+        "Map returns list of configured net ids"
+    ),
 
     ok.
 
