@@ -8,7 +8,8 @@
 
 -export([
     accept_joins_test/1,
-    net_ids_test/1
+    net_ids_env_test/1,
+    net_ids_map_test/1
 ]).
 
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
@@ -37,7 +38,7 @@
 %% @end
 %%--------------------------------------------------------------------
 all() ->
-    [accept_joins_test, net_ids_test].
+    [accept_joins_test, net_ids_env_test, net_ids_map_test].
 
 %%--------------------------------------------------------------------
 %% TEST CASE SETUP
@@ -84,7 +85,64 @@ accept_joins_test(_Config) ->
 
     ok.
 
-net_ids_test(_Config) ->
+net_ids_map_test(_Config) ->
+    SendPacketOfferFun = fun(NetId) ->
+        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+        Offer = packet_offer(PubKeyBin, NetId),
+        pp_sc_packet_handler:handle_offer(Offer, self())
+    end,
+
+    %% Buy all NetIDs
+    ok = application:set_env(packet_purchaser, net_ids, [allow_all]),
+    ?assertMatch(ok, SendPacketOfferFun(?ACTILITY)),
+    ?assertMatch(ok, SendPacketOfferFun(?TEKTELIC)),
+    ?assertMatch(ok, SendPacketOfferFun(?COMCAST)),
+    ?assertMatch(ok, SendPacketOfferFun(?EXPERIMENTAL)),
+    ?assertMatch(ok, SendPacketOfferFun(?ORANGE)),
+
+    %% Reject all NetIDs
+    ok = application:set_env(packet_purchaser, net_ids, #{}),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?ACTILITY)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?TEKTELIC)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?COMCAST)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?EXPERIMENTAL)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?ORANGE)),
+
+    %% Buy Only Actility1 ID
+    ok = application:set_env(packet_purchaser, net_ids, #{?ACTILITY => test}),
+    ?assertMatch(ok, SendPacketOfferFun(?ACTILITY)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?TEKTELIC)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?COMCAST)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?EXPERIMENTAL)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?ORANGE)),
+
+    %% Buy Multiple IDs
+    ok = application:set_env(packet_purchaser, net_ids, #{?ACTILITY => test, ?ORANGE => test}),
+    ?assertMatch(ok, SendPacketOfferFun(?ACTILITY)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?TEKTELIC)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?COMCAST)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?EXPERIMENTAL)),
+    ?assertMatch(ok, SendPacketOfferFun(?ORANGE)),
+
+    %% Buy all the IDs we know about
+    ok = application:set_env(packet_purchaser, net_ids, #{
+        ?EXPERIMENTAL => test,
+        ?ACTILITY => test,
+        ?TEKTELIC => test,
+        ?ORANGE => test,
+        ?COMCAST => test
+    }),
+    ?assertMatch(ok, SendPacketOfferFun(?ACTILITY)),
+    ?assertMatch(ok, SendPacketOfferFun(?TEKTELIC)),
+    ?assertMatch(ok, SendPacketOfferFun(?COMCAST)),
+    ?assertMatch(ok, SendPacketOfferFun(?EXPERIMENTAL)),
+    ?assertMatch(ok, SendPacketOfferFun(?ORANGE)),
+
+    ok.
+
+net_ids_env_test(_Config) ->
     SendPacketOfferFun = fun(NetId) ->
         #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
         PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
