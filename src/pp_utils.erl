@@ -4,9 +4,7 @@
 
 -export([
     get_oui/1,
-    pubkeybin_to_mac/1,
-    accept_joins/0,
-    allowed_net_ids/0
+    pubkeybin_to_mac/1
 ]).
 
 -spec get_oui(Chain :: blockchain:blockchain()) -> non_neg_integer() | undefined.
@@ -60,32 +58,4 @@ check_oui_on_chain(OUI, OUIsOnChain) ->
             undefined;
         true ->
             OUI
-    end.
-
--spec accept_joins() -> boolean().
-accept_joins() ->
-    case application:get_env(packet_purchaser, accept_joins, true) of
-        "false" -> false;
-        false -> false;
-        _ -> true
-    end.
-
--spec allowed_net_ids() -> list(integer()).
-allowed_net_ids() ->
-    case application:get_env(packet_purchaser, net_ids, []) of
-        [] ->
-            allow_all;
-        [allow_all] ->
-            allow_all;
-        NetIdsMap when is_map(NetIdsMap) ->
-            maps:keys(NetIdsMap);
-        %% What you put in the list is what you get out.
-        %% Ex: [16#000001, 16#000002]
-        [ID | _] = IDS when erlang:is_number(ID) ->
-            IDS;
-        %% Comma separated string, will be turned into base-16 integers.
-        %% ex: "000001, 0000002"
-        IDS when erlang:is_list(IDS) ->
-            Nums = string:split(IDS, ",", all),
-            lists:map(fun(Num) -> erlang:list_to_integer(string:trim(Num), 16) end, Nums)
     end.
