@@ -61,14 +61,21 @@ push_data(Pid, Token, Data, SCPid) ->
 %% ------------------------------------------------------------------
 init(Args) ->
     process_flag(trap_exit, true),
+    lager:info("~p init with ~p", [?SERVER, Args]),
+
     PubKeyBin = maps:get(pubkeybin, Args),
     lager:md([{gateway_id, blockchain_utils:addr2name(PubKeyBin)}]),
-    lager:info("~p init with ~p", [?SERVER, Args]),
+
     Address = maps:get(address, Args),
     Port = maps:get(port, Args),
     PullDataTimer = maps:get(pull_data_timer, Args, ?PULL_DATA_TIMER),
     {ok, Socket} = gen_udp:open(0, [binary, {active, true}]),
+
+    %% Pull data immediately so we can establish a connection for the first
+    %% pull_response.
+    self() ! ?PULL_DATA_TICK,
     _ = schedule_pull_data(PullDataTimer),
+
     {ok, #state{
         pubkeybin = PubKeyBin,
         socket = Socket,
