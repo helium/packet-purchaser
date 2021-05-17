@@ -19,8 +19,43 @@
     token/1,
     identifier/1,
     identifier_to_atom/1,
-    json_data/1
+    json_data/1,
+    craft_push_data/2,
+    make_join_payload/3
 ]).
+
+craft_push_data(Payload, MAC0) ->
+    Token0 = token(),
+
+    Tmst = erlang:system_time(millisecond),
+    Map = #{
+        time => iso8601:format(
+            calendar:system_time_to_universal_time(Tmst, millisecond)
+        ),
+        tmst => Tmst band 4294967295,
+        freq => 868.1,
+        rfch => 0,
+        modu => <<"LORA">>,
+        datr => <<"SF7BW125">>,
+        rssi => -80,
+        lsnr => -10,
+        size => erlang:byte_size(Payload),
+        data => base64:encode(Payload)
+    },
+
+    Packet = ?MODULE:push_data(Token0, MAC0, Map),
+    {ok, Token0, Packet}.
+
+make_join_payload(AppKey, DevEUI0, DevNonce) ->
+    MType = 2#000,
+    MHDRRFU = 0,
+    Major = 0,
+    AppEUI = pp_utils:reverse(AppKey),
+    DevEUI = pp_utils:hex_to_bin_lsb(pp_utils:reverse(DevEUI0)),
+
+    Payload0 = <<MType:3, MHDRRFU:3, Major:2, AppEUI:8/binary, DevEUI:8/binary, DevNonce:2/binary>>,
+    MIC = crypto:cmac(aes_cbc128, AppKey, Payload0, 4),
+    <<Payload0/binary, MIC:4/binary>>.
 
 %%%-------------------------------------------------------------------
 %% @doc
@@ -198,12 +233,12 @@ push_data_test() ->
                     <<"time">> => iso8601:format(
                         calendar:system_time_to_universal_time(Tmst, millisecond)
                     ),
-                    <<"tmst">> => Tmst,
+                    <<"tmst">> => Tmst band 4294967295,
                     <<"freq">> => 915.2,
                     <<"rfch">> => 0,
                     <<"modu">> => <<"LORA">>,
                     <<"datr">> => <<"datr">>,
-                    <<"rssi">> => -80.0,
+                    <<"rssi">> => -80,
                     <<"lsnr">> => -10,
                     <<"size">> => erlang:byte_size(Payload),
                     <<"data">> => base64:encode(Payload)

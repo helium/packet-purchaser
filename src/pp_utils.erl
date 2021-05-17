@@ -4,8 +4,31 @@
 
 -export([
     get_oui/1,
-    pubkeybin_to_mac/1
+    pubkeybin_to_mac/1,
+    bin_to_hex/1,
+    hex_to_bin/1,
+    hex_to_bin_lsb/1,
+    reverse/1
 ]).
+
+-spec bin_to_hex(binary()) -> binary().
+bin_to_hex(Id) ->
+    <<<<Y>> || <<X:4>> <= Id, Y <- integer_to_list(X, 16)>>.
+
+-spec hex_to_bin(binary()) -> binary().
+hex_to_bin(Id) ->
+    <<<<Z>> || <<X:8, Y:8>> <= Id, Z <- [binary_to_integer(<<X, Y>>, 16)]>>.
+
+-spec hex_to_bin_lsb(binary()) -> binary().
+hex_to_bin_lsb(Id) ->
+    <<<<Z>> || <<X:8, Y:8>> <= Id, Z <- [binary_to_integer(<<Y, X>>, 16)]>>.
+
+-spec reverse(binary()) -> binary().
+reverse(Bin) -> reverse(Bin, <<>>).
+
+-spec reverse(binary(), binary()) -> binary().
+reverse(<<>>, Acc) -> Acc;
+reverse(<<H:1/binary, Rest/binary>>, Acc) -> reverse(Rest, <<H/binary, Acc/binary>>).
 
 -spec get_oui(Chain :: blockchain:blockchain()) -> non_neg_integer() | undefined.
 get_oui(Chain) ->

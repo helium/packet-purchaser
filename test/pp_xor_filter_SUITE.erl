@@ -18,11 +18,17 @@
 -define(APPEUI, <<0, 0, 0, 2, 0, 0, 0, 1>>).
 -define(DEVEUI, <<0, 0, 0, 0, 0, 0, 0, 1>>).
 
+-type device_dev_eui_app_eui() :: binary().
+-type devices_dev_eui_app_eui() :: list(device_dev_eui_app_eui()).
+
 -record(state, {
     chain :: undefined | blockchain:blockchain(),
     oui :: undefined | non_neg_integer(),
-    pending_txns = #{} :: #{blockchain_txn:hash() => blockchain_txn_routing_v1:txn_routing()},
-    filter_to_devices = #{} :: map()
+    pending_txns = #{} :: #{
+        blockchain_txn:hash() => {non_neg_integer(), devices_dev_eui_app_eui()}
+    },
+    filter_to_devices = #{} :: #{non_neg_integer() => devices_dev_eui_app_eui()},
+    check_filters_ref :: undefined | reference()
 }).
 
 %%--------------------------------------------------------------------

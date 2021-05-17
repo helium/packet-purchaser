@@ -16,6 +16,7 @@
 %% Offer rejected reasons
 -define(NOT_ACCEPTING_JOINS, not_accepting_joins).
 -define(NET_ID_REJECTED, net_id_rejected).
+-define(NOT_ACCEPTING_PACKETS, not_accepting_packets).
 
 -spec handle_offer(blockchain_state_channel_offer_v1:offer(), pid()) -> ok.
 handle_offer(Offer, _HandlerPid) ->
@@ -27,6 +28,8 @@ handle_offer(Offer, _HandlerPid) ->
             end;
         #routing_information_pb{data = {devaddr, DevAddr}} ->
             case allowed_net_ids() of
+                allow_none ->
+                    {error, ?NOT_ACCEPTING_PACKETS};
                 allow_all ->
                     ok;
                 IDs ->
@@ -96,13 +99,15 @@ accept_joins() ->
         _ -> true
     end.
 
--spec allowed_net_ids() -> list(integer()) | allow_all.
+-spec allowed_net_ids() -> list(integer()) | allow_all | allow_none.
 allowed_net_ids() ->
     case application:get_env(?APP, net_ids, []) of
         [] ->
             allow_all;
         [allow_all] ->
             allow_all;
+        [allow_none] ->
+            allow_none;
         NetIdsMap when is_map(NetIdsMap) ->
             maps:keys(NetIdsMap);
         %% What you put in the list is what you get out.

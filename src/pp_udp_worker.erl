@@ -10,7 +10,9 @@
 %% ------------------------------------------------------------------
 -export([
     start_link/1,
-    push_data/4
+    push_data/4,
+    simple_test/0,
+    send_join/1
 ]).
 
 %% ------------------------------------------------------------------
@@ -55,6 +57,35 @@ start_link(Args) ->
 -spec push_data(pid(), binary(), binary(), pid()) -> ok | {error, any()}.
 push_data(Pid, Token, Data, SCPid) ->
     gen_server:call(Pid, {push_data, Token, Data, SCPid}).
+
+simple_test() ->
+    DevEUI = <<"a5e802b270dd196e">>,
+    GatewayID = <<"c360747576ca24e2">>,
+    DevNonce = crypto:strong_rand_bytes(2),
+    AppKey = <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>,
+
+    UDPArgs = #{
+        address => {0, 0, 0, 0},
+        port => 1701,
+        pubkeybin => pp_utils:hex_to_bin(GatewayID)
+    },
+
+    {ok, Pid} = pp_udp_worker:start_link(UDPArgs),
+
+    Join = semtech_udp:make_join_payload(AppKey, DevEUI, DevNonce),
+    {ok, Token, Packet} = semtech_udp:craft_push_data(Join),
+    pp_udp_worker:push_data(Pid, Token, Packet, self()),
+
+    {ok, Pid}.
+
+send_join(Pid) ->
+    DevEUI = <<"a5e802b270dd196e">>,
+    DevNonce = crypto:strong_rand_bytes(2),
+    AppKey = <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>,
+
+    Join = semtech_udp:make_join_payload(AppKey, DevEUI, DevNonce),
+    {ok, Token, Packet} = semtech_udp:craft_push_data(Join),
+    pp_udp_worker:push_data(Pid, Token, Packet, self()).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -256,6 +287,7 @@ send_pull_data(
 ) ->
     Token = semtech_udp:token(),
     Data = semtech_udp:pull_data(Token, pp_utils:pubkeybin_to_mac(PubKeyBin)),
+    %% Data = semtech_udp:pull_data(Token, PubKeyBin),
     case gen_udp:send(Socket, Address, Port, Data) of
         ok ->
             lager:debug("sent pull data keepalive ~p", [Token]),
