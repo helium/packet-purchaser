@@ -19,7 +19,8 @@
         jsx,
         iso8601,
         xxhash,
-        hackney
+        hackney,
+        clique
     ]},
     {included_applications, [blockchain]},
     {env, []},
