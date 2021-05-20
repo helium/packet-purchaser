@@ -64,7 +64,7 @@ send_packet(PubKeyBin, Opts0) ->
         payload => <<"payload">>,
         rssi => -80.0,
         freq => 904.299,
-        dr => "SF10BW125",
+        dr => <<"SF10BW125">>,
         snr => 6.199,
         routing => {devaddr, 16#deadbeef},
         region => 'US915',
