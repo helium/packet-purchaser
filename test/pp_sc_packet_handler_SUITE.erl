@@ -314,9 +314,9 @@ net_ids_counter_test(_Config) ->
         lists:seq(1, 2)
     ),
 
-    Expected = [{?ACTILITY, 4}, {?ORANGE, 3}, {?COMCAST, 2}],
-    Actual = ets:tab2list(pp_net_id_packet_count),
-    ?assertEqual(lists:sort(Expected), lists:sort(Actual)),
+    Expected = #{?ACTILITY => 4, ?ORANGE => 3, ?COMCAST => 2},
+    Actual = pp_sc_packet_handler:get_netid_packet_counts(),
+    ?assertEqual(Expected, Actual),
     ok.
 
 %% ------------------------------------------------------------------
