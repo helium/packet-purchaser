@@ -18,12 +18,13 @@
     pull_data/1,
     failed_pull_data/1,
     pull_resp/1,
-    multi_hotspots/1
+    multi_hotspots/1,
+    tee_test/1
 ]).
 
 -record(state, {
     pubkeybin :: libp2p_crypto:pubkey_bin(),
-    socket :: gen_udp:socket(),
+    socket :: pp_udp_socket:socket(),
     address :: inet:socket_address() | inet:hostname(),
     port :: inet:port_number(),
     push_data = #{} :: #{binary() => {binary(), reference()}},
@@ -49,7 +50,8 @@ all() ->
         pull_data,
         failed_pull_data,
         pull_resp,
-        multi_hotspots
+        multi_hotspots,
+        tee_test
     ].
 
 %%--------------------------------------------------------------------
@@ -199,7 +201,7 @@ pull_resp(Config) ->
     {PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
 
     _Opts = pp_lns:send_packet(PubKeyBin, #{}),
-    #state{socket = Socket} = sys:get_state(WorkerPid),
+    #state{socket = {socket, Socket, _, _}} = sys:get_state(WorkerPid),
     {ok, Port} = inet:port(Socket),
 
     Token = semtech_udp:token(),
@@ -232,6 +234,53 @@ pull_resp(Config) ->
             )
     after 3000 -> ct:fail("sc resp timeout")
     end,
+
+    ok.
+
+tee_test(_Config) ->
+    Address = {127, 0, 0, 1},
+    Port1 = 1337,
+    Port2 = 1338,
+
+    %% Start a new worker with a Tee stream
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+    {ok, Pid} = pp_udp_sup:maybe_start_worker(PubKeyBin, #{
+        address => Address,
+        port => Port1,
+        tee => {Address, Port2}
+    }),
+
+    %% Open sockets for receiving
+    {ok, PrimarySocket} = gen_udp:open(Port1, [binary, {active, true}]),
+    {ok, TeeSocket} = gen_udp:open(Port2, [binary, {active, true}]),
+
+    %% Push data through worker
+    Data = <<"test payload">>,
+    Token = semtech_udp:token(),
+    pp_udp_worker:push_data(Pid, Token, Data, self()),
+
+    %% Receive on primary socket
+    Receive1 =
+        receive
+            {udp, PrimarySocket, A1, P1, D1} -> {A1, P1, D1}
+        after 1000 -> ct:fail("no primary message")
+        end,
+
+    %% Receive on tee socket
+    Receive2 =
+        receive
+            {udp, TeeSocket, A2, P2, D2} -> {A2, P2, D2}
+        after 1000 -> ct:fail("no tee message")
+        end,
+
+    %% Make sure both sockets received the same data
+    ?assertEqual(Receive1, Receive2),
+
+    %% shut it all down
+    ok = gen_udp:close(PrimarySocket),
+    ok = gen_udp:close(TeeSocket),
+    ok = gen_server:stop(Pid),
 
     ok.
 
