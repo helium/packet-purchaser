@@ -13,9 +13,20 @@
     handle_packet/3
 ]).
 
+-export([
+    init_ets/0,
+    get_netid_packet_counts/0
+]).
+
 %% Offer rejected reasons
 -define(NOT_ACCEPTING_JOINS, not_accepting_joins).
 -define(NET_ID_REJECTED, net_id_rejected).
+
+-define(ETS, pp_net_id_packet_count).
+
+%% ------------------------------------------------------------------
+%% Packet Handler Functions
+%% ------------------------------------------------------------------
 
 -spec handle_offer(blockchain_state_channel_offer_v1:offer(), pid()) -> ok.
 handle_offer(Offer, _HandlerPid) ->
@@ -74,6 +85,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
     try
         case pp_udp_sup:maybe_start_worker(PubKeyBin, net_id_udp_args(NetID)) of
             {ok, WorkerPid} ->
+                _ = ets:update_counter(?ETS, NetID, 1, {NetID, 0}),
                 pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
             {error, _Reason} = Error ->
                 lager:error("failed to start udp connector for ~p: ~p", [
@@ -86,6 +98,19 @@ handle_packet(SCPacket, PacketTime, Pid) ->
         error:{badkey, NetID} ->
             lager:debug("Ignoring unconfigured NetID ~p", [NetID])
     end.
+
+%% ------------------------------------------------------------------
+%% Counter Functions
+%% ------------------------------------------------------------------
+
+-spec init_ets() -> ok.
+init_ets() ->
+    ?ETS = ets:new(?ETS, [public, named_table, set]),
+    ok.
+
+-spec get_netid_packet_counts() -> map().
+get_netid_packet_counts() ->
+    maps:from_list(ets:tab2list(?ETS)).
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions

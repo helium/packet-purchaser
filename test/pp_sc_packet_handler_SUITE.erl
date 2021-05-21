@@ -12,7 +12,8 @@
     net_ids_map_offer_test/1,
     net_ids_map_packet_test/1,
     net_ids_env_packet_test/1,
-    net_ids_no_config_test/1
+    net_ids_no_config_test/1,
+    net_ids_counter_test/1
 ]).
 
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
@@ -47,7 +48,8 @@ all() ->
         net_ids_map_offer_test,
         net_ids_map_packet_test,
         net_ids_env_packet_test,
-        net_ids_no_config_test
+        net_ids_no_config_test,
+        net_ids_counter_test
     ].
 
 %%--------------------------------------------------------------------
@@ -274,6 +276,47 @@ net_ids_env_packet_test(_Config) ->
     ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?ACTILITY)),
     ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?ORANGE)),
     ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?COMCAST)),
+    ok.
+
+net_ids_counter_test(_Config) ->
+    SendPacketFun = fun(NetId) ->
+        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+        Packet = frame_packet(?UNCONFIRMED_UP, PubKeyBin, NetId, 0, #{dont_encode => true}),
+        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+
+        {ok, Pid} = pp_udp_sup:lookup_worker(PubKeyBin),
+        {state, PubKeyBin, _Socket, Address, Port, _PushData, _ScPid, _PullData, _PullDataTimer} = sys:get_state(
+            Pid
+        ),
+        {Address, Port}
+    end,
+
+    application:set_env(packet_purchaser, net_ids, [?ACTILITY, ?ORANGE, ?COMCAST]),
+    application:set_env(packet_purchaser, pp_udp_worker, [
+        {address, "1.1.1.1"},
+        {port, 1337}
+    ]),
+
+    true = ets:delete_all_objects(pp_net_id_packet_count),
+
+    lists:foreach(
+        fun(_) -> ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?ACTILITY)) end,
+        lists:seq(1, 4)
+    ),
+    lists:foreach(
+        fun(_) -> ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?ORANGE)) end,
+        lists:seq(1, 3)
+    ),
+    lists:foreach(
+        fun(_) -> ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?COMCAST)) end,
+        lists:seq(1, 2)
+    ),
+
+    Expected = #{?ACTILITY => 4, ?ORANGE => 3, ?COMCAST => 2},
+    Actual = pp_sc_packet_handler:get_netid_packet_counts(),
+    ?assertEqual(Expected, Actual),
     ok.
 
 %% ------------------------------------------------------------------
