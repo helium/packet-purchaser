@@ -48,7 +48,8 @@ handle_offer(Offer, _HandlerPid) ->
                                 true -> ok;
                                 false -> {error, ?NET_ID_REJECTED}
                             end;
-                        _ -> {error, ?NET_TYPE_PREFIX_NOT_ZERO}
+                        _ ->
+                            {error, ?NET_TYPE_PREFIX_NOT_ZERO}
                     end
             end
     end.
@@ -82,8 +83,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
     ),
 
     {devaddr, DevAddr} = blockchain_helium_packet_v1:routing_info(Packet),
-    <<_AddrBase:25/integer-unsigned-little, NetID:7/integer-unsigned-little>> =
-        <<DevAddr:32/integer-unsigned-little>>,
+    <<_A:25, NetID:6/integer-unsigned-little, 0:1>> = <<DevAddr:32/integer-unsigned-little>>,
 
     try
         case pp_udp_sup:maybe_start_worker(PubKeyBin, net_id_udp_args(NetID)) of
