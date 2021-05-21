@@ -80,7 +80,7 @@ push_data(Config) ->
                 <<"rxpk">> => [
                     #{
                         <<"data">> => base64:encode(maps:get(payload, Opts)),
-                        <<"datr">> => maps:get(dr, Opts),
+                        <<"datr">> => erlang:list_to_binary(maps:get(dr, Opts)),
                         <<"freq">> => maps:get(freq, Opts),
                         <<"rfch">> => 0,
                         <<"lsnr">> => maps:get(snr, Opts),
@@ -119,7 +119,7 @@ delay_push_data(Config) ->
                 <<"rxpk">> => [
                     #{
                         <<"data">> => base64:encode(maps:get(payload, Opts0)),
-                        <<"datr">> => maps:get(dr, Opts0),
+                        <<"datr">> => erlang:list_to_binary(maps:get(dr, Opts0)),
                         <<"freq">> => maps:get(freq, Opts0),
                         <<"rfch">> => 0,
                         <<"lsnr">> => maps:get(snr, Opts0),
@@ -148,7 +148,7 @@ delay_push_data(Config) ->
                 <<"rxpk">> => [
                     #{
                         <<"data">> => base64:encode(maps:get(payload, Opts1)),
-                        <<"datr">> => maps:get(dr, Opts1),
+                        <<"datr">> => erlang:list_to_binary(maps:get(dr, Opts1)),
                         <<"freq">> => maps:get(freq, Opts1),
                         <<"rfch">> => 0,
                         <<"lsnr">> => maps:get(snr, Opts1),
@@ -253,7 +253,7 @@ multi_hotspots(Config) ->
                 <<"rxpk">> => [
                     #{
                         <<"data">> => base64:encode(maps:get(payload, Opts1)),
-                        <<"datr">> => maps:get(dr, Opts1),
+                        <<"datr">> => erlang:list_to_binary(maps:get(dr, Opts1)),
                         <<"freq">> => maps:get(freq, Opts1),
                         <<"rfch">> => 0,
                         <<"lsnr">> => maps:get(snr, Opts1),
@@ -279,7 +279,7 @@ multi_hotspots(Config) ->
                 <<"rxpk">> => [
                     #{
                         <<"data">> => base64:encode(maps:get(payload, Opts2)),
-                        <<"datr">> => maps:get(dr, Opts2),
+                        <<"datr">> => erlang:list_to_binary(maps:get(dr, Opts2)),
                         <<"freq">> => maps:get(freq, Opts2),
                         <<"rfch">> => 0,
                         <<"lsnr">> => maps:get(snr, Opts2),
