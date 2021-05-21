@@ -21,6 +21,7 @@
 %% Offer rejected reasons
 -define(NOT_ACCEPTING_JOINS, not_accepting_joins).
 -define(NET_ID_REJECTED, net_id_rejected).
+-define(NET_TYPE_PREFIX_NOT_ZERO, net_type_prefix_not_zero).
 
 -define(ETS, pp_net_id_packet_count).
 
@@ -41,11 +42,13 @@ handle_offer(Offer, _HandlerPid) ->
                 allow_all ->
                     ok;
                 IDs ->
-                    <<_AddrBase:25/integer-unsigned-little, NetID:7/integer-unsigned-little>> =
-                        <<DevAddr:32/integer-unsigned-little>>,
-                    case lists:member(NetID, IDs) of
-                        true -> ok;
-                        false -> {error, ?NET_ID_REJECTED}
+                    case <<DevAddr:32/integer-unsigned-little>> of
+                        <<_A:25, NetID:6/integer-unsigned-little, 0:1>> ->
+                            case lists:member(NetID, IDs) of
+                                true -> ok;
+                                false -> {error, ?NET_ID_REJECTED}
+                            end;
+                        _ -> {error, ?NET_TYPE_PREFIX_NOT_ZERO}
                     end
             end
     end.
