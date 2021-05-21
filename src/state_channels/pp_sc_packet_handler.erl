@@ -70,7 +70,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
             codr => <<"4/5">>,
             stat => 1,
             chan => 0,
-            datr => to_bin(blockchain_helium_packet_v1:datarate(Packet)),
+            datr => erlang:list_to_binary(blockchain_helium_packet_v1:datarate(Packet)),
             rssi => erlang:trunc(blockchain_helium_packet_v1:signal_strength(Packet)),
             lsnr => blockchain_helium_packet_v1:snr(Packet),
             size => erlang:byte_size(Payload),
@@ -152,11 +152,6 @@ net_id_udp_args(NetID) ->
         _UndefinedOrList ->
             #{}
     end.
-
-to_bin(Bin) when is_binary(Bin) ->
-    Bin;
-to_bin(List) when is_list(List) ->
-    erlang:list_to_binary(List).
 
 %% ------------------------------------------------------------------
 %% EUNIT Tests

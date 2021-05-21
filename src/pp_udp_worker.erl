@@ -36,7 +36,7 @@
 
 -record(state, {
     pubkeybin :: libp2p_crypto:pubkey_bin(),
-    socket :: gen_udp:socket(),
+    socket :: pp_udp_socket:socket(),
     address :: inet:socket_address() | inet:hostname(),
     port :: inet:port_number(),
     push_data = #{} :: #{binary() => {binary(), reference()}},
@@ -69,7 +69,7 @@ init(Args) ->
     Address = maps:get(address, Args),
     Port = maps:get(port, Args),
     PullDataTimer = maps:get(pull_data_timer, Args, ?PULL_DATA_TIMER),
-    {ok, Socket} = gen_udp:open(0, [binary, {active, true}]),
+    {ok, Socket} = pp_udp_socket:open({Address, Port}, maps:get(tee, Args, undefined)),
 
     %% Pull data immediately so we can establish a connection for the first
     %% pull_response.
@@ -105,7 +105,7 @@ handle_cast(_Msg, State) ->
 handle_info(
     {udp, Socket, _Address, Port, Data},
     #state{
-        socket = Socket,
+        socket = {socket, Socket, _, _},
         port = Port
     } = State
 ) ->
@@ -150,7 +150,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 terminate(_Reason, #state{socket = Socket}) ->
     lager:info("going down ~p", [_Reason]),
-    ok = gen_udp:close(Socket),
+    ok = pp_udp_socket:close(Socket),
     ok.
 
 %% ------------------------------------------------------------------
@@ -249,14 +249,12 @@ send_pull_data(
     #state{
         pubkeybin = PubKeyBin,
         socket = Socket,
-        address = Address,
-        port = Port,
         pull_data_timer = PullDataTimer
     }
 ) ->
     Token = semtech_udp:token(),
     Data = semtech_udp:pull_data(Token, pp_utils:pubkeybin_to_mac(PubKeyBin)),
-    case gen_udp:send(Socket, Address, Port, Data) of
+    case pp_udp_socket:send(Socket, Data) of
         ok ->
             lager:debug("sent pull data keepalive ~p", [Token]),
             TimerRef = erlang:send_after(PullDataTimer, self(), ?PULL_DATA_TIMEOUT_TICK),
@@ -272,7 +270,7 @@ send_push_data(
     Data,
     #state{socket = Socket, address = Address, port = Port}
 ) ->
-    Reply = gen_udp:send(Socket, Address, Port, Data),
+    Reply = pp_udp_socket:send(Socket, Data),
     TimerRef = erlang:send_after(?PUSH_DATA_TIMER, self(), {?PUSH_DATA_TICK, Token}),
     lager:debug("sent ~p/~p to ~p:~p replied: ~p", [Token, Data, Address, Port, Reply]),
     {Reply, TimerRef}.
@@ -283,6 +281,6 @@ send_tx_ack(
     #state{pubkeybin = PubKeyBin, socket = Socket, address = Address, port = Port}
 ) ->
     Data = semtech_udp:tx_ack(Token, pp_utils:pubkeybin_to_mac(PubKeyBin)),
-    Reply = gen_udp:send(Socket, Address, Port, Data),
+    Reply = pp_udp_socket:send(Socket, Data),
     lager:debug("sent ~p/~p to ~p:~p replied: ~p", [Token, Data, Address, Port, Reply]),
     Reply.

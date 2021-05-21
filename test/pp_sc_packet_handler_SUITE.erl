@@ -336,7 +336,7 @@ frame_packet(MType, PubKeyBin, NetId, FCnt, Options) ->
         type = lorawan,
         payload = Payload1,
         frequency = 923.3,
-        datarate = maps:get(datarate, Options, <<"SF8BW125">>),
+        datarate = maps:get(datarate, Options, "SF8BW125"),
         signal_strength = maps:get(rssi, Options, 0.0),
         snr = maps:get(snr, Options, 0.0),
         routing = Routing
@@ -362,7 +362,7 @@ join_offer(PubKeyBin, AppKey, DevNonce) ->
         1000,
         0,
         923.3,
-        <<"SF8BW125">>,
+        "SF8BW125",
         0.0,
         RoutingInfo
     ),
@@ -388,7 +388,7 @@ packet_offer(PubKeyBin, NetID) ->
         type = lorawan,
         payload = Payload,
         frequency = 923.3,
-        datarate = <<"SF8BW125">>,
+        datarate = "SF8BW125",
         signal_strength = 0.0,
         snr = 0.0,
         routing = Routing
