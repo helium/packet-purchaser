@@ -42,7 +42,7 @@ handle_offer(Offer, _HandlerPid) ->
                 allow_all ->
                     ok;
                 IDs ->
-                    {NetID, _NetIDType} = net_id(<<DevAddr:32/integer-unsigned>>),
+                    {NetID, _NetIDType} = lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>),
                     lager:debug("Offer [Devaddr: ~p] [NetID: ~p] [Type: ~p]", [
                         DevAddr,
                         NetID,
@@ -84,7 +84,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
     ),
 
     {devaddr, DevAddr} = blockchain_helium_packet_v1:routing_info(Packet),
-    {NetID, _NetIDType} = net_id(<<DevAddr:32/integer-unsigned>>),
+    {NetID, _NetIDType} = lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>),
     lager:debug("Packet [Devaddr: ~p] [NetID: ~p] [Type: ~p]", [DevAddr, NetID, _NetIDType]),
 
     try
@@ -121,46 +121,7 @@ get_netid_packet_counts() ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
--spec net_id(binary()) -> {non_neg_integer(), 0..7}.
-net_id(DevAddr) ->
-    Type = net_id_type(DevAddr),
-    NetID =
-        case Type of
-            0 -> get_net_id(DevAddr, 1, 6);
-            1 -> get_net_id(DevAddr, 2, 6);
-            2 -> get_net_id(DevAddr, 3, 9);
-            3 -> get_net_id(DevAddr, 4, 11);
-            4 -> get_net_id(DevAddr, 5, 12);
-            5 -> get_net_id(DevAddr, 6, 13);
-            6 -> get_net_id(DevAddr, 7, 15);
-            7 -> get_net_id(DevAddr, 8, 17)
-        end,
-    {NetID, Type}.
 
--spec net_id_type(binary()) -> 0..7.
-net_id_type(<<First:8/integer-unsigned, _/binary>>) ->
-    net_id_type(First, 7).
-
--spec net_id_type(non_neg_integer(), non_neg_integer()) -> 0..7.
-net_id_type(Prefix, Index) ->
-    case Prefix band (1 bsl Index) of
-        0 -> 7 - Index;
-        _ -> net_id_type(Prefix, Index - 1)
-    end.
-
--spec get_net_id(binary(), non_neg_integer(), non_neg_integer()) -> non_neg_integer().
-get_net_id(DevAddr, PrefixLength, NwkIDBits) ->
-    <<Temp:32/integer-unsigned>> = DevAddr,
-    One = uint32(Temp bsl PrefixLength),
-    Two = uint32(One bsr (32 - NwkIDBits)),
-
-    IgnoreSize = 32 - NwkIDBits,
-    <<_:IgnoreSize, NetID:NwkIDBits/integer-unsigned>> = <<Two:32/integer-unsigned>>,
-    NetID.
-
--spec uint32(integer()) -> integer().
-uint32(Num) ->
-    Num band 4294967295.
 
 -spec accept_joins() -> boolean().
 accept_joins() ->
