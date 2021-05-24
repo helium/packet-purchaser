@@ -42,14 +42,15 @@ handle_offer(Offer, _HandlerPid) ->
                 allow_all ->
                     ok;
                 IDs ->
-                    case <<DevAddr:32/integer-unsigned-little>> of
-                        <<_A:25, NetID:6/integer-unsigned-little, 0:1>> ->
-                            case lists:member(NetID, IDs) of
-                                true -> ok;
-                                false -> {error, ?NET_ID_REJECTED}
-                            end;
-                        _ ->
-                            {error, ?NET_TYPE_PREFIX_NOT_ZERO}
+                    {NetID, _NetIDType} = lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>),
+                    lager:debug("Offer [Devaddr: ~p] [NetID: ~p] [Type: ~p]", [
+                        DevAddr,
+                        NetID,
+                        _NetIDType
+                    ]),
+                    case lists:member(NetID, IDs) of
+                        true -> ok;
+                        false -> {error, ?NET_ID_REJECTED}
                     end
             end
     end.
@@ -83,7 +84,8 @@ handle_packet(SCPacket, PacketTime, Pid) ->
     ),
 
     {devaddr, DevAddr} = blockchain_helium_packet_v1:routing_info(Packet),
-    <<_A:25, NetID:6/integer-unsigned-little, 0:1>> = <<DevAddr:32/integer-unsigned-little>>,
+    {NetID, _NetIDType} = lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>),
+    lager:debug("Packet [Devaddr: ~p] [NetID: ~p] [Type: ~p]", [DevAddr, NetID, _NetIDType]),
 
     try
         case pp_udp_sup:maybe_start_worker(PubKeyBin, net_id_udp_args(NetID)) of
@@ -118,6 +120,8 @@ get_netid_packet_counts() ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
+
+
 
 -spec accept_joins() -> boolean().
 accept_joins() ->
