@@ -90,25 +90,31 @@ handle_packet(SCPacket, PacketTime, Pid) ->
         }
     ),
 
-    {devaddr, DevAddr} = blockchain_helium_packet_v1:routing_info(Packet),
-    {NetID, _NetIDType} = lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>),
-    lager:debug("Packet [Devaddr: ~p] [NetID: ~p] [Type: ~p]", [DevAddr, NetID, _NetIDType]),
-
-    try
-        case pp_udp_sup:maybe_start_worker(PubKeyBin, net_id_udp_args(NetID)) of
-            {ok, WorkerPid} ->
-                _ = ets:update_counter(?ETS, NetID, 1, {NetID, 0}),
-                pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
-            {error, _Reason} = Error ->
-                lager:error("failed to start udp connector for ~p: ~p", [
-                    blockchain_utils:addr2name(PubKeyBin),
-                    _Reason
-                ]),
-                Error
-        end
-    catch
-        error:{badkey, NetID} ->
-            lager:debug("Ignoring unconfigured NetID ~p", [NetID])
+    case blockchain_helium_packet_v1:routing_info(Packet) of
+        {devaddr, DevAddr} ->
+            try
+                {ok, NetID, _NetIDType} = lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>),
+                lager:debug(
+                    "Packet [Devaddr: ~p] [NetID: ~p] [Type: ~p]",
+                    [DevAddr, NetID, _NetIDType]
+                ),
+                case pp_udp_sup:maybe_start_worker(PubKeyBin, net_id_udp_args(NetID)) of
+                    {ok, WorkerPid} ->
+                        _ = ets:update_counter(?ETS, NetID, 1, {NetID, 0}),
+                        pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
+                    {error, _Reason} = Error ->
+                        lager:error(
+                            "failed to start udp connector for ~p: ~p",
+                            [blockchain_utils:addr2name(PubKeyBin), _Reason]
+                        ),
+                        Error
+                end
+            catch
+                error:{badkey, KeyNetID} ->
+                    lager:debug("Ignoring unconfigured NetID ~p", [KeyNetID])
+            end;
+        {eui, _, _} = EUI ->
+            lager:info("Not handling join packets, dropping ~p in packet ~p", [EUI, Packet])
     end.
 
 %% ------------------------------------------------------------------
