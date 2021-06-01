@@ -21,7 +21,7 @@
 %% Offer rejected reasons
 -define(NOT_ACCEPTING_JOINS, not_accepting_joins).
 -define(NET_ID_REJECTED, net_id_rejected).
--define(NET_TYPE_PREFIX_NOT_ZERO, net_type_prefix_not_zero).
+-define(NET_ID_INVALID, net_id_invalid).
 
 -define(ETS, pp_net_id_packet_count).
 
@@ -42,15 +42,22 @@ handle_offer(Offer, _HandlerPid) ->
                 allow_all ->
                     ok;
                 IDs ->
-                    {NetID, _NetIDType} = lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>),
-                    lager:debug("Offer [Devaddr: ~p] [NetID: ~p] [Type: ~p]", [
-                        DevAddr,
-                        NetID,
-                        _NetIDType
-                    ]),
-                    case lists:member(NetID, IDs) of
-                        true -> ok;
-                        false -> {error, ?NET_ID_REJECTED}
+                    case lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>) of
+                        {ok, NetID, _NetIDType} ->
+                            lager:debug(
+                                "Offer [Devaddr: ~p] [NetID: ~p] [Type: ~p]",
+                                [DevAddr, NetID, _NetIDType]
+                            ),
+                            case lists:member(NetID, IDs) of
+                                true -> ok;
+                                false -> {error, ?NET_ID_REJECTED}
+                            end;
+                        {error, _Error} ->
+                            lager:warning(
+                                "Offer Invalid NetID [DevAddr: ~p] [Error: ~p]",
+                                [DevAddr, _Error]
+                            ),
+                            {error, ?NET_ID_INVALID}
                     end
             end
     end.
@@ -120,8 +127,6 @@ get_netid_packet_counts() ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
-
-
 
 -spec accept_joins() -> boolean().
 accept_joins() ->
