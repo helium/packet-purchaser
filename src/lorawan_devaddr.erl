@@ -4,7 +4,7 @@
 
 -spec net_id(binary()) -> {ok, non_neg_integer(), 0..7} | {error, invalid_net_id_type}.
 net_id(DevNum) when erlang:is_number(DevNum) ->
-    net_id(erlang:integer_to_binary(DevNum, 10));
+    net_id(<<DevNum:32/integer-unsigned>>);
 net_id(DevAddr) ->
     try
         Type = net_id_type(DevAddr),
