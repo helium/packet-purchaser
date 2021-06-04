@@ -15,6 +15,7 @@
 
 -export([
     init_ets/0,
+    cleanup_ets/0,
     get_netid_packet_counts/0
 ]).
 
@@ -24,6 +25,7 @@
 -define(NET_ID_INVALID, net_id_invalid).
 
 -define(ETS, pp_net_id_packet_count).
+-define(DETS, pp_metrics_dets).
 
 %% ------------------------------------------------------------------
 %% Packet Handler Functions
@@ -123,7 +125,20 @@ handle_packet(SCPacket, PacketTime, Pid) ->
 
 -spec init_ets() -> ok.
 init_ets() ->
-    ?ETS = ets:new(?ETS, [public, named_table, set]),
+    File = pp_utils:get_metrics_filename(),
+    case ets:file2tab(File) of
+        {ok, ?ETS} ->
+            lager:info("Metrics continued from last shutdown");
+        {error, _} = Err ->
+            lager:warning("Unable to open ~p ~p. Metrics will start over", [File, Err]),
+            ?ETS = ets:new(?ETS, [public, named_table, set])
+    end,
+    ok.
+
+-spec cleanup_ets() -> ok.
+cleanup_ets() ->
+    File = pp_utils:get_metrics_filename(),
+    ok = ets:tab2file(?ETS, File, [{sync, true}]),
     ok.
 
 -spec get_netid_packet_counts() -> map().

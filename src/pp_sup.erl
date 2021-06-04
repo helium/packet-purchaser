@@ -52,8 +52,6 @@ start_link() ->
 %% Supervisor callbacks
 %%====================================================================
 init([]) ->
-    ok = pp_sc_packet_handler:init_ets(),
-
     {ok, _} = application:ensure_all_started(lager),
     {ok, _} = application:ensure_all_started(ranch),
     lager:info("init ~p", [?SERVER]),
