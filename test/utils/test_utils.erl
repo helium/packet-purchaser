@@ -18,6 +18,45 @@ init_per_testcase(TestCase, Config) ->
     ok = application:set_env(blockchain, base_dir, BaseDir ++ "/blockchain_data"),
     ok = application:set_env(lager, log_root, BaseDir ++ "/log"),
     ok = application:set_env(lager, crash_log, "crash.log"),
+    FormatStr = [
+        "[",
+        date,
+        " ",
+        time,
+        "] ",
+        pid,
+        " [",
+        severity,
+        "]",
+        {device_id, [" [", device_id, "]"], ""},
+        " [",
+        {module, ""},
+        {function, [":", function], ""},
+        {line, [":", line], ""},
+        "] ",
+        message,
+        "\n"
+    ],
+    case os:getenv("CT_LAGER", "NONE") of
+        "DEBUG" ->
+            ok = application:set_env(lager, handlers, [
+                {lager_console_backend, [
+                    {level, error},
+                    {formatter_config, FormatStr}
+                ]},
+                {lager_file_backend, [
+                    {file, "packet_purchaser.log"},
+                    {level, error},
+                    {formatter_config, FormatStr}
+                ]}
+            ]),
+            ok = application:set_env(lager, traces, [
+                {lager_console_backend, [{application, packet_purchaser}], debug},
+                {{lager_file_backend, "packet_purchaser.log"}, [{application, router}], debug}
+            ]);
+        _ ->
+            ok
+    end,
 
     {ok, _} = application:ensure_all_started(?APP),
 
