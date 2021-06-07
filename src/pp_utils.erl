@@ -4,7 +4,8 @@
 
 -export([
     get_oui/1,
-    pubkeybin_to_mac/1
+    pubkeybin_to_mac/1,
+    get_metrics_filename/0
 ]).
 
 -spec get_oui(Chain :: blockchain:blockchain()) -> non_neg_integer() | undefined.
@@ -59,3 +60,7 @@ check_oui_on_chain(OUI, OUIsOnChain) ->
         true ->
             OUI
     end.
+
+-spec get_metrics_filename() -> string().
+get_metrics_filename() ->
+    application:get_env(?APP, pp_metrics_file, "/var/data/pp_metrics.dat").

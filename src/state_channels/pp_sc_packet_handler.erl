@@ -15,15 +15,17 @@
 
 -export([
     init_ets/0,
+    cleanup_ets/0,
     get_netid_packet_counts/0
 ]).
 
 %% Offer rejected reasons
 -define(NOT_ACCEPTING_JOINS, not_accepting_joins).
 -define(NET_ID_REJECTED, net_id_rejected).
--define(NET_TYPE_PREFIX_NOT_ZERO, net_type_prefix_not_zero).
+-define(NET_ID_INVALID, net_id_invalid).
 
 -define(ETS, pp_net_id_packet_count).
+-define(DETS, pp_metrics_dets).
 
 %% ------------------------------------------------------------------
 %% Packet Handler Functions
@@ -42,15 +44,22 @@ handle_offer(Offer, _HandlerPid) ->
                 allow_all ->
                     ok;
                 IDs ->
-                    {NetID, _NetIDType} = lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>),
-                    lager:debug("Offer [Devaddr: ~p] [NetID: ~p] [Type: ~p]", [
-                        DevAddr,
-                        NetID,
-                        _NetIDType
-                    ]),
-                    case lists:member(NetID, IDs) of
-                        true -> ok;
-                        false -> {error, ?NET_ID_REJECTED}
+                    case lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>) of
+                        {ok, NetID, _NetIDType} ->
+                            lager:debug(
+                                "Offer [Devaddr: ~p] [NetID: ~p] [Type: ~p]",
+                                [DevAddr, NetID, _NetIDType]
+                            ),
+                            case lists:member(NetID, IDs) of
+                                true -> ok;
+                                false -> {error, ?NET_ID_REJECTED}
+                            end;
+                        {error, _Error} ->
+                            lager:warning(
+                                "Offer Invalid NetID [DevAddr: ~p] [Error: ~p]",
+                                [DevAddr, _Error]
+                            ),
+                            {error, ?NET_ID_INVALID}
                     end
             end
     end.
@@ -83,25 +92,31 @@ handle_packet(SCPacket, PacketTime, Pid) ->
         }
     ),
 
-    {devaddr, DevAddr} = blockchain_helium_packet_v1:routing_info(Packet),
-    {NetID, _NetIDType} = lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>),
-    lager:debug("Packet [Devaddr: ~p] [NetID: ~p] [Type: ~p]", [DevAddr, NetID, _NetIDType]),
-
-    try
-        case pp_udp_sup:maybe_start_worker(PubKeyBin, net_id_udp_args(NetID)) of
-            {ok, WorkerPid} ->
-                _ = ets:update_counter(?ETS, NetID, 1, {NetID, 0}),
-                pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
-            {error, _Reason} = Error ->
-                lager:error("failed to start udp connector for ~p: ~p", [
-                    blockchain_utils:addr2name(PubKeyBin),
-                    _Reason
-                ]),
-                Error
-        end
-    catch
-        error:{badkey, NetID} ->
-            lager:debug("Ignoring unconfigured NetID ~p", [NetID])
+    case blockchain_helium_packet_v1:routing_info(Packet) of
+        {devaddr, DevAddr} ->
+            try
+                {ok, NetID, _NetIDType} = lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>),
+                lager:debug(
+                    "Packet [Devaddr: ~p] [NetID: ~p] [Type: ~p]",
+                    [DevAddr, NetID, _NetIDType]
+                ),
+                case pp_udp_sup:maybe_start_worker(PubKeyBin, net_id_udp_args(NetID)) of
+                    {ok, WorkerPid} ->
+                        _ = ets:update_counter(?ETS, NetID, 1, {NetID, 0}),
+                        pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
+                    {error, _Reason} = Error ->
+                        lager:error(
+                            "failed to start udp connector for ~p: ~p",
+                            [blockchain_utils:addr2name(PubKeyBin), _Reason]
+                        ),
+                        Error
+                end
+            catch
+                error:{badkey, KeyNetID} ->
+                    lager:debug("Ignoring unconfigured NetID ~p", [KeyNetID])
+            end;
+        {eui, _, _} = EUI ->
+            lager:info("Not handling join packets, dropping ~p in packet ~p", [EUI, Packet])
     end.
 
 %% ------------------------------------------------------------------
@@ -110,7 +125,20 @@ handle_packet(SCPacket, PacketTime, Pid) ->
 
 -spec init_ets() -> ok.
 init_ets() ->
-    ?ETS = ets:new(?ETS, [public, named_table, set]),
+    File = pp_utils:get_metrics_filename(),
+    case ets:file2tab(File) of
+        {ok, ?ETS} ->
+            lager:info("Metrics continued from last shutdown");
+        {error, _} = Err ->
+            lager:warning("Unable to open ~p ~p. Metrics will start over", [File, Err]),
+            ?ETS = ets:new(?ETS, [public, named_table, set])
+    end,
+    ok.
+
+-spec cleanup_ets() -> ok.
+cleanup_ets() ->
+    File = pp_utils:get_metrics_filename(),
+    ok = ets:tab2file(?ETS, File, [{sync, true}]),
     ok.
 
 -spec get_netid_packet_counts() -> map().
@@ -120,8 +148,6 @@ get_netid_packet_counts() ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
-
-
 
 -spec accept_joins() -> boolean().
 accept_joins() ->

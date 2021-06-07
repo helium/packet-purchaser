@@ -183,16 +183,11 @@ failed_pull_data(Config) ->
     FakeLNSPid = proplists:get_value(lns, Config),
     {_PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
 
-    Ref = erlang:monitor(process, WorkerPid),
     ok = pp_lns:delay_next_udp(FakeLNSPid, timer:seconds(5)),
 
-    %% We potentially expect pull_data messages to be in the mailbox
-    %% from the lns. As long as we're going down, that's fine.
-    receive
-        {'DOWN', Ref, process, WorkerPid, pull_data_timeout} ->
-            true
-    after 5000 -> ct:fail("down timeout")
-    end,
+    test_utils:wait_until(fun() -> not erlang:is_process_alive(WorkerPid) end),
+    %% One more check to make sure we exited waiting for the right reason.
+    ?assert(not erlang:is_process_alive(WorkerPid)),
 
     ok.
 
