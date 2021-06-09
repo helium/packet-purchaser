@@ -240,7 +240,10 @@ tee_test(_Config) ->
     %% Start a new worker with a Tee stream
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
-    {ok, Pid} = pp_udp_sup:maybe_start_worker(PubKeyBin, #{
+
+    %% NOTE: NetID doesn't matter here because we're pushing data directly
+    %% through the udp worker, not going through the packet_handler.
+    {ok, Pid} = pp_udp_sup:maybe_start_worker({PubKeyBin, 0}, #{
         address => Address,
         port => Port1,
         tee => {Address, Port2}
@@ -285,7 +288,9 @@ multi_hotspots(Config) ->
 
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin2 = libp2p_crypto:pubkey_to_bin(PubKey),
-    {ok, WorkerPid2} = pp_udp_sup:maybe_start_worker(PubKeyBin2, #{}),
+    %% NetID to ensure sending packets from pp_lns get routed to this worker
+    {ok, NetID} = lorawan_devaddr:net_id(16#deadbeef),
+    {ok, WorkerPid2} = pp_udp_sup:maybe_start_worker({PubKeyBin2, NetID}, #{}),
 
     Opts1 = pp_lns:send_packet(PubKeyBin1, #{payload => <<"payload1">>}),
     Opts2 = pp_lns:send_packet(PubKeyBin2, #{payload => <<"payload2">>}),

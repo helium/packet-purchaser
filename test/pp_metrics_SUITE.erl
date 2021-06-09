@@ -104,14 +104,14 @@ location_counter_test(_Config) ->
     ok.
 
 net_ids_counter_test(_Config) ->
-    SendPacketFun = fun(DevAddr) ->
+    SendPacketFun = fun(DevAddr, NetID) ->
         #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
         PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
         Packet = frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{dont_encode => true}),
         pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
 
-        {ok, Pid} = pp_udp_sup:lookup_worker(PubKeyBin),
+        {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
         {state, PubKeyBin, _Socket, Address, Port, _PushData, _ScPid, _PullData, _PullDataTimer} = sys:get_state(
             Pid
         ),
@@ -128,17 +128,17 @@ net_ids_counter_test(_Config) ->
 
     ActilityDevAddr = pp_utils:hex_to_binary(<<"04ABCDEF">>),
     lists:foreach(
-        fun(_) -> ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(ActilityDevAddr)) end,
+        fun(_) -> ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(ActilityDevAddr, ?ACTILITY)) end,
         lists:seq(1, 4)
     ),
     OrangeDevAddr = pp_utils:hex_to_binary(<<"1E123456">>),
     lists:foreach(
-        fun(_) -> ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(OrangeDevAddr)) end,
+        fun(_) -> ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(OrangeDevAddr, ?ORANGE)) end,
         lists:seq(1, 3)
     ),
     ComcastDevAddr = pp_utils:hex_to_binary(<<"45000042">>),
     lists:foreach(
-        fun(_) -> ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(ComcastDevAddr)) end,
+        fun(_) -> ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(ComcastDevAddr, ?COMCAST)) end,
         lists:seq(1, 2)
     ),
 

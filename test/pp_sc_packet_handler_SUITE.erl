@@ -12,7 +12,8 @@
     net_ids_map_offer_test/1,
     net_ids_map_packet_test/1,
     net_ids_env_packet_test/1,
-    net_ids_no_config_test/1
+    net_ids_no_config_test/1,
+    single_hotspot_multi_net_id_test/1
 ]).
 
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
@@ -60,7 +61,8 @@ all() ->
         net_ids_map_offer_test,
         net_ids_map_packet_test,
         net_ids_env_packet_test,
-        net_ids_no_config_test
+        net_ids_no_config_test,
+        single_hotspot_multi_net_id_test
     ].
 
 %%--------------------------------------------------------------------
@@ -218,14 +220,14 @@ net_ids_env_offer_test(_Config) ->
     ok.
 
 net_ids_map_packet_test(_Config) ->
-    SendPacketFun = fun(NetId) ->
+    SendPacketFun = fun(DevAddr, NetID) ->
         #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
         PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
-        Packet = frame_packet(?UNCONFIRMED_UP, PubKeyBin, NetId, 0, #{dont_encode => true}),
+        Packet = frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{dont_encode => true}),
         pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
 
-        {ok, Pid} = pp_udp_sup:lookup_worker(PubKeyBin),
+        {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
         {state, PubKeyBin, _Socket, Address, Port, _PushData, _ScPid, _PullData, _PullDataTimer} = sys:get_state(
             Pid
         ),
@@ -238,20 +240,20 @@ net_ids_map_packet_test(_Config) ->
         ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333}
     }),
 
-    ?assertMatch({"1.1.1.1", 1111}, SendPacketFun(?DEVADDR_ACTILITY)),
-    ?assertMatch({"2.2.2.2", 2222}, SendPacketFun(?DEVADDR_ORANGE)),
-    ?assertMatch({"3.3.3.3", 3333}, SendPacketFun(?DEVADDR_COMCAST)),
+    ?assertMatch({"1.1.1.1", 1111}, SendPacketFun(?DEVADDR_ACTILITY, ?NET_ID_ACTILITY)),
+    ?assertMatch({"2.2.2.2", 2222}, SendPacketFun(?DEVADDR_ORANGE, ?NET_ID_ORANGE)),
+    ?assertMatch({"3.3.3.3", 3333}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
     ok.
 
 net_ids_no_config_test(_Config) ->
-    SendPacketFun = fun(NetId) ->
+    SendPacketFun = fun(DevAddr, NetID) ->
         #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
         PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
-        Packet = frame_packet(?UNCONFIRMED_UP, PubKeyBin, NetId, 0, #{dont_encode => true}),
+        Packet = frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{dont_encode => true}),
         pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
 
-        pp_udp_sup:lookup_worker(PubKeyBin)
+        pp_udp_sup:lookup_worker({PubKeyBin, NetID})
     end,
 
     application:set_env(packet_purchaser, net_ids, #{
@@ -260,21 +262,21 @@ net_ids_no_config_test(_Config) ->
         %% ?COMCAST => #{address => "3.3.3.3", port => 3333}
     }),
 
-    ?assertMatch({ok, _}, SendPacketFun(?DEVADDR_ACTILITY)),
-    ?assertMatch({error, not_found}, SendPacketFun(?DEVADDR_ORANGE)),
-    ?assertMatch({error, not_found}, SendPacketFun(?DEVADDR_COMCAST)),
+    ?assertMatch({ok, _}, SendPacketFun(?DEVADDR_ACTILITY, ?NET_ID_ACTILITY)),
+    ?assertMatch({error, not_found}, SendPacketFun(?DEVADDR_ORANGE, ?NET_ID_ORANGE)),
+    ?assertMatch({error, not_found}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
 
     ok.
 
 net_ids_env_packet_test(_Config) ->
-    SendPacketFun = fun(NetId) ->
+    SendPacketFun = fun(DevAddr, NetID) ->
         #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
         PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
-        Packet = frame_packet(?UNCONFIRMED_UP, PubKeyBin, NetId, 0, #{dont_encode => true}),
+        Packet = frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{dont_encode => true}),
         pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
 
-        {ok, Pid} = pp_udp_sup:lookup_worker(PubKeyBin),
+        {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
         {state, PubKeyBin, _Socket, Address, Port, _PushData, _ScPid, _PullData, _PullDataTimer} = sys:get_state(
             Pid
         ),
@@ -291,9 +293,36 @@ net_ids_env_packet_test(_Config) ->
         {port, 1337}
     ]),
 
-    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?DEVADDR_ACTILITY)),
-    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?DEVADDR_ORANGE)),
-    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?DEVADDR_COMCAST)),
+    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?DEVADDR_ACTILITY, ?NET_ID_ACTILITY)),
+    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?DEVADDR_ORANGE, ?NET_ID_ORANGE)),
+    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
+    ok.
+
+single_hotspot_multi_net_id_test(_Config) ->
+    %% One Gateway is going to be sending all the packets.
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    SendPacketFun = fun(DevAddr, NetID) ->
+        Packet = frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{dont_encode => true}),
+        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+
+        {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
+        {state, PubKeyBin, _Socket, Address, Port, _PushData, _ScPid, _PullData, _PullDataTimer} = sys:get_state(
+            Pid
+        ),
+        {Address, Port}
+    end,
+
+    application:set_env(packet_purchaser, net_ids, #{
+        ?NET_ID_ACTILITY => #{address => "1.1.1.1", port => 1111},
+        ?NET_ID_ORANGE => #{address => "2.2.2.2", port => 2222},
+        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333}
+    }),
+
+    ?assertMatch({"1.1.1.1", 1111}, SendPacketFun(?DEVADDR_ACTILITY, ?NET_ID_ACTILITY)),
+    ?assertMatch({"2.2.2.2", 2222}, SendPacketFun(?DEVADDR_ORANGE, ?NET_ID_ORANGE)),
+    ?assertMatch({"3.3.3.3", 3333}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
     ok.
 
 %% ------------------------------------------------------------------

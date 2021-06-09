@@ -167,5 +167,7 @@ wait_until(Fun, Retry, Delay) when Retry > 0 ->
 start_gateway() ->
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
-    {ok, WorkerPid} = pp_udp_sup:maybe_start_worker(PubKeyBin, #{}),
+    %% NetID to ensure sending packets from pp_lns get routed to this worker
+    {ok, NetID} = lorawan_devaddr:net_id(16#deadbeef),
+    {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, #{}),
     {PubKeyBin, WorkerPid}.
