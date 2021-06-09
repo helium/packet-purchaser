@@ -13,19 +13,10 @@
     handle_packet/3
 ]).
 
--export([
-    init_ets/0,
-    cleanup_ets/0,
-    get_netid_packet_counts/0
-]).
-
 %% Offer rejected reasons
 -define(NOT_ACCEPTING_JOINS, not_accepting_joins).
 -define(NET_ID_REJECTED, net_id_rejected).
 -define(NET_ID_INVALID, net_id_invalid).
-
--define(ETS, pp_net_id_packet_count).
--define(DETS, pp_metrics_dets).
 
 %% ------------------------------------------------------------------
 %% Packet Handler Functions
@@ -102,7 +93,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 ),
                 case pp_udp_sup:maybe_start_worker(PubKeyBin, net_id_udp_args(NetID)) of
                     {ok, WorkerPid} ->
-                        _ = ets:update_counter(?ETS, NetID, 1, {NetID, 0}),
+                        ok = pp_metrics:handle_packet(NetID, PubKeyBin),
                         pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
                     {error, _Reason} = Error ->
                         lager:error(
@@ -122,28 +113,6 @@ handle_packet(SCPacket, PacketTime, Pid) ->
 %% ------------------------------------------------------------------
 %% Counter Functions
 %% ------------------------------------------------------------------
-
--spec init_ets() -> ok.
-init_ets() ->
-    File = pp_utils:get_metrics_filename(),
-    case ets:file2tab(File) of
-        {ok, ?ETS} ->
-            lager:info("Metrics continued from last shutdown");
-        {error, _} = Err ->
-            lager:warning("Unable to open ~p ~p. Metrics will start over", [File, Err]),
-            ?ETS = ets:new(?ETS, [public, named_table, set])
-    end,
-    ok.
-
--spec cleanup_ets() -> ok.
-cleanup_ets() ->
-    File = pp_utils:get_metrics_filename(),
-    ok = ets:tab2file(?ETS, File, [{sync, true}]),
-    ok.
-
--spec get_netid_packet_counts() -> map().
-get_netid_packet_counts() ->
-    maps:from_list(ets:tab2list(?ETS)).
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions

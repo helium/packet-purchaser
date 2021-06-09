@@ -12,8 +12,7 @@
     net_ids_map_offer_test/1,
     net_ids_map_packet_test/1,
     net_ids_env_packet_test/1,
-    net_ids_no_config_test/1,
-    net_ids_counter_test/1
+    net_ids_no_config_test/1
 ]).
 
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
@@ -25,11 +24,24 @@
 -define(DEVEUI, <<0, 0, 0, 0, 0, 0, 0, 1>>).
 
 %% NetIDs
--define(ACTILITY, 16#000002).
--define(COMCAST, 16#000022).
--define(EXPERIMENTAL, 16#000000).
--define(ORANGE, 16#00000F).
--define(TEKTELIC, 16#000037).
+-define(NET_ID_ACTILITY, 16#000002).
+-define(NET_ID_COMCAST, 16#000022).
+-define(NET_ID_EXPERIMENTAL, 16#000000).
+-define(NET_ID_ORANGE, 16#00000F).
+-define(NET_ID_TEKTELIC, 16#000037).
+
+%% DevAddrs
+
+% pp_utils:hex_to_binary(<<"04ABCDEF">>)
+-define(DEVADDR_ACTILITY, <<4, 171, 205, 239>>).
+% pp_utils:hex_to_binary(<<"45000042">>)
+-define(DEVADDR_COMCAST, <<69, 0, 0, 66>>).
+% pp_utils:hex_to_binary(<<"0000041">>)
+-define(DEVADDR_EXPERIMENTAL, <<0, 0, 0, 42>>).
+%pp_utils:hex_to_binary(<<"1E123456">>)
+-define(DEVADDR_ORANGE, <<30, 18, 52, 86>>).
+% pp_utils:hex_to_binary(<<"6E123456">>)
+-define(DEVADDR_TEKTELIC, <<110, 18, 52, 86>>).
 
 %%--------------------------------------------------------------------
 %% COMMON TEST CALLBACK FUNCTIONS
@@ -48,8 +60,7 @@ all() ->
         net_ids_map_offer_test,
         net_ids_map_packet_test,
         net_ids_env_packet_test,
-        net_ids_no_config_test,
-        net_ids_counter_test
+        net_ids_no_config_test
     ].
 
 %%--------------------------------------------------------------------
@@ -98,108 +109,111 @@ accept_joins_test(_Config) ->
     ok.
 
 net_ids_map_offer_test(_Config) ->
-    SendPacketOfferFun = fun(NetId) ->
+    SendPacketOfferFun = fun(DevAddr) ->
         #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
         PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
-        Offer = packet_offer(PubKeyBin, NetId),
+        Offer = packet_offer(PubKeyBin, DevAddr),
         pp_sc_packet_handler:handle_offer(Offer, self())
     end,
 
     %% Buy all NetIDs
     ok = application:set_env(packet_purchaser, net_ids, [allow_all]),
-    ?assertMatch(ok, SendPacketOfferFun(?ACTILITY)),
-    ?assertMatch(ok, SendPacketOfferFun(?TEKTELIC)),
-    ?assertMatch(ok, SendPacketOfferFun(?COMCAST)),
-    ?assertMatch(ok, SendPacketOfferFun(?EXPERIMENTAL)),
-    ?assertMatch(ok, SendPacketOfferFun(?ORANGE)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_COMCAST)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     %% Reject all NetIDs
     ok = application:set_env(packet_purchaser, net_ids, #{}),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?ACTILITY)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?TEKTELIC)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?COMCAST)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?EXPERIMENTAL)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?ORANGE)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_ACTILITY)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_COMCAST)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     %% Buy Only Actility1 ID
-    ok = application:set_env(packet_purchaser, net_ids, #{?ACTILITY => test}),
-    ?assertMatch(ok, SendPacketOfferFun(?ACTILITY)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?TEKTELIC)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?COMCAST)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?EXPERIMENTAL)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?ORANGE)),
+    ok = application:set_env(packet_purchaser, net_ids, #{?NET_ID_ACTILITY => test}),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_COMCAST)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     %% Buy Multiple IDs
-    ok = application:set_env(packet_purchaser, net_ids, #{?ACTILITY => test, ?ORANGE => test}),
-    ?assertMatch(ok, SendPacketOfferFun(?ACTILITY)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?TEKTELIC)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?COMCAST)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?EXPERIMENTAL)),
-    ?assertMatch(ok, SendPacketOfferFun(?ORANGE)),
+    ok = application:set_env(packet_purchaser, net_ids, #{
+        ?NET_ID_ACTILITY => test,
+        ?NET_ID_ORANGE => test
+    }),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_COMCAST)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     %% Buy all the IDs we know about
     ok = application:set_env(packet_purchaser, net_ids, #{
-        ?EXPERIMENTAL => test,
-        ?ACTILITY => test,
-        ?TEKTELIC => test,
-        ?ORANGE => test,
-        ?COMCAST => test
+        ?NET_ID_EXPERIMENTAL => test,
+        ?NET_ID_ACTILITY => test,
+        ?NET_ID_TEKTELIC => test,
+        ?NET_ID_ORANGE => test,
+        ?NET_ID_COMCAST => test
     }),
-    ?assertMatch(ok, SendPacketOfferFun(?ACTILITY)),
-    ?assertMatch(ok, SendPacketOfferFun(?TEKTELIC)),
-    ?assertMatch(ok, SendPacketOfferFun(?COMCAST)),
-    ?assertMatch(ok, SendPacketOfferFun(?EXPERIMENTAL)),
-    ?assertMatch(ok, SendPacketOfferFun(?ORANGE)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_COMCAST)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     ok.
 
 net_ids_env_offer_test(_Config) ->
-    SendPacketOfferFun = fun(NetId) ->
+    SendPacketOfferFun = fun(DevAddr) ->
         #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
         PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
-        Offer = packet_offer(PubKeyBin, NetId),
+        Offer = packet_offer(PubKeyBin, DevAddr),
         pp_sc_packet_handler:handle_offer(Offer, self())
     end,
 
     %% Buy all NetIDs
     ok = application:set_env(packet_purchaser, net_ids, []),
-    ?assertMatch(ok, SendPacketOfferFun(?ACTILITY)),
-    ?assertMatch(ok, SendPacketOfferFun(?TEKTELIC)),
-    ?assertMatch(ok, SendPacketOfferFun(?COMCAST)),
-    ?assertMatch(ok, SendPacketOfferFun(?EXPERIMENTAL)),
-    ?assertMatch(ok, SendPacketOfferFun(?ORANGE)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_COMCAST)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     %% Buy Only Actility1 ID
-    ok = application:set_env(packet_purchaser, net_ids, [?ACTILITY]),
-    ?assertMatch(ok, SendPacketOfferFun(?ACTILITY)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?TEKTELIC)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?COMCAST)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?EXPERIMENTAL)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?ORANGE)),
+    ok = application:set_env(packet_purchaser, net_ids, [?NET_ID_ACTILITY]),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_COMCAST)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     %% Buy Multiple IDs
-    ok = application:set_env(packet_purchaser, net_ids, [?ACTILITY, ?ORANGE]),
-    ?assertMatch(ok, SendPacketOfferFun(?ACTILITY)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?TEKTELIC)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?COMCAST)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?EXPERIMENTAL)),
-    ?assertMatch(ok, SendPacketOfferFun(?ORANGE)),
+    ok = application:set_env(packet_purchaser, net_ids, [?NET_ID_ACTILITY, ?NET_ID_ORANGE]),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_COMCAST)),
+    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     %% Buy all the IDs we know about
     ok = application:set_env(packet_purchaser, net_ids, [
-        ?EXPERIMENTAL,
-        ?ACTILITY,
-        ?TEKTELIC,
-        ?ORANGE,
-        ?COMCAST
+        ?NET_ID_EXPERIMENTAL,
+        ?NET_ID_ACTILITY,
+        ?NET_ID_TEKTELIC,
+        ?NET_ID_ORANGE,
+        ?NET_ID_COMCAST
     ]),
-    ?assertMatch(ok, SendPacketOfferFun(?ACTILITY)),
-    ?assertMatch(ok, SendPacketOfferFun(?TEKTELIC)),
-    ?assertMatch(ok, SendPacketOfferFun(?COMCAST)),
-    ?assertMatch(ok, SendPacketOfferFun(?EXPERIMENTAL)),
-    ?assertMatch(ok, SendPacketOfferFun(?ORANGE)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_COMCAST)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
+    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     ok.
 
@@ -219,14 +233,14 @@ net_ids_map_packet_test(_Config) ->
     end,
 
     application:set_env(packet_purchaser, net_ids, #{
-        ?ACTILITY => #{address => "1.1.1.1", port => 1111},
-        ?ORANGE => #{address => "2.2.2.2", port => 2222},
-        ?COMCAST => #{address => "3.3.3.3", port => 3333}
+        ?NET_ID_ACTILITY => #{address => "1.1.1.1", port => 1111},
+        ?NET_ID_ORANGE => #{address => "2.2.2.2", port => 2222},
+        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333}
     }),
 
-    ?assertMatch({"1.1.1.1", 1111}, SendPacketFun(?ACTILITY)),
-    ?assertMatch({"2.2.2.2", 2222}, SendPacketFun(?ORANGE)),
-    ?assertMatch({"3.3.3.3", 3333}, SendPacketFun(?COMCAST)),
+    ?assertMatch({"1.1.1.1", 1111}, SendPacketFun(?DEVADDR_ACTILITY)),
+    ?assertMatch({"2.2.2.2", 2222}, SendPacketFun(?DEVADDR_ORANGE)),
+    ?assertMatch({"3.3.3.3", 3333}, SendPacketFun(?DEVADDR_COMCAST)),
     ok.
 
 net_ids_no_config_test(_Config) ->
@@ -241,14 +255,14 @@ net_ids_no_config_test(_Config) ->
     end,
 
     application:set_env(packet_purchaser, net_ids, #{
-        ?ACTILITY => #{address => "1.1.1.1", port => 1111}
+        ?NET_ID_ACTILITY => #{address => "1.1.1.1", port => 1111}
         %% ?ORANGE => #{address => "2.2.2.2", port => 2222},
         %% ?COMCAST => #{address => "3.3.3.3", port => 3333}
     }),
 
-    ?assertMatch({ok, _}, SendPacketFun(?ACTILITY)),
-    ?assertMatch({error, not_found}, SendPacketFun(?ORANGE)),
-    ?assertMatch({error, not_found}, SendPacketFun(?COMCAST)),
+    ?assertMatch({ok, _}, SendPacketFun(?DEVADDR_ACTILITY)),
+    ?assertMatch({error, not_found}, SendPacketFun(?DEVADDR_ORANGE)),
+    ?assertMatch({error, not_found}, SendPacketFun(?DEVADDR_COMCAST)),
 
     ok.
 
@@ -267,69 +281,31 @@ net_ids_env_packet_test(_Config) ->
         {Address, Port}
     end,
 
-    application:set_env(packet_purchaser, net_ids, [?ACTILITY, ?ORANGE, ?COMCAST]),
+    application:set_env(packet_purchaser, net_ids, [
+        ?NET_ID_ACTILITY,
+        ?NET_ID_ORANGE,
+        ?NET_ID_COMCAST
+    ]),
     application:set_env(packet_purchaser, pp_udp_worker, [
         {address, "1.1.1.1"},
         {port, 1337}
     ]),
 
-    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?ACTILITY)),
-    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?ORANGE)),
-    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?COMCAST)),
-    ok.
-
-net_ids_counter_test(_Config) ->
-    SendPacketFun = fun(NetId) ->
-        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
-        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
-
-        Packet = frame_packet(?UNCONFIRMED_UP, PubKeyBin, NetId, 0, #{dont_encode => true}),
-        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
-
-        {ok, Pid} = pp_udp_sup:lookup_worker(PubKeyBin),
-        {state, PubKeyBin, _Socket, Address, Port, _PushData, _ScPid, _PullData, _PullDataTimer} = sys:get_state(
-            Pid
-        ),
-        {Address, Port}
-    end,
-
-    application:set_env(packet_purchaser, net_ids, [?ACTILITY, ?ORANGE, ?COMCAST]),
-    application:set_env(packet_purchaser, pp_udp_worker, [
-        {address, "1.1.1.1"},
-        {port, 1337}
-    ]),
-
-    true = ets:delete_all_objects(pp_net_id_packet_count),
-
-    lists:foreach(
-        fun(_) -> ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?ACTILITY)) end,
-        lists:seq(1, 4)
-    ),
-    lists:foreach(
-        fun(_) -> ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?ORANGE)) end,
-        lists:seq(1, 3)
-    ),
-    lists:foreach(
-        fun(_) -> ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?COMCAST)) end,
-        lists:seq(1, 2)
-    ),
-
-    Expected = #{?ACTILITY => 4, ?ORANGE => 3, ?COMCAST => 2},
-    Actual = pp_sc_packet_handler:get_netid_packet_counts(),
-    ?assertEqual(Expected, Actual),
+    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?DEVADDR_ACTILITY)),
+    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?DEVADDR_ORANGE)),
+    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?DEVADDR_COMCAST)),
     ok.
 
 %% ------------------------------------------------------------------
 %% Helper functions
 %% ------------------------------------------------------------------
 
-frame_packet(MType, PubKeyBin, NetId, FCnt, Options) ->
+frame_packet(MType, PubKeyBin, DevAddr, FCnt, Options) ->
     NwkSessionKey = <<81, 103, 129, 150, 35, 76, 17, 164, 210, 66, 210, 149, 120, 193, 251, 85>>,
     AppSessionKey = <<245, 16, 127, 141, 191, 84, 201, 16, 111, 172, 36, 152, 70, 228, 52, 95>>,
-    DevAddr = maps:get(devaddr, Options, <<33554431:25/integer-unsigned-little, NetId:7/integer>>),
     Payload1 = frame_payload(MType, DevAddr, NwkSessionKey, AppSessionKey, FCnt),
 
-    <<DevNum:32/integer-unsigned-little>> = DevAddr,
+    <<DevNum:32/integer-unsigned>> = DevAddr,
     Routing = blockchain_helium_packet_v1:make_routing_info({devaddr, DevNum}),
 
     HeliumPacket = #packet_pb{
@@ -373,15 +349,14 @@ join_offer(PubKeyBin, AppKey, DevNonce) ->
         'US915'
     ).
 
-packet_offer(PubKeyBin, NetID) ->
-    DevAddr = <<33554431:25/integer-unsigned-little, NetID:7/little-unsigned-integer>>,
+packet_offer(PubKeyBin, DevAddr) ->
     NwkSessionKey = <<81, 103, 129, 150, 35, 76, 17, 164, 210, 66, 210, 149, 120, 193, 251, 85>>,
     AppSessionKey = <<245, 16, 127, 141, 191, 84, 201, 16, 111, 172, 36, 152, 70, 228, 52, 95>>,
     FCnt = 0,
 
     Payload = frame_payload(?UNCONFIRMED_UP, DevAddr, NwkSessionKey, AppSessionKey, FCnt),
 
-    <<DevNum:32/integer-unsigned-little>> = DevAddr,
+    <<DevNum:32/integer-unsigned>> = DevAddr,
     Routing = blockchain_helium_packet_v1:make_routing_info({devaddr, DevNum}),
 
     HeliumPacket = #packet_pb{

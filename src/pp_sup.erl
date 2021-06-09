@@ -74,7 +74,8 @@ init([]) ->
         ?WORKER(pp_sc_worker, [#{}]),
         ?WORKER(pp_xor_filter_worker, [#{}]),
         ?SUP(pp_udp_sup, []),
-        ?WORKER(IntegrationModule, [IntegrationArgs])
+        ?WORKER(IntegrationModule, [IntegrationArgs]),
+        ?WORKER(pp_metrics, [])
     ],
     {ok, {?FLAGS, ChildSpecs}}.
 

@@ -64,15 +64,31 @@ net_id_test() ->
     ?assertEqual({ok, 16#20002D}, net_id(<<173, 255, 255, 255>>), "[45] == 2D == 45 type 1"),
     ?assertEqual({ok, 16#40016D}, net_id(<<214, 223, 255, 255>>), "[1,109] == 16D == 365 type 2"),
     ?assertEqual({ok, 16#6005B7}, net_id(<<235, 111, 255, 255>>), "[5,183] == 5B7 == 1463 type 3"),
-    ?assertEqual({ok, 16#800B6D}, net_id(<<245, 182, 255, 255>>), "[11, 109] == B6D == 2925 type 4"),
-    ?assertEqual({ok, 16#A016DB}, net_id(<<250, 219, 127, 255>>), "[22,219] == 16DB == 5851 type 5"),
-    ?assertEqual({ok, 16#C05B6D}, net_id(<<253, 109, 183, 255>>), "[91, 109] == 5B6D == 23405 type 6"),
-    ?assertEqual({ok, 16#E16DB6}, net_id(<<254, 182, 219, 127>>), "[1,109,182] == 16DB6 == 93622 type 7"),
+    ?assertEqual(
+        {ok, 16#800B6D},
+        net_id(<<245, 182, 255, 255>>),
+        "[11, 109] == B6D == 2925 type 4"
+    ),
+    ?assertEqual(
+        {ok, 16#A016DB},
+        net_id(<<250, 219, 127, 255>>),
+        "[22,219] == 16DB == 5851 type 5"
+    ),
+    ?assertEqual(
+        {ok, 16#C05B6D},
+        net_id(<<253, 109, 183, 255>>),
+        "[91, 109] == 5B6D == 23405 type 6"
+    ),
+    ?assertEqual(
+        {ok, 16#E16DB6},
+        net_id(<<254, 182, 219, 127>>),
+        "[1,109,182] == 16DB6 == 93622 type 7"
+    ),
     ?assertEqual(
         {error, invalid_net_id_type},
         net_id(<<255, 255, 255, 255>>),
         "Invalid DevAddr"
-      ),
+    ),
 
     % Actility spreadsheet examples
     ?assertEqual({ok, 0}, net_id(<<0:1, 0:1, 0:1, 0:1, 0:1, 0:1, 0:1, 0:25>>)),
@@ -80,9 +96,9 @@ net_id_test() ->
     ?assertEqual({ok, 2}, net_id(<<0:1, 0:1, 0:1, 0:1, 0:1, 1:1, 0:1, 0:25>>)),
 
     %% Mis-parsed as netid 4 of type 3
-    ?assertEqual({ok, 16#600004}, net_id(<<224,9,171,205>>), "hex_to_binary(<<'E009ABCD'>>)"),
+    ?assertEqual({ok, 16#600004}, net_id(<<224, 9, 171, 205>>), "hex_to_binary(<<'E009ABCD'>>)"),
     %% Valid DevAddr, NetID not assigned
-    ?assertEqual({ok, 16#20002D}, net_id(<<173,255,255,255>>), "hex_to_binary(<<'ADFFFFFF'>>)"),
+    ?assertEqual({ok, 16#20002D}, net_id(<<173, 255, 255, 255>>), "hex_to_binary(<<'ADFFFFFF'>>)"),
     %% Less than 32 bit number
     ?assertEqual({ok, 0}, net_id(46377)),
 
