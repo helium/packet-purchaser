@@ -5,7 +5,8 @@
 -export([
     get_oui/1,
     pubkeybin_to_mac/1,
-    get_metrics_filename/0
+    get_metrics_filename/0,
+    hex_to_binary/1
 ]).
 
 -spec get_oui(Chain :: blockchain:blockchain()) -> non_neg_integer() | undefined.
@@ -64,3 +65,7 @@ check_oui_on_chain(OUI, OUIsOnChain) ->
 -spec get_metrics_filename() -> string().
 get_metrics_filename() ->
     application:get_env(?APP, pp_metrics_file, "/var/data/pp_metrics.dat").
+
+-spec hex_to_binary(binary()) -> binary().
+hex_to_binary(ID) ->
+    <<<<Z>> || <<X:8, Y:8>> <= ID, Z <- [erlang:binary_to_integer(<<X, Y>>, 16)]>>.

@@ -55,7 +55,7 @@ init(Args) ->
         endpoint = erlang:list_to_binary(maps:get(endpoint, Args)),
         app_id = erlang:list_to_binary(maps:get(app_id, Args)),
         api_key = erlang:list_to_binary(maps:get(api_key, Args)),
-        app_eui = hex_to_binary(erlang:list_to_binary(maps:get(app_eui, Args)))
+        app_eui = pp_utils:hex_to_binary(erlang:list_to_binary(maps:get(app_eui, Args)))
     }}.
 
 handle_call(
@@ -86,7 +86,7 @@ handle_call(
             AppEUI = <<0, 0, 0, 0, 0, 0, 0, 0>>,
             Reply =
                 {ok, [
-                    <<(hex_to_binary(maps:get(<<"devEUI">>, D)))/binary, AppEUI/binary>>
+                    <<(pp_utils:hex_to_binary(maps:get(<<"devEUI">>, D)))/binary, AppEUI/binary>>
                     || D <- Devices
                 ]},
             {reply, Reply, State};
@@ -117,7 +117,3 @@ terminate(_Reason, _State) ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
-
--spec hex_to_binary(binary()) -> binary().
-hex_to_binary(ID) ->
-    <<<<Z>> || <<X:8, Y:8>> <= ID, Z <- [erlang:binary_to_integer(<<X, Y>>, 16)]>>.
