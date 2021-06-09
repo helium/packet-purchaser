@@ -38,27 +38,29 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
--spec maybe_start_worker(binary(), map()) -> {ok, pid()} | {error, any()}.
-maybe_start_worker(ID, Args) ->
-    case ets:lookup(?ETS, ID) of
+-spec maybe_start_worker({PubKeyBin :: binary(), NetID :: non_neg_integer()}, map()) ->
+    {ok, pid()} | {error, any()}.
+maybe_start_worker(WorkerKey, Args) ->
+    case ets:lookup(?ETS, WorkerKey) of
         [] ->
-            start_worker(ID, Args);
-        [{ID, Pid}] ->
+            start_worker(WorkerKey, Args);
+        [{WorkerKey, Pid}] ->
             case erlang:is_process_alive(Pid) of
                 true ->
                     {ok, Pid};
                 false ->
-                    _ = ets:delete(?ETS, ID),
-                    start_worker(ID, Args)
+                    _ = ets:delete(?ETS, WorkerKey),
+                    start_worker(WorkerKey, Args)
             end
     end.
 
--spec lookup_worker(binary()) -> {ok, pid()} | {error, not_found}.
-lookup_worker(ID) ->
-    case ets:lookup(?ETS, ID) of
+-spec lookup_worker({PubKeyBin :: binary(), NetID :: non_neg_integer()}) ->
+    {ok, pid()} | {error, not_found}.
+lookup_worker(WorkerKey) ->
+    case ets:lookup(?ETS, WorkerKey) of
         [] ->
             {error, not_found};
-        [{ID, Pid}] ->
+        [{WorkerKey, Pid}] ->
             case erlang:is_process_alive(Pid) of
                 true -> {ok, Pid};
                 false -> {error, not_found}
@@ -77,20 +79,20 @@ init([]) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
--spec start_worker(binary(), map()) -> {ok, pid()} | {error, any()}.
-start_worker(ID, Args) ->
+-spec start_worker({binary(), non_neg_integer()}, map()) -> {ok, pid()} | {error, any()}.
+start_worker({PubKeyBin, NetID} = WorkerKey, Args) ->
     AppArgs = get_app_args(),
-    ChildArgs = maps:merge(#{pubkeybin => ID}, maps:merge(AppArgs, Args)),
+    ChildArgs = maps:merge(#{pubkeybin => PubKeyBin, net_id => NetID}, maps:merge(AppArgs, Args)),
     case supervisor:start_child(?MODULE, [ChildArgs]) of
         {error, _Err} = Err ->
             Err;
         {ok, Pid} = OK ->
-            case ets:insert_new(?ETS, {ID, Pid}) of
+            case ets:insert_new(?ETS, {WorkerKey, Pid}) of
                 true ->
                     OK;
                 false ->
                     supervisor:terminate_child(?MODULE, Pid),
-                    maybe_start_worker(ID, Args)
+                    maybe_start_worker(WorkerKey, Args)
             end
     end.
 

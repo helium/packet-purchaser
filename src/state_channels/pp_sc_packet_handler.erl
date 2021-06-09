@@ -91,7 +91,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                     "Packet [Devaddr: ~p] [NetID: ~p]",
                     [DevAddr, NetID]
                 ),
-                case pp_udp_sup:maybe_start_worker(PubKeyBin, net_id_udp_args(NetID)) of
+                case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, net_id_udp_args(NetID)) of
                     {ok, WorkerPid} ->
                         ok = pp_metrics:handle_packet(NetID, PubKeyBin),
                         pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
