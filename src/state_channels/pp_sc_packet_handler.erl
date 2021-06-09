@@ -45,10 +45,10 @@ handle_offer(Offer, _HandlerPid) ->
                     ok;
                 IDs ->
                     case lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>) of
-                        {ok, NetID, _NetIDType} ->
+                        {ok, NetID} ->
                             lager:debug(
-                                "Offer [Devaddr: ~p] [NetID: ~p] [Type: ~p]",
-                                [DevAddr, NetID, _NetIDType]
+                                "Offer [Devaddr: ~p] [NetID: ~p]",
+                                [DevAddr, NetID]
                             ),
                             case lists:member(NetID, IDs) of
                                 true -> ok;
@@ -95,10 +95,10 @@ handle_packet(SCPacket, PacketTime, Pid) ->
     case blockchain_helium_packet_v1:routing_info(Packet) of
         {devaddr, DevAddr} ->
             try
-                {ok, NetID, _NetIDType} = lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>),
+                {ok, NetID} = lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>),
                 lager:debug(
-                    "Packet [Devaddr: ~p] [NetID: ~p] [Type: ~p]",
-                    [DevAddr, NetID, _NetIDType]
+                    "Packet [Devaddr: ~p] [NetID: ~p]",
+                    [DevAddr, NetID]
                 ),
                 case pp_udp_sup:maybe_start_worker(PubKeyBin, net_id_udp_args(NetID)) of
                     {ok, WorkerPid} ->
