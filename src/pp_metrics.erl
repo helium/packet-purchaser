@@ -135,7 +135,6 @@ inc_location(Location) ->
 when
     Err :: location_not_set | fetch_failed.
 fetch_location(PubKeyBin) ->
-    ct:print("Should only see this 1 time for ~p", [PubKeyBin]),
     B58 = libp2p_crypto:bin_to_b58(PubKeyBin),
     Prefix = "https://api.helium.io/v1/hotspots/",
     Url = erlang:list_to_binary(io_lib:format("~s~s", [Prefix, B58])),
