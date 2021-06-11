@@ -17,6 +17,7 @@
         helium_proto,
         observer_cli,
         jsx,
+        kvc,
         iso8601,
         xxhash,
         hackney,
