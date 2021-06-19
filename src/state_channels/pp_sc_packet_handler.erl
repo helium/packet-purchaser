@@ -14,7 +14,7 @@
 ]).
 
 %% Offer rejected reasons
--define(NOT_ACCEPTING_JOINS, not_accepting_joins).
+-define(UNMAPPED_EUI, unmapped_eui).
 -define(NET_ID_REJECTED, net_id_rejected).
 -define(NET_ID_INVALID, net_id_invalid).
 
@@ -25,10 +25,10 @@
 -spec handle_offer(blockchain_state_channel_offer_v1:offer(), pid()) -> ok.
 handle_offer(Offer, _HandlerPid) ->
     case blockchain_state_channel_offer_v1:routing(Offer) of
-        #routing_information_pb{data = {eui, _EUI}} ->
-            case accept_joins() of
+        #routing_information_pb{data = {eui, EUI}} ->
+            case should_accept_join(EUI) of
                 true -> ok;
-                false -> {error, ?NOT_ACCEPTING_JOINS}
+                false -> {error, ?UNMAPPED_EUI}
             end;
         #routing_information_pb{data = {devaddr, DevAddr}} ->
             case allowed_net_ids() of
@@ -104,10 +104,27 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 end
             catch
                 error:{badkey, KeyNetID} ->
-                    lager:debug("Ignoring unconfigured NetID ~p", [KeyNetID])
+                    lager:debug("packet: ignoring unconfigured NetID ~p", [KeyNetID])
             end;
         {eui, _, _} = EUI ->
-            lager:info("Not handling join packets, dropping ~p in packet ~p", [EUI, Packet])
+            try
+                {ok, NetID} = join_eui_to_net_id(EUI),
+                case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, net_id_udp_args(NetID)) of
+                    {ok, WorkerPid} ->
+                        pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
+                    {error, _Reason} = Error ->
+                        lager:error(
+                            "failed to start udp connector for ~p: ~p",
+                            [blockchain_utils:addr2name(PubKeyBin), _Reason]
+                        ),
+                        Error
+                end
+            catch
+                error:{badkey, KeyNetID} ->
+                    lager:debug("join: ignoring unconfigured NetID ~p", [KeyNetID]);
+                error:{badmatch, {error, no_mapping}} ->
+                    lager:debug("join: ignoring no mapping for EUI ~p", [EUI])
+            end
     end.
 
 %% ------------------------------------------------------------------
@@ -118,12 +135,25 @@ handle_packet(SCPacket, PacketTime, Pid) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
--spec accept_joins() -> boolean().
-accept_joins() ->
-    case application:get_env(?APP, accept_joins, true) of
-        "false" -> false;
-        false -> false;
-        _ -> true
+-spec should_accept_join(#eui_pb{}) -> boolean().
+should_accept_join(#eui_pb{} = EUI) ->
+    case join_eui_to_net_id(EUI) of
+        {error, _} -> false;
+        {ok, _} -> true
+    end.
+
+-spec join_eui_to_net_id(#eui_pb{} | {eui, non_neg_integer(), non_neg_integer()}) ->
+    {ok, non_neg_integer()} | {error, no_mapping}.
+join_eui_to_net_id(#eui_pb{deveui = Dev, appeui = App}) ->
+    join_eui_to_net_id({eui, Dev, App});
+join_eui_to_net_id({eui, DevEUI, AppEUI}) ->
+    Map = application:get_env(?APP, join_net_ids, #{}),
+
+    case maps:get({DevEUI, AppEUI}, Map, undefined) of
+        undefined ->
+            {error, no_mapping};
+        NetID ->
+            {ok, NetID}
     end.
 
 -spec allowed_net_ids() -> list(integer()) | allow_all.
@@ -162,18 +192,28 @@ net_id_udp_args(NetID) ->
 
 -include_lib("eunit/include/eunit.hrl").
 
-accept_joins_test() ->
-    application:set_env(?APP, accept_joins, "false"),
-    ?assertEqual(false, accept_joins(), "String false is false"),
+should_accept_join_test() ->
+    Dev1 = 7,
+    App1 = 13,
+    Dev2 = 13,
+    App2 = 17,
+    EUI1 = #eui_pb{deveui = Dev1, appeui = App1},
+    EUI2 = #eui_pb{deveui = Dev2, appeui = App2},
 
-    application:set_env(?APP, accept_joins, false),
-    ?assertEqual(false, accept_joins(), "Atom false is false"),
+    NoneMapped = #{},
+    OneMapped = #{{Dev1, App1} => 2},
+    BothMapped = #{{Dev1, App1} => 2, {Dev2, App2} => 99},
 
-    application:set_env(?APP, accept_joins, true),
-    ?assertEqual(true, accept_joins(), "Atom true is true"),
+    application:set_env(?APP, join_net_ids, NoneMapped),
+    ?assertEqual(false, should_accept_join(EUI1), "Empty mapping, no joins"),
 
-    application:set_env(?APP, accept_joins, "1234567890"),
-    ?assertEqual(true, accept_joins(), "Random data is true"),
+    application:set_env(?APP, join_net_ids, OneMapped),
+    ?assertEqual(true, should_accept_join(EUI1), "One EUI mapping, this one"),
+    ?assertEqual(false, should_accept_join(EUI2), "One EUI mapping, not this one"),
+
+    application:set_env(?APP, join_net_ids, BothMapped),
+    ?assertEqual(true, should_accept_join(EUI1), "All EUI Mapped 1"),
+    ?assertEqual(true, should_accept_join(EUI2), "All EUI Mapped 2"),
 
     ok.
 
