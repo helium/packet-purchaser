@@ -97,7 +97,7 @@ location_counter_test(_Config) ->
         ]
     ),
 
-    timer:sleep(timer:seconds(2)),
+    ok = wait_until_messages_consumed(whereis(pp_metrics)),
 
     Expected = #{
         {<<"United States">>, <<"Florida">>, <<"Winter Haven">>} => 3,
@@ -138,7 +138,7 @@ net_ids_counter_test(_Config) ->
         {port, 1337}
     ]),
 
-    true = ets:delete_all_objects(pp_net_id_packet_count),
+    true = ets:delete_all_objects(pp_metrics_ets),
 
     ActilityDevAddr = pp_utils:hex_to_binary(<<"04ABCDEF">>),
     lists:foreach(
@@ -156,6 +156,8 @@ net_ids_counter_test(_Config) ->
         lists:seq(1, 2)
     ),
 
+    ok = wait_until_messages_consumed(whereis(pp_metrics)),
+
     Expected = #{?ACTILITY => 4, ?ORANGE => 3, ?COMCAST => 2},
     Actual = pp_metrics:get_netid_packet_counts(),
     ?assertEqual(Expected, Actual),
@@ -164,6 +166,15 @@ net_ids_counter_test(_Config) ->
 %% -------------------------------------------------------------------
 %% Utils
 %% -------------------------------------------------------------------
+
+wait_until_messages_consumed(Pid) ->
+    ok = test_utils:wait_until(fun() ->
+        {message_queue_len, Count} = erlang:process_info(Pid, message_queue_len),
+        Count == 0
+    end),
+
+    timer:sleep(200),
+    ok.
 
 frame_packet(MType, PubKeyBin, DevAddr, FCnt, Options) ->
     NwkSessionKey = <<81, 103, 129, 150, 35, 76, 17, 164, 210, 66, 210, 149, 120, 193, 251, 85>>,

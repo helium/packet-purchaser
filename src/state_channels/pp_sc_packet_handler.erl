@@ -39,7 +39,7 @@ handle_offer(Offer, _HandlerPid) ->
             {devaddr, DevAddr} -> handle_packet_offer(DevAddr, Offer)
         end,
     erlang:spawn(fun() ->
-        print_handle_offer_resp(Routing, Resp)
+        handle_offer_resp(Routing, Offer, Resp)
     end),
     Resp.
 
@@ -81,7 +81,7 @@ handle_packet(SCPacket, _PacketTime, Pid) ->
                 ),
                 case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, net_id_udp_args(NetID)) of
                     {ok, WorkerPid} ->
-                        ok = pp_metrics:handle_packet(NetID, PubKeyBin),
+                        ok = pp_metrics:handle_packet(PubKeyBin, NetID),
                         pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
                     {error, _Reason} = Error ->
                         lager:error(
@@ -151,15 +151,19 @@ handle_packet_offer(DevAddr, Offer) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-print_handle_offer_resp(Routing, ok) ->
+handle_offer_resp(Routing, Offer, ok) ->
+    PubKeyBin = blockchain_state_channel_offer_v1:hotspot(Offer),
     case Routing of
         {eui, EUI} ->
+            {ok, NetID} = join_eui_to_net_id(EUI),
+            ok = pp_metrics:handle_offer(PubKeyBin, NetID),
             lager:debug("offer: buying join [EUI: ~p]", [EUI]);
         {devaddr, DevAddr} ->
             {ok, NetID} = lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>),
+            ok = pp_metrics:handle_offer(PubKeyBin, NetID),
             lager:debug("offer: buying packet [DevAddr: ~p] [NetID: ~p]", [DevAddr, NetID])
     end;
-print_handle_offer_resp(Routing, {error, Err}) ->
+handle_offer_resp(Routing, _Offer, {error, Err}) ->
     case Routing of
         {eui, EUI} ->
             lager:warning("offer: ignoring join [EUI: ~p] [Err: ~p]", [EUI, Err]);
