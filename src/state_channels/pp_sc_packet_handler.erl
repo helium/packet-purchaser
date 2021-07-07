@@ -41,6 +41,8 @@ handle_offer(Offer, _HandlerPid) ->
                                 "Offer [Devaddr: ~p] [NetID: ~p]",
                                 [DevAddr, NetID]
                             ),
+                            PubKeyBin = blockchain_state_channel_offer_v1:hotspot(Offer),
+                            ok = pp_metrics:handle_offer(PubKeyBin, NetID),
                             case lists:member(NetID, IDs) of
                                 true -> ok;
                                 false -> {error, ?NET_ID_REJECTED}
@@ -93,7 +95,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 ),
                 case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, net_id_udp_args(NetID)) of
                     {ok, WorkerPid} ->
-                        ok = pp_metrics:handle_packet(NetID, PubKeyBin),
+                        ok = pp_metrics:handle_packet(PubKeyBin, NetID),
                         pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
                     {error, _Reason} = Error ->
                         lager:error(

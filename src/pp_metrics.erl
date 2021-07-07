@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--define(ETS, pp_net_id_packet_count).
+-define(ETS, pp_metrics_ets).
 
 %% gen_server API
 -export([start_link/0]).
@@ -11,7 +11,8 @@
 -export([
     get_netid_packet_counts/0,
     get_location_packet_counts/0,
-    handle_packet/2
+    handle_packet/2,
+    handle_offer/2
 ]).
 
 %% gen_server callbacks
@@ -24,10 +25,18 @@
     code_change/3
 ]).
 
+-record(hotspot, {
+    address :: binary(),
+    name :: binary(),
+    country :: binary(),
+    state :: binary(),
+    city :: binary(),
+    geo :: {Lat :: float(), Long :: float()},
+    hex :: binary()
+}).
+
 -record(state, {
-    seen :: #{
-        libp2p_crypto:pubkey_bin() => {Country :: binary(), State :: binary(), City :: binary()}
-    }
+    seen :: #{libp2p_crypto:pubkey_bin() => #hotspot{}}
 }).
 
 %% -------------------------------------------------------------------
@@ -37,34 +46,31 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec handle_packet(
-    NetID :: non_neg_integer(),
-    PubKeyBin :: libp2p_crypto:pubkey_bin()
-) -> ok.
-handle_packet(NetID, PubKeyBin) ->
-    %% update net id counter
-    ok = inc_netid(NetID),
+-spec handle_offer(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
+handle_offer(PubKeyBin, NetID) ->
+    gen_server:cast(?MODULE, {offer, PubKeyBin, NetID}).
 
-    %% count by overall location
-    ok = maybe_fetch_location(PubKeyBin),
-
-    ok.
+-spec handle_packet(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
+handle_packet(PubKeyBin, NetID) ->
+    gen_server:cast(?MODULE, {packet, PubKeyBin, NetID}).
 
 -spec get_netid_packet_counts() -> map().
 get_netid_packet_counts() ->
-    maps:from_list([{NetId, Count} || {{count, NetId}, Count} <- ets:tab2list(?ETS)]).
+    Spec = [{{{packet, '_', '$1'}, '$2'}, [], [{{'$1', '$2'}}]}],
+    Values = ets:select(?ETS, Spec),
+    Fun = fun(Key) -> {Key, lists:sum(proplists:get_all_values(Key, Values))} end,
+    maps:from_list(lists:map(Fun, proplists:get_keys(Values))).
 
 -spec get_location_packet_counts() -> map().
 get_location_packet_counts() ->
-    maps:from_list([{Location, Count} || {{location, Location}, Count} <- ets:tab2list(?ETS)]).
-
-%% -------------------------------------------------------------------
-%% Internal gen_server API
-%% -------------------------------------------------------------------
-
--spec maybe_fetch_location(libp2p_crypto:pubkey_bin()) -> ok.
-maybe_fetch_location(PubKeyBin) ->
-    gen_server:cast(?MODULE, {location, PubKeyBin}).
+    Spec = [
+        {{{packet, #hotspot{country = '$1', state = '$2', city = '$3', _ = '_'}, '$4'}, '$5'}, [], [
+            {{{{'$1', '$2', '$3'}}, '$5'}}
+        ]}
+    ],
+    Values = ets:select(?ETS, Spec),
+    Fun = fun(Key) -> {Key, lists:sum(proplists:get_all_values(Key, Values))} end,
+    maps:from_list(lists:map(Fun, proplists:get_keys(Values))).
 
 %% -------------------------------------------------------------------
 %% gen_server Callbacks
@@ -77,14 +83,15 @@ init([]) ->
 handle_call(_Request, _From, State) ->
     {reply, ignored, State}.
 
-handle_cast({location, PubKeyBin}, #state{seen = SeenMap} = State) ->
-    Location =
-        case maps:get(PubKeyBin, SeenMap, undefined) of
-            undefined -> fetch_location(PubKeyBin);
-            Result -> Result
-        end,
-    ok = inc_location(Location),
-    NewSeenMap = maps:put(PubKeyBin, Location, SeenMap),
+handle_cast({offer, PubKeyBin, NetID}, #state{seen = SeenMap} = State) ->
+    Hotspot = get_hotspot(PubKeyBin, SeenMap),
+    ok = inc_offer(Hotspot, NetID),
+    NewSeenMap = maps:put(PubKeyBin, Hotspot, SeenMap),
+    {noreply, State#state{seen = NewSeenMap}};
+handle_cast({packet, PubKeyBin, NetID}, #state{seen = SeenMap} = State) ->
+    Hotspot = get_hotspot(PubKeyBin, SeenMap),
+    ok = inc_packet(Hotspot, NetID),
+    NewSeenMap = maps:put(PubKeyBin, Hotspot, SeenMap),
     {noreply, State#state{seen = NewSeenMap}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -121,42 +128,60 @@ cleanup_ets() ->
     ok = ets:tab2file(?ETS, File, [{sync, true}]),
     ok.
 
--spec inc_netid(integer()) -> ok.
-inc_netid(NetID) ->
-    Key = {count, NetID},
+-spec inc_packet(Hotspot :: #hotspot{}, NetID :: non_neg_integer()) -> ok.
+inc_packet(Hotspot, NetID) ->
+    Key = {packet, Hotspot, NetID},
     _ = ets:update_counter(?ETS, Key, 1, {Key, 0}),
     ok.
 
--spec inc_location(location_not_defined | {binary(), binary()}) -> ok.
-inc_location(Location) ->
-    Key = {location, Location},
+-spec inc_offer(Hotspot :: #hotspot{}, NetID :: non_neg_integer()) -> ok.
+inc_offer(Hotspot, NetID) ->
+    Key = {offer, Hotspot, NetID},
     _ = ets:update_counter(?ETS, Key, 1, {Key, 0}),
     ok.
 
--spec fetch_location(PubKeyBin :: libp2p_crypto:pubkey_bin()) ->
-    {Country :: binary(), State :: binary(), City :: binary()}
-    | {Err, PubKeyBin :: libp2p_crypto:pubkey_bin()}
+-spec get_hotspot(PubKeyBin :: libp2p_crypto:pubkey_bin(), map()) -> #hotspot{}.
+get_hotspot(PubKeyBin, SeenMap) ->
+    case maps:get(PubKeyBin, SeenMap, undefined) of
+        undefined -> fetch_hotspot(PubKeyBin);
+        HS -> HS
+    end.
+
+-spec fetch_hotspot(PubKeyBin :: libp2p_crypto:pubkey_bin()) ->
+    #hotspot{} | {Err, PubKeyBin :: libp2p_crypto:pubkey_bin()}
 when
-    Err :: location_not_set | fetch_failed.
-fetch_location(PubKeyBin) ->
+    Err :: fetch_failed.
+fetch_hotspot(PubKeyBin) ->
     B58 = libp2p_crypto:bin_to_b58(PubKeyBin),
     Prefix = "https://api.helium.io/v1/hotspots/",
     Url = erlang:list_to_binary(io_lib:format("~s~s", [Prefix, B58])),
 
     case hackney:get(Url, [], <<>>, [with_body]) of
         {ok, 200, _Headers, Body} ->
-            Map = jsx:decode(Body, [return_maps]),
+            #{
+                <<"data">> := #{
+                    <<"lat">> := Lat,
+                    <<"lng">> := Long,
+                    <<"location_hex">> := LocationHex,
+                    <<"name">> := Name,
+                    <<"geocode">> := #{
+                        <<"long_country">> := Country,
+                        <<"long_state">> := State,
+                        <<"long_city">> := City
+                    }
+                }
+            } = jsx:decode(Body, [return_maps]),
 
-            Location = {
-                kvc:path("data.geocode.long_country", Map),
-                kvc:path("data.geocode.long_state", Map),
-                kvc:path("data.geocode.long_city", Map)
-            },
-            case Location of
-                {null, null, null} -> {location_not_set, PubKeyBin};
-                _ -> Location
-            end;
+            #hotspot{
+                address = PubKeyBin,
+                name = Name,
+                country = Country,
+                state = State,
+                city = City,
+                geo = {Lat, Long},
+                hex = LocationHex
+            };
         _Other ->
-            lager:info("fetching hotspot region failed: ~p", [_Other]),
+            lager:info("fetchign hotspots failed: ~p", [_Other]),
             {fetch_failed, PubKeyBin}
     end.
