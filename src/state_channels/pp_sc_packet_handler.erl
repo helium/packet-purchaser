@@ -27,8 +27,12 @@ handle_offer(Offer, _HandlerPid) ->
     case blockchain_state_channel_offer_v1:routing(Offer) of
         #routing_information_pb{data = {eui, EUI}} ->
             case should_accept_join(EUI) of
-                true -> ok;
-                false -> {error, ?UNMAPPED_EUI}
+                true ->
+                    lager:debug("offer: buying join ~p", [EUI]),
+                    ok;
+                false ->
+                    lager:debug("offer: ignoring join ~p", [EUI]),
+                    {error, ?UNMAPPED_EUI}
             end;
         #routing_information_pb{data = {devaddr, DevAddr}} ->
             case allowed_net_ids() of
