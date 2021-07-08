@@ -13,6 +13,13 @@
     handle_packet/3
 ]).
 
+-export([
+    should_accept_join/1,
+    join_eui_to_net_id/1,
+    allowed_net_ids/0,
+    net_id_udp_args/1
+]).
+
 %% Offer rejected reasons
 -define(UNMAPPED_EUI, unmapped_eui).
 -define(NET_ID_REJECTED, net_id_rejected).
