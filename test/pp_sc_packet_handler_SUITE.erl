@@ -7,7 +7,8 @@
 ]).
 
 -export([
-    accept_joins_test/1,
+    join_net_id_offer_test/1,
+    join_net_id_packet_test/1,
     net_ids_env_offer_test/1,
     net_ids_map_offer_test/1,
     net_ids_map_packet_test/1,
@@ -56,7 +57,8 @@
 %%--------------------------------------------------------------------
 all() ->
     [
-        accept_joins_test,
+        join_net_id_offer_test,
+        join_net_id_packet_test,
         net_ids_env_offer_test,
         net_ids_map_offer_test,
         net_ids_map_packet_test,
@@ -81,32 +83,91 @@ end_per_testcase(TestCase, Config) ->
 %% TEST CASES
 %%--------------------------------------------------------------------
 
-accept_joins_test(_Config) ->
-    SendJoinOfferFun = fun() ->
+join_net_id_offer_test(_Config) ->
+    SendJoinOfferFun = fun(DevEUI, AppEUI) ->
         DevNonce = crypto:strong_rand_bytes(2),
         AppKey = <<245, 16, 127, 141, 191, 84, 201, 16, 111, 172, 36, 152, 70, 228, 52, 95>>,
 
         #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
         PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
-        Offer = join_offer(PubKeyBin, AppKey, DevNonce),
+        Offer = join_offer(PubKeyBin, AppKey, DevNonce, DevEUI, AppEUI),
         pp_sc_packet_handler:handle_offer(Offer, self())
     end,
 
-    %% Make sure we can accept offers
-    ok = application:set_env(packet_purchaser, accept_joins, true),
-    ?assertMatch(ok, SendJoinOfferFun()),
-    ?assertMatch(ok, SendJoinOfferFun()),
+    DevEUI1 = <<0, 0, 0, 0, 0, 0, 0, 1>>,
+    AppEUI1 = <<0, 0, 0, 2, 0, 0, 0, 1>>,
 
-    %% Turn it off
-    ok = application:set_env(packet_purchaser, accept_joins, false),
-    ?assertMatch({error, not_accepting_joins}, SendJoinOfferFun()),
-    ?assertMatch({error, not_accepting_joins}, SendJoinOfferFun()),
+    DevEUI2 = <<0, 0, 0, 0, 0, 0, 0, 2>>,
+    AppEUI2 = <<0, 0, 0, 2, 0, 0, 0, 2>>,
 
-    %% Turn it back on
-    ok = application:set_env(packet_purchaser, accept_joins, true),
-    ?assertMatch(ok, SendJoinOfferFun()),
-    ?assertMatch(ok, SendJoinOfferFun()),
+    NoneMapped = #{},
+    OneMapped = #{{DevEUI2, AppEUI2} => 2},
+    BothMapped = maps:merge(#{{DevEUI1, AppEUI1} => 1}, OneMapped),
+
+    %% Empty mapping, no joins
+    ok = application:set_env(packet_purchaser, join_net_ids, NoneMapped),
+    ?assertMatch({error, unmapped_eui}, SendJoinOfferFun(DevEUI1, AppEUI1)),
+    ?assertMatch({error, unmapped_eui}, SendJoinOfferFun(DevEUI2, AppEUI2)),
+
+    %% Accept 1 Pair
+    ok = application:set_env(packet_purchaser, join_net_ids, OneMapped),
+    ?assertMatch({error, unmapped_eui}, SendJoinOfferFun(DevEUI1, AppEUI1)),
+    ?assertMatch(ok, SendJoinOfferFun(DevEUI2, AppEUI2)),
+
+    %% Accept Both
+    ok = application:set_env(packet_purchaser, join_net_ids, BothMapped),
+    ?assertMatch(ok, SendJoinOfferFun(DevEUI1, AppEUI1)),
+    ?assertMatch(ok, SendJoinOfferFun(DevEUI2, AppEUI2)),
+
+    ok.
+
+join_net_id_packet_test(_Config) ->
+    DevAddr = ?DEVADDR_COMCAST,
+    NetID = ?NET_ID_COMCAST,
+    DevEUI1 = <<0, 0, 0, 0, 0, 0, 0, 1>>,
+    AppEUI1 = <<0, 0, 0, 2, 0, 0, 0, 1>>,
+
+    DevEUI2 = <<0, 0, 0, 0, 0, 0, 0, 2>>,
+    AppEUI2 = <<0, 0, 0, 2, 0, 0, 0, 2>>,
+
+    application:set_env(packet_purchaser, net_ids, #{
+        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333}
+    }),
+    application:set_env(packet_purchaser, join_net_ids, #{
+        {DevEUI1, AppEUI1} => ?NET_ID_COMCAST
+        %% Uncomment to make test fail
+        %% , {DevEUI2, AppEUI2} => ?NET_ID_COMCAST
+    }),
+
+    %% ------------------------------------------------------------
+    %% Send packet with Mapped EUI
+    #{public := PubKey1} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin1 = libp2p_crypto:pubkey_to_bin(PubKey1),
+
+    Routing = blockchain_helium_packet_v1:make_routing_info({eui, DevEUI1, AppEUI1}),
+    Packet = frame_packet(?UNCONFIRMED_UP, PubKeyBin1, DevAddr, 0, Routing, #{dont_encode => true}),
+
+    {error, not_found} = pp_udp_sup:lookup_worker({PubKeyBin1, NetID}),
+    pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+    {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin1, NetID}),
+
+    {state, PubKeyBin1, _Socket, Address, Port, _PushData, _ScPid, _PullData, _PullDataTimer} = sys:get_state(
+        Pid
+    ),
+    ?assertEqual({"3.3.3.3", 3333}, {Address, Port}),
+
+    %% ------------------------------------------------------------
+    %% Send packet with unmapped EUI from a different gateway
+    #{public := PubKey2} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin2 = libp2p_crypto:pubkey_to_bin(PubKey2),
+    Routing2 = blockchain_helium_packet_v1:make_routing_info({eui, DevEUI2, AppEUI2}),
+
+    Packet2 = frame_packet(?UNCONFIRMED_UP, PubKeyBin2, DevAddr, 0, Routing2, #{dont_encode => true}),
+
+    {error, not_found} = pp_udp_sup:lookup_worker({PubKeyBin2, NetID}),
+    pp_sc_packet_handler:handle_packet(Packet2, erlang:system_time(millisecond), self()),
+    {error, not_found} = pp_udp_sup:lookup_worker({PubKeyBin2, NetID}),
 
     ok.
 
@@ -330,12 +391,14 @@ single_hotspot_multi_net_id_test(_Config) ->
 %% ------------------------------------------------------------------
 
 frame_packet(MType, PubKeyBin, DevAddr, FCnt, Options) ->
+    <<DevNum:32/integer-unsigned>> = DevAddr,
+    Routing = blockchain_helium_packet_v1:make_routing_info({devaddr, DevNum}),
+    frame_packet(MType, PubKeyBin, DevAddr, FCnt, Routing, Options).
+
+frame_packet(MType, PubKeyBin, DevAddr, FCnt, Routing, Options) ->
     NwkSessionKey = <<81, 103, 129, 150, 35, 76, 17, 164, 210, 66, 210, 149, 120, 193, 251, 85>>,
     AppSessionKey = <<245, 16, 127, 141, 191, 84, 201, 16, 111, 172, 36, 152, 70, 228, 52, 95>>,
     Payload1 = frame_payload(MType, DevAddr, NwkSessionKey, AppSessionKey, FCnt),
-
-    <<DevNum:32/integer-unsigned>> = DevAddr,
-    Routing = blockchain_helium_packet_v1:make_routing_info({devaddr, DevNum}),
 
     HeliumPacket = #packet_pb{
         type = lorawan,
@@ -359,11 +422,14 @@ frame_packet(MType, PubKeyBin, DevAddr, FCnt, Options) ->
             blockchain_state_channel_v1_pb:encode_msg(Msg)
     end.
 
-join_offer(PubKeyBin, AppKey, DevNonce) ->
-    RoutingInfo = {eui, 1, 1},
+%% join_offer(PubKeyBin, AppKey, DevNonce) ->
+%%     join_offer(PubKeyBin, AppKey, DevNonce, ?DEVEUI, ?APPEUI).
+
+join_offer(PubKeyBin, AppKey, DevNonce, DevEUI, AppEUI) ->
+    RoutingInfo = {eui, DevEUI, AppEUI},
     HeliumPacket = blockchain_helium_packet_v1:new(
         lorawan,
-        join_payload(AppKey, DevNonce),
+        join_payload(AppKey, DevNonce, DevEUI, AppEUI),
         1000,
         0,
         923.3,
@@ -400,12 +466,12 @@ packet_offer(PubKeyBin, DevAddr) ->
 
     blockchain_state_channel_offer_v1:from_packet(HeliumPacket, PubKeyBin, 'US915').
 
-join_payload(AppKey, DevNonce) ->
+join_payload(AppKey, DevNonce, DevEUI0, AppEUI0) ->
     MType = ?JOIN_REQ,
     MHDRRFU = 0,
     Major = 0,
-    AppEUI = reverse(?APPEUI),
-    DevEUI = reverse(?DEVEUI),
+    AppEUI = reverse(AppEUI0),
+    DevEUI = reverse(DevEUI0),
     Payload0 = <<MType:3, MHDRRFU:3, Major:2, AppEUI:8/binary, DevEUI:8/binary, DevNonce:2/binary>>,
     MIC = crypto:cmac(aes_cbc128, AppKey, Payload0, 4),
     <<Payload0/binary, MIC:4/binary>>.

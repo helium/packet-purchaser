@@ -24,7 +24,11 @@
     code_change/3
 ]).
 
--record(state, {seen :: #{libp2p_crypto:pubkey_bin() => {Country :: binary(), City :: binary()}}}).
+-record(state, {
+    seen :: #{
+        libp2p_crypto:pubkey_bin() => {Country :: binary(), State :: binary(), City :: binary()}
+    }
+}).
 
 %% -------------------------------------------------------------------
 %% API Functions
