@@ -79,7 +79,7 @@ handle_info(post_init, #state{chain = undefined} = State) ->
             ok = schedule_post_init(),
             {noreply, State};
         Chain ->
-            case pp_utils:get_oui(Chain) of
+            case pp_utils:get_oui() of
                 undefined ->
                     ok = schedule_post_init(),
                     {noreply, State};
@@ -392,6 +392,9 @@ default_timer() ->
 -include_lib("eunit/include/eunit.hrl").
 
 should_update_filters_test() ->
+    {timeout, 15, fun test_for_should_update_filters_test/0}.
+
+test_for_should_update_filters_test() ->
     OUI = 1,
 
     meck:new(blockchain, [passthrough]),

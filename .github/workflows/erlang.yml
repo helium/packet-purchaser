@@ -14,7 +14,7 @@ jobs:
   CI:
     runs-on: ubuntu-latest
     container:
-      image: heliumsystems/builder-erlang:latest
+      image: heliumsystems/builder-erlang:1
     steps:
       - name: Cancel previous runs
         uses: styfle/cancel-workflow-action@0.5.0
@@ -29,8 +29,6 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Build
-        env:
-          SANITIZE_ERLANG_NIFS: 1
         run: |
           ./rebar3 get-deps
           ./rebar3 compile
@@ -38,26 +36,17 @@ jobs:
       - name: Check formatting
         run: |
           ./rebar3 fmt --verbose --check rebar.config
-          ./rebar3 fmt --verbose --check "{src,include,test}/**/*.{hrl,erl,app.src}"
-          ./rebar3 fmt --verbose --check "config/{test,sys}.{config,config.src}"
+          ./rebar3 fmt --verbose --check "{src,include,test}/**/*.{hrl,erl,app.src}" --exclude-files "src/grpc/autogen/**/*"
+          ./rebar3 fmt --verbose --check "config/sys.{config,config.src}"
 
       - name: Run xref
         run: ./rebar3 xref
 
       - name: Run EUnit tests
-        env:
-          SANITIZE_ERLANG_NIFS: 1
-          ASAN_OPTIONS: detect_leaks=0
-        run: LD_PRELOAD="$(cc --print-file libasan.so)" ./rebar3 eunit
+        run: ./rebar3 eunit
 
       - name: Run CT tests
-        env:
-          SANITIZE_ERLANG_NIFS: 1
-          # We turn off leak detection to reduce noise from leaking
-          # processes that rebar exec()s before it actually runs the
-          # tests.
-          ASAN_OPTIONS: detect_leaks=0
-        run: LD_PRELOAD="$(cc --print-file libasan.so)" ./rebar3 ct
+        run: ./rebar3 ct
 
       - name: Run Dialyzer
         run: ./rebar3 dialyzer

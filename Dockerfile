@@ -1,4 +1,4 @@
-FROM heliumsystems/builder-erlang:latest
+FROM heliumsystems/builder-erlang:1
 
 WORKDIR /opt/packet_purchaser
 
@@ -12,7 +12,7 @@ RUN make
 COPY include/ include/
 COPY priv/ priv/
 COPY src/ src/
-COPY test/utils/pp_lns.erl src/pp_lns.erl
+COPY test/pp_lns.erl src/pp_lns.erl
 RUN make
 
 COPY config/ config/

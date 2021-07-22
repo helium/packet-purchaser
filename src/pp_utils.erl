@@ -3,24 +3,22 @@
 -include("packet_purchaser.hrl").
 
 -export([
-    get_oui/1,
+    get_oui/0,
     pubkeybin_to_mac/1,
     get_metrics_filename/0,
     hex_to_binary/1
 ]).
 
--spec get_oui(Chain :: blockchain:blockchain()) -> non_neg_integer() | undefined.
-get_oui(Chain) ->
-    Ledger = blockchain:ledger(Chain),
-    PubkeyBin = blockchain_swarm:pubkey_bin(),
-    case blockchain_ledger_v1:get_oui_counter(Ledger) of
-        {error, _} ->
+-spec get_oui() -> undefined | non_neg_integer().
+get_oui() ->
+    case application:get_env(?APP, oui, undefined) of
+        undefined ->
             undefined;
-        {ok, 0} ->
-            undefined;
-        {ok, _OUICounter} ->
-            %% there are some ouis on chain
-            find_oui(PubkeyBin, Ledger)
+        %% app env comes in as a string
+        OUI0 when is_list(OUI0) ->
+            erlang:list_to_integer(OUI0);
+        OUI0 ->
+            OUI0
     end.
 
 -spec pubkeybin_to_mac(binary()) -> binary().
@@ -30,37 +28,6 @@ pubkeybin_to_mac(PubKeyBin) ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
-
--spec find_oui(
-    PubkeyBin :: libp2p_crypto:pubkey_bin(),
-    Ledger :: blockchain_ledger_v1:ledger()
-) -> non_neg_integer() | undefined.
-find_oui(PubkeyBin, Ledger) ->
-    MyOUIs = blockchain_ledger_v1:find_router_ouis(PubkeyBin, Ledger),
-    case application:get_env(?APP, oui, undefined) of
-        undefined ->
-            %% still check on chain
-            case MyOUIs of
-                [] -> undefined;
-                [OUI] -> OUI;
-                [H | _T] -> H
-            end;
-        OUI0 when is_list(OUI0) ->
-            %% app env comes in as a string
-            OUI = list_to_integer(OUI0),
-            check_oui_on_chain(OUI, MyOUIs);
-        OUI ->
-            check_oui_on_chain(OUI, MyOUIs)
-    end.
-
--spec check_oui_on_chain(non_neg_integer(), [non_neg_integer()]) -> non_neg_integer() | undefined.
-check_oui_on_chain(OUI, OUIsOnChain) ->
-    case lists:member(OUI, OUIsOnChain) of
-        false ->
-            undefined;
-        true ->
-            OUI
-    end.
 
 -spec get_metrics_filename() -> string().
 get_metrics_filename() ->

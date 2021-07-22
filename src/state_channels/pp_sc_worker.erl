@@ -1,6 +1,6 @@
 %%%-------------------------------------------------------------------
 %% @doc
-%% == Packer Purchaser State Channels Worker ==
+%% == PP State Channels Worker ==
 %%
 %% * Responsible for state channel management
 %% * Always tries to keep two state channels alive at all times, tracked via active_count
@@ -20,6 +20,7 @@
 
 -include_lib("blockchain/include/blockchain_utils.hrl").
 -include_lib("blockchain/include/blockchain_vars.hrl").
+
 -include("packet_purchaser.hrl").
 
 %% ------------------------------------------------------------------
@@ -77,6 +78,7 @@ is_active() ->
 %% ------------------------------------------------------------------
 init(Args) ->
     lager:info("~p init with ~p", [?SERVER, Args]),
+    ok = blockchain_event:add_handler(self()),
     erlang:send_after(500, self(), post_init),
     Tref = schedule_next_tick(),
     {ok, PubKey, SigFun, _} = blockchain_swarm:keys(),
@@ -100,7 +102,7 @@ handle_info(post_init, #state{chain = undefined} = State) ->
             {noreply, State};
         Chain ->
             Limit = max_sc_open(Chain),
-            case pp_utils:get_oui(Chain) of
+            case pp_utils:get_oui() of
                 undefined ->
                     lager:warning("OUI undefined"),
                     {noreply, State#state{chain = Chain, open_sc_limit = Limit}};
@@ -141,7 +143,7 @@ handle_info(
     #state{is_active = false, chain = Chain} = State
 ) ->
     %% We're inactive, check if we have an oui
-    case pp_utils:get_oui(Chain) of
+    case pp_utils:get_oui() of
         undefined ->
             %% stay inactive
             lager:warning("OUI undefined"),
@@ -241,7 +243,10 @@ schedule_next_tick() ->
 maybe_start_state_channel(#state{in_flight = [], open_sc_limit = Limit} = State) ->
     SCs = blockchain_state_channels_server:state_channels(),
     OpenedSCs = maps:filter(
-        fun(_ID, {SC, _}) -> blockchain_state_channel_v1:state(SC) == open end,
+        fun(_ID, {SC, _}) ->
+            blockchain_state_channel_v1:state(SC) == open andalso
+                blockchain_state_channel_v1:total_dcs(SC) < blockchain_state_channel_v1:amount(SC)
+        end,
         SCs
     ),
     OpenedCount = maps:size(OpenedSCs),
@@ -278,7 +283,10 @@ maybe_start_state_channel(#state{in_flight = [], open_sc_limit = Limit} = State)
 maybe_start_state_channel(#state{in_flight = InFlight, open_sc_limit = Limit} = State) ->
     SCs = blockchain_state_channels_server:state_channels(),
     OpenedSCs = maps:filter(
-        fun(_ID, {SC, _}) -> blockchain_state_channel_v1:state(SC) == open end,
+        fun(_ID, {SC, _}) ->
+            blockchain_state_channel_v1:state(SC) == open andalso
+                blockchain_state_channel_v1:total_dcs(SC) < blockchain_state_channel_v1:amount(SC)
+        end,
         SCs
     ),
     OpenedCount = maps:size(OpenedSCs),
@@ -295,8 +303,9 @@ open_next_state_channel(#state{pubkey = PubKey, sig_fun = SigFun, oui = OUI, cha
     Ledger = blockchain:ledger(Chain),
     {ok, ChainHeight} = blockchain:height(Chain),
     NextExpiration =
-        case active_sc_expiration() of
-            {error, no_active_sc} ->
+        case sc_expiration() of
+            {error, _Reason} ->
+                lager:info("failed to get a good expiration ~p", [_Reason]),
                 %% Just set it to expiration_interval
                 get_sc_expiration_interval();
             {ok, ActiveSCExpiration} ->
@@ -306,7 +315,6 @@ open_next_state_channel(#state{pubkey = PubKey, sig_fun = SigFun, oui = OUI, cha
         end,
     PubkeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
     Nonce = get_nonce(PubkeyBin, Ledger),
-    %% XXX FIXME: there needs to be some kind of mechanism to estimate SC_AMOUNT and pass it in
     Id = create_and_send_sc_open_txn(
         PubkeyBin,
         SigFun,
@@ -337,7 +345,7 @@ create_and_send_sc_open_txn(PubkeyBin, SigFun, Nonce, OUI, Expiration, Amount, C
         blockchain_txn_state_channel_open_v1:fee(Txn, Fee),
         SigFun
     ),
-    lager:info("Opening state channel for packet-purchaser: ~p, oui: ~p, nonce: ~p, id: ~p", [
+    lager:info("Opening state channel for pp: ~p, oui: ~p, nonce: ~p, id: ~p", [
         ?TO_B58(PubkeyBin),
         OUI,
         Nonce,
@@ -356,27 +364,6 @@ get_nonce(PubkeyBin, Ledger) ->
             0;
         {ok, DCEntry} ->
             blockchain_ledger_data_credits_entry_v1:nonce(DCEntry)
-    end.
-
--spec active_sc_expiration() -> {error, no_active_sc} | {ok, pos_integer()}.
-active_sc_expiration() ->
-    case blockchain_state_channels_server:active_sc_ids() of
-        [] ->
-            {error, no_active_sc};
-        ActiveSCIDs ->
-            SCs = blockchain_state_channels_server:state_channels(),
-            [SoonestSCIDToExpire | _] =
-                lists:sort(
-                    fun(SCIDA, SCIDB) ->
-                        {ActiveSCA, _} = maps:get(SCIDA, SCs),
-                        {ActiveSCB, _} = maps:get(SCIDB, SCs),
-                        blockchain_state_channel_v1:expire_at_block(ActiveSCA) <
-                            blockchain_state_channel_v1:expire_at_block(ActiveSCB)
-                    end,
-                    ActiveSCIDs
-                ),
-            {SoonestSCToExpire, _} = maps:get(SoonestSCIDToExpire, SCs),
-            {ok, blockchain_state_channel_v1:expire_at_block(SoonestSCToExpire)}
     end.
 
 -spec get_sc_amount() -> pos_integer().
@@ -401,3 +388,21 @@ handle_sc_result(ok, Id) ->
     ?SERVER ! {sc_open_success, Id};
 handle_sc_result(Error, Id) ->
     ?SERVER ! {sc_open_failure, Error, Id}.
+
+-spec sc_expiration() -> {ok, pos_integer()} | {error, any()}.
+sc_expiration() ->
+    SCs = blockchain_state_channels_server:state_channels(),
+    case SCs == #{} of
+        true ->
+            {error, no_opened_sc};
+        false ->
+            [{_, {SoonestSCToExpire, _}} | _] =
+                lists:sort(
+                    fun({_, {SCA, _}}, {_, {SCB, _}}) ->
+                        blockchain_state_channel_v1:expire_at_block(SCA) <
+                            blockchain_state_channel_v1:expire_at_block(SCB)
+                    end,
+                    maps:to_list(SCs)
+                ),
+            {ok, blockchain_state_channel_v1:expire_at_block(SoonestSCToExpire)}
+    end.
