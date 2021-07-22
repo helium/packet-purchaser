@@ -14,6 +14,7 @@
             {app_eui, "${PP_CHIRPSTACK_APP_EUI}"}
         ]},
         {accept_joins, "${PP_ACCEPT_JOINS}"},
+        {join_net_ids, #{}},
         {net_ids, [${PP_NET_IDS}]},
         {sc_open_dc_amount, "${PP_SC_OPEN_DC_AMOUNT}"},
         {sc_expiration_interval, "${PP_SC_EXPIRATION_INTERVAL}"},
