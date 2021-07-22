@@ -499,7 +499,7 @@ frame_payload(MType, DevAddr, NwkSessionKey, AppSessionKey, FCnt) ->
     <<Payload0/binary, MIC:4/binary>>.
 
 %% ------------------------------------------------------------------
-%% Router Utils
+%% PP Utils
 %% ------------------------------------------------------------------
 
 -spec b0(integer(), binary(), integer(), integer()) -> binary().

@@ -52,7 +52,8 @@ init_per_testcase(TestCase, Config) ->
             ]),
             ok = application:set_env(lager, traces, [
                 {lager_console_backend, [{application, packet_purchaser}], debug},
-                {{lager_file_backend, "packet_purchaser.log"}, [{application, router}], debug}
+                {{lager_file_backend, "packet_purchaser.log"}, [{application, packet_purchaser}],
+                    debug}
             ]);
         _ ->
             ok
