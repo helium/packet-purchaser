@@ -392,6 +392,9 @@ default_timer() ->
 -include_lib("eunit/include/eunit.hrl").
 
 should_update_filters_test() ->
+    {timeout, 15, fun test_for_should_update_filters_test/0}.
+
+test_for_should_update_filters_test() ->
     OUI = 1,
 
     meck:new(blockchain, [passthrough]),
