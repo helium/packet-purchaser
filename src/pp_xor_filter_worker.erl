@@ -79,7 +79,7 @@ handle_info(post_init, #state{chain = undefined} = State) ->
             ok = schedule_post_init(),
             {noreply, State};
         Chain ->
-            case pp_utils:get_oui(Chain) of
+            case pp_utils:get_oui() of
                 undefined ->
                     ok = schedule_post_init(),
                     {noreply, State};

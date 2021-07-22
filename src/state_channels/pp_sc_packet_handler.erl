@@ -6,6 +6,7 @@
 -module(pp_sc_packet_handler).
 
 -include("packet_purchaser.hrl").
+
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
 
 -export([
