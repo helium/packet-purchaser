@@ -230,15 +230,32 @@ should_accept_join_test() ->
 
     application:set_env(?APP, join_net_ids, WildcardMapped),
     ?assertEqual(true, should_accept_join(EUI1), "Wildcard EUI Mapped 1"),
-    ?assertEqual(true, should_accept_join(#eui_pb{deveui = rand:uniform(trunc(math:pow(2, 64) - 1)), appeui =  App1}), "Wildcard random device EUI Mapped 1"),
+    ?assertEqual(
+        true,
+        should_accept_join(#eui_pb{deveui = rand:uniform(trunc(math:pow(2, 64) - 1)), appeui = App1}),
+        "Wildcard random device EUI Mapped 1"
+    ),
     ?assertEqual(true, should_accept_join(EUI2), "Wildcard EUI Mapped 2"),
-    ?assertEqual(true, should_accept_join(
-                         #eui_pb{deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
-                                 appeui =  App2}), "Wildcard random device EUI Mapped 2"),
-    ?assertEqual(false, should_accept_join(
-                          #eui_pb{deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
-                                  appeui = rand:uniform(trunc(math:pow(2, 64) - 1000)) + 1000}),
-                 "Wildcard random device EUI and unknown join eui no joins"),
+    ?assertEqual(
+        true,
+        should_accept_join(
+            #eui_pb{
+                deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
+                appeui = App2
+            }
+        ),
+        "Wildcard random device EUI Mapped 2"
+    ),
+    ?assertEqual(
+        false,
+        should_accept_join(
+            #eui_pb{
+                deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
+                appeui = rand:uniform(trunc(math:pow(2, 64) - 1000)) + 1000
+            }
+        ),
+        "Wildcard random device EUI and unknown join eui no joins"
+    ),
 
     ok.
 
