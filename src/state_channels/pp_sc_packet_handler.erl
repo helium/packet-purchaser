@@ -161,7 +161,7 @@ join_eui_to_net_id(#eui_pb{deveui = Dev, appeui = App}) ->
 join_eui_to_net_id({eui, DevEUI, AppEUI}) ->
     Map = application:get_env(?APP, join_net_ids, #{}),
 
-    case maps:get({DevEUI, AppEUI}, Map, undefined) of
+    case maps:get({DevEUI, AppEUI}, Map, maps:get({'*', AppEUI}, Map, undefined)) of
         undefined ->
             {error, no_mapping};
         NetID ->
@@ -215,6 +215,7 @@ should_accept_join_test() ->
     NoneMapped = #{},
     OneMapped = #{{Dev1, App1} => 2},
     BothMapped = #{{Dev1, App1} => 2, {Dev2, App2} => 99},
+    WildcardMapped = #{{'*', App1} => 2, {'*', App2} => 99},
 
     application:set_env(?APP, join_net_ids, NoneMapped),
     ?assertEqual(false, should_accept_join(EUI1), "Empty mapping, no joins"),
@@ -226,6 +227,18 @@ should_accept_join_test() ->
     application:set_env(?APP, join_net_ids, BothMapped),
     ?assertEqual(true, should_accept_join(EUI1), "All EUI Mapped 1"),
     ?assertEqual(true, should_accept_join(EUI2), "All EUI Mapped 2"),
+
+    application:set_env(?APP, join_net_ids, WildcardMapped),
+    ?assertEqual(true, should_accept_join(EUI1), "Wildcard EUI Mapped 1"),
+    ?assertEqual(true, should_accept_join(#eui_pb{deveui = rand:uniform(trunc(math:pow(2, 64) - 1)), appeui =  App1}), "Wildcard random device EUI Mapped 1"),
+    ?assertEqual(true, should_accept_join(EUI2), "Wildcard EUI Mapped 2"),
+    ?assertEqual(true, should_accept_join(
+                         #eui_pb{deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
+                                 appeui =  App2}), "Wildcard random device EUI Mapped 2"),
+    ?assertEqual(false, should_accept_join(
+                          #eui_pb{deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
+                                  appeui = rand:uniform(trunc(math:pow(2, 64) - 1000)) + 1000}),
+                 "Wildcard random device EUI and unknown join eui no joins"),
 
     ok.
 
