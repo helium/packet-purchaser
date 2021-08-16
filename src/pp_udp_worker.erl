@@ -64,9 +64,9 @@ init(Args) ->
     lager:info("~p init with ~p", [?SERVER, Args]),
 
     PubKeyBin = maps:get(pubkeybin, Args),
-    lager:md([{gateway_id, blockchain_utils:addr2name(PubKeyBin)}]),
-
     Address = maps:get(address, Args),
+    lager:md([{gateway_id, blockchain_utils:addr2name(PubKeyBin)}, {address, Address}]),
+
     Port = maps:get(port, Args),
     PullDataTimer = maps:get(pull_data_timer, Args, ?PULL_DATA_TIMER),
     {ok, Socket} = pp_udp_socket:open({Address, Port}, maps:get(tee, Args, undefined)),
