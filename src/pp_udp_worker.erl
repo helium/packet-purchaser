@@ -119,13 +119,14 @@ handle_info(
     end;
 handle_info(
     {?PUSH_DATA_TICK, Token},
-    #state{push_data = PushData} = State
+    #state{push_data = PushData, address = Address} = State
 ) ->
     case maps:get(Token, PushData, undefined) of
         undefined ->
             {noreply, State};
         {_Data, _} ->
             lager:debug("got push data timeout ~p, ignoring lack of ack", [Token]),
+            ok = pp_metrics:push_ack_missed(Address),
             {noreply, State#state{push_data = maps:remove(Token, PushData)}}
     end;
 handle_info(
@@ -139,6 +140,7 @@ handle_info(
     State
 ) ->
     lager:debug("got a pull data timeout, ignoring missed pull_ack"),
+    ok = pp_metrics:pull_ack_missed(State#state.address),
     {noreply, State};
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p, ~p", [_Msg, State]),
@@ -176,7 +178,8 @@ handle_udp(Data, State) ->
 handle_push_ack(
     Data,
     #state{
-        push_data = PushData
+        push_data = PushData,
+        address = Address
     } = State
 ) ->
     Token = semtech_udp:token(Data),
@@ -187,6 +190,7 @@ handle_push_ack(
         {_, TimerRef} ->
             lager:debug("got push ack ~p", [Token]),
             _ = erlang:cancel_timer(TimerRef),
+            ok = pp_metrics:push_ack(Address),
             {noreply, State#state{push_data = maps:remove(Token, PushData)}}
     end.
 
@@ -203,7 +207,8 @@ handle_pull_ack(
     Data,
     #state{
         pull_data = {PullDataRef, PullDataToken},
-        pull_data_timer = PullDataTimer
+        pull_data_timer = PullDataTimer,
+        address = Address
     } = State
 ) ->
     case semtech_udp:token(Data) of
@@ -211,6 +216,7 @@ handle_pull_ack(
             erlang:cancel_timer(PullDataRef),
             lager:debug("got pull ack for ~p", [PullDataToken]),
             _ = schedule_pull_data(PullDataTimer),
+            ok = pp_metrics:pull_ack(Address),
             {noreply, State#state{pull_data = undefined}};
         _UnknownToken ->
             lager:warning("got unknown pull ack for ~p", [_UnknownToken]),
