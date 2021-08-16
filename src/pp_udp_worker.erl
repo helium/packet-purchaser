@@ -138,8 +138,8 @@ handle_info(
     ?PULL_DATA_TIMEOUT_TICK,
     State
 ) ->
-    lager:error("got a pull data timeout closing down"),
-    {stop, normal, State};
+    lager:debug("got a pull data timeout, ignoring missed pull_ack"),
+    {noreply, State};
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p, ~p", [_Msg, State]),
     {noreply, State}.

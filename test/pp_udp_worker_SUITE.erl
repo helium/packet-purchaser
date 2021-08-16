@@ -236,11 +236,14 @@ failed_pull_data(Config) ->
     FakeLNSPid = proplists:get_value(lns, Config),
     {_PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
 
-    ok = pp_lns:delay_next_udp(FakeLNSPid, timer:seconds(5)),
+    %% Speed up the rate we check for pull_acks
+    sys:replace_state(WorkerPid, fun(State) -> State#state{pull_data_timer = 20} end),
 
-    test_utils:wait_until(fun() -> not erlang:is_process_alive(WorkerPid) end),
-    %% One more check to make sure we exited waiting for the right reason.
-    ?assert(not erlang:is_process_alive(WorkerPid)),
+    ok = pp_lns:delay_next_udp(FakeLNSPid, timer:seconds(5)),
+    timer:sleep(timer:seconds(1)),
+
+    %% Gateways should ignore missed pull_ack messages
+    ?assert(erlang:is_process_alive(WorkerPid)),
 
     ok.
 
