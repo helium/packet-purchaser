@@ -15,6 +15,7 @@
 -export([
     push_data/1,
     delay_push_data/1,
+    missing_push_data_ack/1,
     pull_data/1,
     failed_pull_data/1,
     pull_resp/1,
@@ -47,6 +48,7 @@ all() ->
     [
         push_data,
         delay_push_data,
+        missing_push_data_ack,
         pull_data,
         failed_pull_data,
         pull_resp,
@@ -102,7 +104,7 @@ push_data(Config) ->
     ),
 
     %% Chekcing that the push data cache is empty as we should have gotten the push ack
-    test_utils:wait_until(fun() ->
+    ok = test_utils:wait_until(fun() ->
         State = sys:get_state(WorkerPid),
         State#state.push_data == #{} andalso self() == State#state.sc_pid
     end),
@@ -111,7 +113,7 @@ push_data(Config) ->
 
 delay_push_data(Config) ->
     FakeLNSPid = proplists:get_value(lns, Config),
-    {PubKeyBin, _WorkerPid} = proplists:get_value(gateway, Config),
+    {PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
 
     Opts0 = pp_lns:send_packet(PubKeyBin, #{}),
     {ok, Map0} = pp_lns:rcv(FakeLNSPid, ?PUSH_DATA),
@@ -168,6 +170,57 @@ delay_push_data(Config) ->
             Map1
         )
     ),
+
+    %% Checking that the push data cache is empty as we should have gotten the push ack
+    ok = test_utils:wait_until(fun() ->
+        State = sys:get_state(WorkerPid),
+        State#state.push_data == #{} andalso self() == State#state.sc_pid
+    end),
+
+    ok.
+
+missing_push_data_ack(Config) ->
+    FakeLNSPid = proplists:get_value(lns, Config),
+    {PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
+
+    Opts0 = pp_lns:send_packet(PubKeyBin, #{}),
+    {ok, Map0} = pp_lns:rcv(FakeLNSPid, ?PUSH_DATA),
+    ?assert(
+        test_utils:match_map(
+            #{
+                <<"rxpk">> => [
+                    #{
+                        <<"data">> => base64:encode(maps:get(payload, Opts0)),
+                        <<"datr">> => erlang:list_to_binary(maps:get(dr, Opts0)),
+                        <<"freq">> => maps:get(freq, Opts0),
+                        <<"rfch">> => 0,
+                        <<"lsnr">> => maps:get(snr, Opts0),
+                        <<"modu">> => <<"LORA">>,
+                        <<"rssi">> => erlang:trunc(maps:get(rssi, Opts0)),
+                        <<"size">> => erlang:byte_size(maps:get(payload, Opts0)),
+                        <<"time">> => fun erlang:is_binary/1,
+                        <<"tmst">> => maps:get(timestamp, Opts0) band 4294967295,
+                        <<"codr">> => <<"4/5">>,
+                        <<"stat">> => 1,
+                        <<"chan">> => 0
+                    }
+                ]
+            },
+            Map0
+        )
+    ),
+
+    ok = pp_lns:delay_next_udp_forever(FakeLNSPid),
+    _Opts1 = pp_lns:send_packet(PubKeyBin, #{}),
+
+    ok = pp_lns:not_rcv(FakeLNSPid, ?PUSH_DATA, timer:seconds(3)),
+
+    %% Checking that the push data cache is full as we should have _not_ gotten the push ack
+    ok = test_utils:wait_until(fun() ->
+        State = sys:get_state(WorkerPid),
+        State#state.push_data == #{} andalso self() == State#state.sc_pid
+    end),
+
     ok.
 
 pull_data(Config) ->
@@ -349,12 +402,12 @@ multi_hotspots(Config) ->
 
     %% Chekcing that the push data cache is empty as we should have gotten the push ack
 
-    test_utils:wait_until(fun() ->
+    ok = test_utils:wait_until(fun() ->
         State1 = sys:get_state(WorkerPid1),
         State1#state.push_data == #{} andalso self() == State1#state.sc_pid
     end),
 
-    test_utils:wait_until(fun() ->
+    ok = test_utils:wait_until(fun() ->
         State2 = sys:get_state(WorkerPid2),
         State2#state.push_data == #{} andalso self() == State2#state.sc_pid
     end),

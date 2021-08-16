@@ -124,10 +124,9 @@ handle_info(
     case maps:get(Token, PushData, undefined) of
         undefined ->
             {noreply, State};
-        {Data, _} ->
-            lager:debug("got push data timeout ~p, retrying", [Token]),
-            {_Reply, TimerRef} = send_push_data(Token, Data, State),
-            {noreply, State#state{push_data = maps:put(Token, {Data, TimerRef}, PushData)}}
+        {_Data, _} ->
+            lager:debug("got push data timeout ~p, ignoring lack of ack", [Token]),
+            {noreply, State#state{push_data = maps:remove(Token, PushData)}}
     end;
 handle_info(
     ?PULL_DATA_TICK,

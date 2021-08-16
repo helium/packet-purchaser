@@ -10,8 +10,10 @@
 -export([
     start_link/1,
     delay_next_udp/2,
+    delay_next_udp_forever/1,
     pull_resp/5,
     rcv/2, rcv/3,
+    not_rcv/3,
     send_packet/2
 ]).
 
@@ -43,6 +45,9 @@
 start_link(Args) ->
     gen_server:start_link(?SERVER, Args, []).
 
+delay_next_udp_forever(Pid) ->
+    gen_server:cast(Pid, {delay_next_udp, timer:seconds(999)}).
+
 delay_next_udp(Pid, Delay) ->
     gen_server:cast(Pid, {delay_next_udp, Delay}).
 
@@ -56,6 +61,13 @@ rcv(Pid, Type, Delay) ->
     receive
         {?MODULE, Pid, Type, Data} -> {ok, Data}
     after Delay -> ct:fail("pp_lns rcv timeout")
+    end.
+
+not_rcv(Pid, Type, Delay) ->
+    receive
+        {?MODULE, Pid, Type, _Data} ->
+            ct:fail("Expected to not receive more")
+    after Delay -> ok
     end.
 
 -spec send_packet(PubKeyBin :: libp2p_crypto:pubkey_bin(), Opts :: map()) -> map().
