@@ -80,21 +80,20 @@ get_lns_metrics() ->
     ).
 
 -spec push_ack(LNSAddress :: lns_address()) -> ok.
-
 push_ack(Address) ->
-    gen_server:cast(?MODULE, {lns_metric, Address, push_ack, hit}).
+    ok = inc_lns_metric(Address, push_ack, hit).
 
 -spec push_ack_missed(LNSAddress :: lns_address()) -> ok.
 push_ack_missed(Address) ->
-    gen_server:cast(?MODULE, {lns_metric, Address, push_ack, miss}).
+    ok = inc_lns_metric(Address, push_ack, miss).
 
 -spec pull_ack(LNSAddress :: lns_address()) -> ok.
 pull_ack(Address) ->
-    gen_server:cast(?MODULE, {lns_metric, Address, pull_ack, hit}).
+    ok = inc_lns_metric(Address, pull_ack, hit).
 
 -spec pull_ack_missed(LNSAddress :: lns_address()) -> ok.
 pull_ack_missed(Address) ->
-    gen_server:cast(?MODULE, {lns_metric, Address, pull_ack, miss}).
+    ok = inc_lns_metric(Address, pull_ack, miss).
 
 %% -------------------------------------------------------------------
 %% Internal gen_server API
@@ -124,9 +123,6 @@ handle_cast({location, PubKeyBin}, #state{seen = SeenMap} = State) ->
     ok = inc_location(Location),
     NewSeenMap = maps:put(PubKeyBin, Location, SeenMap),
     {noreply, State#state{seen = NewSeenMap}};
-handle_cast({lns_metric, Address, MessageType, Status}, State) ->
-    ok = inc_lns_metric(Address, MessageType, Status),
-    {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -160,7 +156,7 @@ init_ets() ->
             lager:info("LNS metrics continued from last shutdown");
         {error, _} = Err2 ->
             lager:warning("Unable to topen ~p ~p. Metrics will start over", [File2, Err2]),
-            ?LNS_ETS = ets:new(?LNS_ETS, [public, named_table, set])
+            ?LNS_ETS = ets:new(?LNS_ETS, [public, named_table, set, {write_concurrency, true}])
     end,
     ok.
 
