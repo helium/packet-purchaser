@@ -2,7 +2,8 @@
 
 -behaviour(gen_server).
 
--define(ETS, pp_net_id_packet_count).
+-define(PACKET_ETS, pp_net_id_packet_count).
+-define(LNS_ETS, lns_stats_ets).
 
 %% gen_server API
 -export([start_link/0]).
@@ -11,7 +12,15 @@
 -export([
     get_netid_packet_counts/0,
     get_location_packet_counts/0,
+    get_lns_metrics/0,
     handle_packet/2
+]).
+
+-export([
+    push_ack/1,
+    push_ack_missed/1,
+    pull_ack/1,
+    pull_ack_missed/1
 ]).
 
 %% gen_server callbacks
@@ -29,6 +38,8 @@
         libp2p_crypto:pubkey_bin() => {Country :: binary(), State :: binary(), City :: binary()}
     }
 }).
+
+-type lns_address() :: inet:socket_address() | inet:hostname().
 
 %% -------------------------------------------------------------------
 %% API Functions
@@ -52,11 +63,37 @@ handle_packet(NetID, PubKeyBin) ->
 
 -spec get_netid_packet_counts() -> map().
 get_netid_packet_counts() ->
-    maps:from_list([{NetId, Count} || {{count, NetId}, Count} <- ets:tab2list(?ETS)]).
+    maps:from_list([{NetId, Count} || {{count, NetId}, Count} <- ets:tab2list(?PACKET_ETS)]).
 
 -spec get_location_packet_counts() -> map().
 get_location_packet_counts() ->
-    maps:from_list([{Location, Count} || {{location, Location}, Count} <- ets:tab2list(?ETS)]).
+    maps:from_list([{Location, Count} || {{location, Location}, Count} <- ets:tab2list(?PACKET_ETS)]).
+
+-spec get_lns_metrics() -> map().
+get_lns_metrics() ->
+    lists:foldl(
+        fun({{lns, Address, Key}, Count}, Agg) ->
+            maps:update_with(Address, fun(Val) -> [{Key, Count} | Val] end, [{Key, Count}], Agg)
+        end,
+        #{},
+        ets:tab2list(?LNS_ETS)
+    ).
+
+-spec push_ack(LNSAddress :: lns_address()) -> ok.
+push_ack(Address) ->
+    ok = inc_lns_metric(Address, push_ack, hit).
+
+-spec push_ack_missed(LNSAddress :: lns_address()) -> ok.
+push_ack_missed(Address) ->
+    ok = inc_lns_metric(Address, push_ack, miss).
+
+-spec pull_ack(LNSAddress :: lns_address()) -> ok.
+pull_ack(Address) ->
+    ok = inc_lns_metric(Address, pull_ack, hit).
+
+-spec pull_ack_missed(LNSAddress :: lns_address()) -> ok.
+pull_ack_missed(Address) ->
+    ok = inc_lns_metric(Address, pull_ack, miss).
 
 %% -------------------------------------------------------------------
 %% Internal gen_server API
@@ -107,30 +144,46 @@ code_change(_OldVsn, State, _Extra) ->
 init_ets() ->
     File = pp_utils:get_metrics_filename(),
     case ets:file2tab(File) of
-        {ok, ?ETS} ->
-            lager:info("Metrics continued from last shutdown");
+        {ok, ?PACKET_ETS} ->
+            lager:info("Packet metrics continued from last shutdown");
         {error, _} = Err ->
             lager:warning("Unable to open ~p ~p. Metrics will start over", [File, Err]),
-            ?ETS = ets:new(?ETS, [public, named_table, set])
+            ?PACKET_ETS = ets:new(?PACKET_ETS, [public, named_table, set])
+    end,
+    File2 = pp_utils:get_lns_metrics_filename(),
+    case ets:file2tab(File2) of
+        {ok, ?LNS_ETS} ->
+            lager:info("LNS metrics continued from last shutdown");
+        {error, _} = Err2 ->
+            lager:warning("Unable to topen ~p ~p. Metrics will start over", [File2, Err2]),
+            ?LNS_ETS = ets:new(?LNS_ETS, [public, named_table, set, {write_concurrency, true}])
     end,
     ok.
 
 -spec cleanup_ets() -> ok.
 cleanup_ets() ->
     File = pp_utils:get_metrics_filename(),
-    ok = ets:tab2file(?ETS, File, [{sync, true}]),
+    ok = ets:tab2file(?PACKET_ETS, File, [{sync, true}]),
+    File2 = pp_utils:get_lns_metrics_filename(),
+    ok = ets:tab2file(?LNS_ETS, File2, [{sync, true}]),
     ok.
 
 -spec inc_netid(integer()) -> ok.
 inc_netid(NetID) ->
     Key = {count, NetID},
-    _ = ets:update_counter(?ETS, Key, 1, {Key, 0}),
+    _ = ets:update_counter(?PACKET_ETS, Key, 1, {Key, 0}),
     ok.
 
 -spec inc_location(location_not_defined | {binary(), binary()}) -> ok.
 inc_location(Location) ->
     Key = {location, Location},
-    _ = ets:update_counter(?ETS, Key, 1, {Key, 0}),
+    _ = ets:update_counter(?PACKET_ETS, Key, 1, {Key, 0}),
+    ok.
+
+-spec inc_lns_metric(Address :: lns_address(), pull_ack | push_ack, hit | miss) -> ok.
+inc_lns_metric(LNSAddress, MessageType, Status) ->
+    Key = {lns, LNSAddress, {MessageType, Status}},
+    _ = ets:update_counter(?LNS_ETS, Key, 1, {Key, 0}),
     ok.
 
 -spec fetch_location(PubKeyBin :: libp2p_crypto:pubkey_bin()) ->
