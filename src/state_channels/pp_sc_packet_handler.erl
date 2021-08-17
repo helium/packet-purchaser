@@ -121,6 +121,10 @@ handle_packet(SCPacket, _PacketTime, Pid) ->
         {eui, _, _} = EUI ->
             try
                 {ok, NetID} = join_eui_to_net_id(EUI),
+                lager:debug(
+                    "Packet [EUI: ~p] [NetID: ~p] ~p",
+                    [EUI, NetID]
+                ),
                 case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, net_id_udp_args(NetID)) of
                     {ok, WorkerPid} ->
                         pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
