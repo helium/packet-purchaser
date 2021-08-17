@@ -90,7 +90,7 @@ push_data(Config) ->
                         <<"rssi">> => erlang:trunc(maps:get(rssi, Opts)),
                         <<"size">> => erlang:byte_size(maps:get(payload, Opts)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => maps:get(timestamp, Opts) band 4294967295,
+                        <<"tmst">> => maps:get(timestamp, Opts) band 16#FFFFFFFF,
                         <<"codr">> => <<"4/5">>,
                         <<"stat">> => 1,
                         <<"chan">> => 0
@@ -129,7 +129,7 @@ delay_push_data(Config) ->
                         <<"rssi">> => erlang:trunc(maps:get(rssi, Opts0)),
                         <<"size">> => erlang:byte_size(maps:get(payload, Opts0)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => maps:get(timestamp, Opts0) band 4294967295,
+                        <<"tmst">> => maps:get(timestamp, Opts0) band 16#FFFFFFFF,
                         <<"codr">> => <<"4/5">>,
                         <<"stat">> => 1,
                         <<"chan">> => 0
@@ -158,7 +158,7 @@ delay_push_data(Config) ->
                         <<"rssi">> => erlang:trunc(maps:get(rssi, Opts1)),
                         <<"size">> => erlang:byte_size(maps:get(payload, Opts1)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => maps:get(timestamp, Opts1) band 4294967295,
+                        <<"tmst">> => maps:get(timestamp, Opts1) band 16#FFFFFFFF,
                         <<"codr">> => <<"4/5">>,
                         <<"stat">> => 1,
                         <<"chan">> => 0
@@ -310,7 +310,7 @@ multi_hotspots(Config) ->
                         <<"rssi">> => erlang:trunc(maps:get(rssi, Opts1)),
                         <<"size">> => erlang:byte_size(maps:get(payload, Opts1)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => maps:get(timestamp, Opts1) band 4294967295,
+                        <<"tmst">> => maps:get(timestamp, Opts1) band 16#FFFFFFFF,
                         <<"codr">> => <<"4/5">>,
                         <<"stat">> => 1,
                         <<"chan">> => 0
@@ -336,7 +336,7 @@ multi_hotspots(Config) ->
                         <<"rssi">> => erlang:trunc(maps:get(rssi, Opts2)),
                         <<"size">> => erlang:byte_size(maps:get(payload, Opts2)),
                         <<"time">> => fun erlang:is_binary/1,
-                        <<"tmst">> => maps:get(timestamp, Opts2) band 4294967295,
+                        <<"tmst">> => maps:get(timestamp, Opts2) band 16#FFFFFFFF,
                         <<"codr">> => <<"4/5">>,
                         <<"stat">> => 1,
                         <<"chan">> => 0

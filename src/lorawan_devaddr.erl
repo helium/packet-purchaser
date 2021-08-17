@@ -52,7 +52,7 @@ get_net_id(DevAddr, PrefixLength, NwkIDBits) ->
 
 -spec uint32(integer()) -> integer().
 uint32(Num) ->
-    Num band 4294967295.
+    Num band 16#FFFFFFFF.
 
 -ifdef(TEST).
 
