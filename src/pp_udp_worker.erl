@@ -230,8 +230,19 @@ handle_pull_resp(
     #state{sc_pid = SCPid} = State
 ) when is_pid(SCPid) ->
     Map = maps:get(<<"txpk">>, semtech_udp:json_data(Data)),
+
+    JSONData0 = maps:get(<<"data">>, Map),
+    JSONData1 =
+        try
+            base64:decode(JSONData0)
+        catch
+            _:_ ->
+                lager:warning("failed to decode pull_resp data ~p", [JSONData0]),
+                JSONData0
+        end,
+
     DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
-        maps:get(<<"data">>, Map),
+        JSONData1,
         maps:get(<<"powe">>, Map),
         maps:get(<<"tmst">>, Map),
         maps:get(<<"freq">>, Map),
