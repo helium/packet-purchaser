@@ -14,7 +14,10 @@
     net_ids_map_packet_test/1,
     net_ids_env_packet_test/1,
     net_ids_no_config_test/1,
-    single_hotspot_multi_net_id_test/1
+    single_hotspot_multi_net_id_test/1,
+    multi_buy_join_test/1,
+    multi_buy_packet_test/1,
+    multi_buy_eviction_test/1
 ]).
 
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
@@ -64,7 +67,10 @@ all() ->
         net_ids_map_packet_test,
         net_ids_env_packet_test,
         net_ids_no_config_test,
-        single_hotspot_multi_net_id_test
+        single_hotspot_multi_net_id_test,
+        multi_buy_join_test,
+        multi_buy_packet_test,
+        multi_buy_eviction_test
     ].
 
 %%--------------------------------------------------------------------
@@ -171,6 +177,144 @@ join_net_id_packet_test(_Config) ->
 
     ok.
 
+multi_buy_join_test(_Config) ->
+    DevEUI = <<0, 0, 0, 0, 0, 0, 0, 1>>,
+    AppEUI = <<0, 0, 0, 2, 0, 0, 0, 1>>,
+
+    MakeJoinOffer = fun() ->
+        DevNonce = crypto:strong_rand_bytes(2),
+        AppKey = <<245, 16, 127, 141, 191, 84, 201, 16, 111, 172, 36, 152, 70, 228, 52, 95>>,
+
+        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+        join_offer(PubKeyBin, AppKey, DevNonce, DevEUI, AppEUI)
+    end,
+
+    application:set_env(packet_purchaser, join_net_ids, #{
+        {DevEUI, AppEUI} => ?NET_ID_COMCAST
+    }),
+
+    %% -------------------------------------------------------------------
+    %% Send more than one of the same join packet, only 1 should be bought
+    application:set_env(packet_purchaser, net_ids, #{
+        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333, multi_buy => 1}
+    }),
+    Offer1 = MakeJoinOffer(),
+    ct:print("First offer"),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer1, self())),
+    ?assertMatch({error, multi_buy_max_packet}, pp_sc_packet_handler:handle_offer(Offer1, self())),
+    ?assertMatch({error, multi_buy_max_packet}, pp_sc_packet_handler:handle_offer(Offer1, self())),
+
+    %% -------------------------------------------------------------------
+    %% Send more than one of the same join packet, 2 should be purchased
+    application:set_env(packet_purchaser, net_ids, #{
+        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333, multi_buy => 2}
+    }),
+    Offer2 = MakeJoinOffer(),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer2, self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer2, self())),
+    ?assertMatch({error, multi_buy_max_packet}, pp_sc_packet_handler:handle_offer(Offer2, self())),
+
+    %% -------------------------------------------------------------------
+    %% Send more than one of the same join packet, unlimited should be purchased
+    application:set_env(packet_purchaser, net_ids, #{
+        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333, multi_buy => unlimited}
+    }),
+    Offer3 = MakeJoinOffer(),
+    lists:foreach(
+        fun(_Idx) ->
+            ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer3, self()))
+        end,
+        lists:seq(1, 100)
+    ),
+
+    ok.
+
+multi_buy_eviction_test(_Config) ->
+    DevEUI = <<0, 0, 0, 0, 0, 0, 0, 1>>,
+    AppEUI = <<0, 0, 0, 2, 0, 0, 0, 1>>,
+
+    DevNonce = crypto:strong_rand_bytes(2),
+    AppKey = <<245, 16, 127, 141, 191, 84, 201, 16, 111, 172, 36, 152, 70, 228, 52, 95>>,
+
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    JoinOffer = join_offer(PubKeyBin, AppKey, DevNonce, DevEUI, AppEUI),
+    PacketOffer = packet_offer(PubKeyBin, ?DEVADDR_COMCAST),
+    Timeout = 50,
+
+    application:set_env(packet_purchaser, join_net_ids, #{
+        {DevEUI, AppEUI} => ?NET_ID_COMCAST
+    }),
+    application:set_env(packet_purchaser, net_ids, #{
+        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333, multi_buy => 1}
+    }),
+    application:set_env(packet_purchaser, multi_buy_eviction_timeout, Timeout),
+
+    ErrMaxPacket = {error, multi_buy_max_packet},
+    lists:foreach(
+        fun(Offer) ->
+            %% -------------------------------------------------------------------
+            %% Send more than one of the same offer, only 1 should be bought
+            ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer, self())),
+            ?assertMatch(ErrMaxPacket, pp_sc_packet_handler:handle_offer(Offer, self())),
+            ?assertMatch(ErrMaxPacket, pp_sc_packet_handler:handle_offer(Offer, self())),
+
+            %% Wait out the eviction, we're attempting a replay
+            timer:sleep(round(Timeout * 1.3)),
+            ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer, self())),
+            ?assertMatch(ErrMaxPacket, pp_sc_packet_handler:handle_offer(Offer, self())),
+            ?assertMatch(ErrMaxPacket, pp_sc_packet_handler:handle_offer(Offer, self()))
+        end,
+        [JoinOffer, PacketOffer]
+    ),
+
+    ok.
+
+multi_buy_packet_test(_Config) ->
+    MakePacketOffer = fun() ->
+        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+        packet_offer(PubKeyBin, ?DEVADDR_COMCAST)
+    end,
+
+    %% -------------------------------------------------------------------
+    %% Send more than one of the same join packet, only 1 should be bought
+    application:set_env(packet_purchaser, net_ids, #{
+        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333, multi_buy => 1}
+    }),
+    Offer1 = MakePacketOffer(),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer1, self())),
+    ?assertMatch({error, multi_buy_max_packet}, pp_sc_packet_handler:handle_offer(Offer1, self())),
+    ?assertMatch({error, multi_buy_max_packet}, pp_sc_packet_handler:handle_offer(Offer1, self())),
+
+    %% -------------------------------------------------------------------
+    %% Send more than one of the same join packet, 2 should be purchased
+    application:set_env(packet_purchaser, net_ids, #{
+        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333, multi_buy => 2}
+    }),
+    Offer2 = MakePacketOffer(),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer2, self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer2, self())),
+    ?assertMatch({error, multi_buy_max_packet}, pp_sc_packet_handler:handle_offer(Offer2, self())),
+
+    %% -------------------------------------------------------------------
+    %% Send more than one of the same join packet, unlimited should be purchased
+    application:set_env(packet_purchaser, net_ids, #{
+        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333, multi_buy => unlimited}
+    }),
+    Offer3 = MakePacketOffer(),
+    ct:print("Third offer"),
+    lists:foreach(
+        fun(_Idx) ->
+            ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer3, self()))
+        end,
+        lists:seq(1, 100)
+    ),
+
+    ok.
+
 net_ids_map_offer_test(_Config) ->
     SendPacketOfferFun = fun(DevAddr) ->
         #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
@@ -197,7 +341,7 @@ net_ids_map_offer_test(_Config) ->
     ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     %% Buy Only Actility1 ID
-    ok = application:set_env(packet_purchaser, net_ids, #{?NET_ID_ACTILITY => test}),
+    ok = application:set_env(packet_purchaser, net_ids, #{?NET_ID_ACTILITY => #{}}),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
     ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
     ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_COMCAST)),
@@ -206,8 +350,8 @@ net_ids_map_offer_test(_Config) ->
 
     %% Buy Multiple IDs
     ok = application:set_env(packet_purchaser, net_ids, #{
-        ?NET_ID_ACTILITY => test,
-        ?NET_ID_ORANGE => test
+        ?NET_ID_ACTILITY => #{},
+        ?NET_ID_ORANGE => #{}
     }),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
     ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
@@ -217,11 +361,11 @@ net_ids_map_offer_test(_Config) ->
 
     %% Buy all the IDs we know about
     ok = application:set_env(packet_purchaser, net_ids, #{
-        ?NET_ID_EXPERIMENTAL => test,
-        ?NET_ID_ACTILITY => test,
-        ?NET_ID_TEKTELIC => test,
-        ?NET_ID_ORANGE => test,
-        ?NET_ID_COMCAST => test
+        ?NET_ID_EXPERIMENTAL => #{},
+        ?NET_ID_ACTILITY => #{},
+        ?NET_ID_TEKTELIC => #{},
+        ?NET_ID_ORANGE => #{},
+        ?NET_ID_COMCAST => #{}
     }),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
@@ -445,8 +589,8 @@ join_offer(PubKeyBin, AppKey, DevNonce, DevEUI, AppEUI) ->
     ).
 
 packet_offer(PubKeyBin, DevAddr) ->
-    NwkSessionKey = <<81, 103, 129, 150, 35, 76, 17, 164, 210, 66, 210, 149, 120, 193, 251, 85>>,
-    AppSessionKey = <<245, 16, 127, 141, 191, 84, 201, 16, 111, 172, 36, 152, 70, 228, 52, 95>>,
+    NwkSessionKey = crypto:strong_rand_bytes(16),
+    AppSessionKey = crypto:strong_rand_bytes(16),
     FCnt = 0,
 
     Payload = frame_payload(?UNCONFIRMED_UP, DevAddr, NwkSessionKey, AppSessionKey, FCnt),

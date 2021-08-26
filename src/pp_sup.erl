@@ -56,6 +56,8 @@ init([]) ->
     {ok, _} = application:ensure_all_started(ranch),
     lager:info("init ~p", [?SERVER]),
 
+    ok = pp_sc_packet_handler:init(),
+
     BaseDir = application:get_env(blockchain, base_dir, "data"),
     Key = load_key(BaseDir),
     SeedNodes = get_seed_nodes(),

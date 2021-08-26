@@ -10,6 +10,7 @@
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
 
 -export([
+    init/0,
     handle_offer/2,
     handle_packet/3
 ]).
@@ -21,26 +22,51 @@
     net_id_udp_args/1
 ]).
 
+-export([clear_multi_buy/1]).
+
 %% Offer rejected reasons
 -define(UNMAPPED_EUI, unmapped_eui).
 -define(NET_ID_REJECTED, net_id_rejected).
 -define(NET_ID_INVALID, net_id_invalid).
 
+%% Multi Buy
+-define(MB_ETS, multi_buy_ets).
+-define(MB_UNLIMITED, 9999).
+-define(MB_MAX_PACKET, multi_buy_max_packet).
+-define(MB_EVICT_TIMEOUT, timer:seconds(6)).
+-define(MB_FUN(Hash), [
+    {
+        {Hash, '$1', '$2'},
+        [{'=<', '$2', '$1'}],
+        [{{Hash, '$1', {'+', '$2', 1}}}]
+    }
+]).
+
 %% ------------------------------------------------------------------
 %% Packet Handler Functions
 %% ------------------------------------------------------------------
+
+-spec init() -> ok.
+init() ->
+    ?MB_ETS = ets:new(?MB_ETS, [public, named_table, set]),
+    ok.
 
 -spec handle_offer(blockchain_state_channel_offer_v1:offer(), pid()) -> ok.
 handle_offer(Offer, _HandlerPid) ->
     case blockchain_state_channel_offer_v1:routing(Offer) of
         #routing_information_pb{data = {eui, EUI}} ->
-            case should_accept_join(EUI) of
-                true ->
-                    lager:debug("offer: buying join ~p", [EUI]),
-                    ok;
-                false ->
+            case join_eui_to_net_id(EUI) of
+                {error, _} ->
                     lager:debug("offer: ignoring join ~p", [EUI]),
-                    {error, ?UNMAPPED_EUI}
+                    {error, ?UNMAPPED_EUI};
+                {ok, NetID} ->
+                    case maybe_multi_buy_offer(Offer, NetID) of
+                        ok ->
+                            lager:debug("offer: buying join ~p", [EUI]),
+                            ok;
+                        Err ->
+                            Err
+                    end
             end;
         #routing_information_pb{data = {devaddr, DevAddr}} ->
             case allowed_net_ids() of
@@ -54,8 +80,16 @@ handle_offer(Offer, _HandlerPid) ->
                                 [DevAddr, NetID]
                             ),
                             case lists:member(NetID, IDs) of
-                                true -> ok;
-                                false -> {error, ?NET_ID_REJECTED}
+                                true ->
+                                    case maybe_multi_buy_offer(Offer, NetID) of
+                                        ok ->
+                                            lager:debug("offer: buying packet ~p", [DevAddr]),
+                                            ok;
+                                        Err ->
+                                            Err
+                                    end;
+                                false ->
+                                    {error, ?NET_ID_REJECTED}
                             end;
                         {error, _Error} ->
                             lager:warning(
@@ -144,8 +178,55 @@ handle_packet(SCPacket, _PacketTime, Pid) ->
     end.
 
 %% ------------------------------------------------------------------
-%% Counter Functions
+%% Multi-buy Functions
 %% ------------------------------------------------------------------
+
+-spec maybe_multi_buy_offer(blockchain_state_channel_offer_v1:offer(), non_neg_integer()) ->
+    ok | {error, any()}.
+maybe_multi_buy_offer(Offer, NetID) ->
+    PHash = blockchain_state_channel_offer_v1:packet_hash(Offer),
+    case ets:lookup(?MB_ETS, PHash) of
+        [] ->
+            {ok, Max} = multi_buy_max_for_net_id(NetID),
+            ok = schedule_clear_multi_buy(PHash),
+            true = ets:insert(?MB_ETS, {PHash, Max, 1}),
+            ok;
+        [{PHash, _Max, _Max}] ->
+            {error, ?MB_MAX_PACKET};
+        [{PHash, _Max, _Curr}] ->
+            case ets:select_replace(?MB_ETS, ?MB_FUN(PHash)) of
+                0 -> {error, ?MB_MAX_PACKET};
+                1 -> ok
+            end
+    end.
+
+-spec schedule_clear_multi_buy(binary()) -> ok.
+schedule_clear_multi_buy(PHash) ->
+    {ok, _Tref} = timer:apply_after(multi_buy_eviction_timeout(), ?MODULE, clear_multi_buy, [PHash]),
+    ok.
+
+-spec clear_multi_buy(binary()) -> ok.
+clear_multi_buy(PHash) ->
+    true = ets:delete(?MB_ETS, PHash),
+    lager:debug("cleared multi buy for ~p", [PHash]),
+    ok.
+
+-spec multi_buy_max_for_net_id(non_neg_integer()) -> {ok, non_neg_integer()}.
+multi_buy_max_for_net_id(NetID) ->
+    case net_id_udp_args(NetID) of
+        #{multi_buy := PacketMax} ->
+            {ok, PacketMax};
+        _ ->
+            {ok, ?MB_UNLIMITED}
+    end.
+
+-spec multi_buy_eviction_timeout() -> non_neg_integer().
+multi_buy_eviction_timeout() ->
+    case application:get_env(?APP, multi_buy_eviction_timeout, ?MB_EVICT_TIMEOUT) of
+        [] -> ?MB_EVICT_TIMEOUT;
+        Str when is_list(Str) -> erlang:list_to_integer(Str);
+        I -> I
+    end.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
