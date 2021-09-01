@@ -17,7 +17,8 @@
     single_hotspot_multi_net_id_test/1,
     multi_buy_join_test/1,
     multi_buy_packet_test/1,
-    multi_buy_eviction_test/1
+    multi_buy_eviction_test/1,
+    multi_buy_worst_case_stress_test/1
 ]).
 
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
@@ -70,7 +71,8 @@ all() ->
         single_hotspot_multi_net_id_test,
         multi_buy_join_test,
         multi_buy_packet_test,
-        multi_buy_eviction_test
+        multi_buy_eviction_test,
+        multi_buy_worst_case_stress_test
     ].
 
 %%--------------------------------------------------------------------
@@ -529,6 +531,130 @@ single_hotspot_multi_net_id_test(_Config) ->
     ?assertMatch({"2.2.2.2", 2222}, SendPacketFun(?DEVADDR_ORANGE, ?NET_ID_ORANGE)),
     ?assertMatch({"3.3.3.3", 3333}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
     ok.
+
+multi_buy_worst_case_stress_test(_Config) ->
+    %% ActorsNum = 30,
+    %% NumPackets = 1000,
+    %% MultiBuy = 5,
+    <<DevNum:32/integer-unsigned>> = ?DEVADDR_COMCAST,
+    MakeOfferFun = fun(Payload) ->
+        fun(PubKeyBin, SigFun) ->
+            Packet = blockchain_helium_packet_v1:new(
+                lorawan,
+                Payload,
+                erlang:system_time(millisecond),
+                -100.0,
+                915.2,
+                "SF8BW125",
+                -12.0,
+                {devaddr, DevNum}
+            ),
+            Offer0 = blockchain_state_channel_offer_v1:from_packet(Packet, PubKeyBin, 'US915'),
+            Offer1 = blockchain_state_channel_offer_v1:sign(Offer0, SigFun),
+            Offer1
+        end
+    end,
+
+    RunCycle = fun(ActorsNum, NumPackets, MultiBuy) ->
+        Actors = lists:map(
+            fun(_I) ->
+                #{public := PubKey, secret := PrivKey} = libp2p_crypto:generate_keys(ecc_compact),
+                PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+                SigFun = libp2p_crypto:mk_sig_fun(PrivKey),
+
+                #{
+                    pubkeybin => PubKeyBin,
+                    sig_fun => SigFun,
+                    public => PubKey,
+                    secret => PrivKey,
+                    wait_time => rand:uniform(2000)
+                }
+            end,
+            lists:seq(1, ActorsNum + 1)
+        ),
+
+        application:set_env(packet_purchaser, net_ids, #{
+            ?NET_ID_COMCAST => #{address => "1.1.1.1", port => 1111, multi_buy => MultiBuy}
+        }),
+
+        Start = erlang:monotonic_time(millisecond),
+        lists:foreach(
+            fun(_I) ->
+                Payload = crypto:strong_rand_bytes(20),
+                ok = send_same_offer_with_actors(Actors, MakeOfferFun(Payload), self())
+            end,
+            lists:seq(1, NumPackets + 1)
+        ),
+        Times = all_dead(ActorsNum * NumPackets, ActorsNum * NumPackets, []),
+
+        End = erlang:monotonic_time(millisecond),
+        Mills = End - Start,
+        TotalSeconds = erlang:convert_time_unit(Mills, millisecond, second),
+        Average = lists:sum(Times) / length(Times),
+        Min = lists:min(Times),
+        Max = lists:max(Times),
+
+        {Hour, Minute, Second} = calendar:seconds_to_time(TotalSeconds),
+        ct:print(
+            "NumPackets: ~p~n"
+            "Actors: ~p~n"
+            "MultiBuy: ~p~n"
+            "Time: ~ph ~pm ~ps ~pms~n"
+            "Average: ~pms Max: ~pms Min: ~pms~n"
+            "ETS Info: ~p",
+            [
+                NumPackets,
+                ActorsNum,
+                MultiBuy,
+                Hour,
+                Minute,
+                Second,
+                (Mills - (Second * 1000)),
+                round(Average),
+                Max,
+                Min,
+                ets:info(multi_buy_ets)
+            ]
+        ),
+        timer:sleep(timer:seconds(3))
+    end,
+    %% RunCycle(10, 10, 1),
+    RunCycle(30, 1000, 1),
+    RunCycle(30, 1000, 5),RunCycle(30, 1000, 5),
+    RunCycle(30, 1000, 9999),
+    %% RunCycle(100, 5000, 4),
+    %% RunCycle(30, 1000, 9999),
+
+    ok.
+
+all_dead(_Start, 0, Times) ->
+    Times;
+all_dead(Start, Num, Times) ->
+    receive
+        {done, Time} ->
+            all_dead(Start, Num - 1, [Time | Times])
+    after 5000 ->
+        ct:fail("Something is not dying, waiting on ~p more from ~p... ~p have died", [
+            Num,
+            Start,
+            Start - Num
+        ])
+    end.
+
+send_same_offer_with_actors([], _MakeOfferFun, _DeadPid) ->
+    ok;
+send_same_offer_with_actors([A | Rest], MakeOfferFun, DeadPid) ->
+    erlang:spawn_link(
+        fun() ->
+            #{wait_time := Wait, pubkeybin := PubKeyBin, sig_fun := SigFun} = A,
+            timer:sleep(Wait),
+            Start = erlang:monotonic_time(millisecond),
+            _ = pp_sc_packet_handler:handle_offer(MakeOfferFun(PubKeyBin, SigFun), self()),
+            End = erlang:monotonic_time(millisecond),
+            DeadPid ! {done, End - Start}
+        end
+    ),
+    send_same_offer_with_actors(Rest, MakeOfferFun, DeadPid).
 
 %% ------------------------------------------------------------------
 %% Helper functions

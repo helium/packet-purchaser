@@ -42,64 +42,52 @@
     }
 ]).
 
+-define(BF_ETS, router_device_routing_bf_ets).
+-define(BF_KEY, bloom_key).
+%% https://hur.st/bloomfilter/?n=10000&p=1.0E-6&m=&k=20
+-define(BF_UNIQ_CLIENTS_MAX, 10000).
+%% -define(BF_FALSE_POS_RATE, 1.0e-6).
+-define(BF_BITMAP_SIZE, 300000).
+-define(BF_FILTERS_MAX, 14).
+-define(BF_ROTATE_AFTER, 1000).
+
 %% ------------------------------------------------------------------
 %% Packet Handler Functions
 %% ------------------------------------------------------------------
 
 -spec init() -> ok.
 init() ->
-    ?MB_ETS = ets:new(?MB_ETS, [public, named_table, set]),
+    ?MB_ETS = ets:new(?MB_ETS, [
+        public,
+        named_table,
+        set,
+        {write_concurrency, true},
+        {read_concurrency, true}
+    ]),
+    ets:new(?BF_ETS, [public, named_table, set, {read_concurrency, true}]),
+    {ok, BloomJoinRef} = bloom:new_forgetful(
+        ?BF_BITMAP_SIZE,
+        ?BF_UNIQ_CLIENTS_MAX,
+        ?BF_FILTERS_MAX,
+        ?BF_ROTATE_AFTER
+    ),
+    true = ets:insert(?BF_ETS, {?BF_KEY, BloomJoinRef}),
     ok.
 
 -spec handle_offer(blockchain_state_channel_offer_v1:offer(), pid()) -> ok.
 handle_offer(Offer, _HandlerPid) ->
-    case blockchain_state_channel_offer_v1:routing(Offer) of
-        #routing_information_pb{data = {eui, EUI}} ->
-            case join_eui_to_net_id(EUI) of
-                {error, _} ->
-                    lager:debug("offer: ignoring join ~p", [EUI]),
-                    {error, ?UNMAPPED_EUI};
-                {ok, NetID} ->
-                    case maybe_multi_buy_offer(Offer, NetID) of
-                        ok ->
-                            lager:debug("offer: buying join ~p", [EUI]),
-                            ok;
-                        Err ->
-                            Err
-                    end
-            end;
-        #routing_information_pb{data = {devaddr, DevAddr}} ->
-            case allowed_net_ids() of
-                allow_all ->
-                    ok;
-                IDs ->
-                    case lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>) of
-                        {ok, NetID} ->
-                            lager:debug(
-                                "Offer [Devaddr: ~p] [NetID: ~p]",
-                                [DevAddr, NetID]
-                            ),
-                            case lists:member(NetID, IDs) of
-                                true ->
-                                    case maybe_multi_buy_offer(Offer, NetID) of
-                                        ok ->
-                                            lager:debug("offer: buying packet ~p", [DevAddr]),
-                                            ok;
-                                        Err ->
-                                            Err
-                                    end;
-                                false ->
-                                    {error, ?NET_ID_REJECTED}
-                            end;
-                        {error, _Error} ->
-                            lager:warning(
-                                "Offer Invalid NetID [DevAddr: ~p] [Error: ~p]",
-                                [DevAddr, _Error]
-                            ),
-                            {error, ?NET_ID_INVALID}
-                    end
-            end
-    end.
+    #routing_information_pb{data = Routing} = blockchain_state_channel_offer_v1:routing(Offer),
+    Resp =
+        case Routing of
+            {eui, EUI} ->
+                join_offer(EUI, Offer, _HandlerPid);
+            {devaddr, DevAddr} ->
+                packet_offer(DevAddr, Offer, _HandlerPid)
+        end,
+    erlang:spawn(fun() ->
+        print_handle_offer_resp(Routing, _HandlerPid, Resp)
+    end),
+    Resp.
 
 -spec handle_packet(blockchain_state_channel_packet_v1:packet(), pos_integer(), pid()) -> ok.
 handle_packet(SCPacket, _PacketTime, Pid) ->
@@ -178,31 +166,73 @@ handle_packet(SCPacket, _PacketTime, Pid) ->
     end.
 
 %% ------------------------------------------------------------------
+%% Buying Functions
+%% ------------------------------------------------------------------
+
+join_offer(EUI, Offer, HandlerPid) ->
+    case join_eui_to_net_id(EUI) of
+        {error, _} ->
+            {error, ?UNMAPPED_EUI};
+        {ok, NetID} ->
+            maybe_multi_buy_offer(Offer, NetID)
+    end.
+
+packet_offer(DevAddr, Offer, HandlerPid) ->
+    case allowed_net_ids() of
+        allow_all ->
+            ok;
+        IDs ->
+            case lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>) of
+                {ok, NetID} ->
+                    case lists:member(NetID, IDs) of
+                        true -> maybe_multi_buy_offer(Offer, NetID);
+                        false -> {error, ?NET_ID_REJECTED}
+                    end;
+                Err ->
+                    Err
+            end
+    end.
+
+%% ------------------------------------------------------------------
 %% Multi-buy Functions
 %% ------------------------------------------------------------------
+
+-spec lookup_bf(atom()) -> reference().
+lookup_bf(Key) ->
+    [{Key, Ref}] = ets:lookup(?BF_ETS, Key),
+    Ref.
 
 -spec maybe_multi_buy_offer(blockchain_state_channel_offer_v1:offer(), non_neg_integer()) ->
     ok | {error, any()}.
 maybe_multi_buy_offer(Offer, NetID) ->
     PHash = blockchain_state_channel_offer_v1:packet_hash(Offer),
-    case ets:lookup(?MB_ETS, PHash) of
-        [] ->
+    BFRef = lookup_bf(?BF_KEY),
+    case bloom:set(BFRef, PHash) of
+        false ->
             {ok, Max} = multi_buy_max_for_net_id(NetID),
             ok = schedule_clear_multi_buy(PHash),
             true = ets:insert(?MB_ETS, {PHash, Max, 1}),
             ok;
-        [{PHash, _Max, _Max}] ->
-            {error, ?MB_MAX_PACKET};
-        [{PHash, _Max, _Curr}] ->
-            case ets:select_replace(?MB_ETS, ?MB_FUN(PHash)) of
-                0 -> {error, ?MB_MAX_PACKET};
-                1 -> ok
+        true ->
+            case ets:lookup(?MB_ETS, PHash) of
+                [] ->
+                    {ok, Max} = multi_buy_max_for_net_id(NetID),
+                    %% ok = schedule_clear_multi_buy(PHash),
+                    true = ets:insert(?MB_ETS, {PHash, Max, 1}),
+                    ok;
+                [{PHash, _Max, _Max}] ->
+                    {error, ?MB_MAX_PACKET};
+                [{PHash, _Max, _Curr}] ->
+                    case ets:select_replace(?MB_ETS, ?MB_FUN(PHash)) of
+                        0 -> {error, ?MB_MAX_PACKET};
+                        1 -> ok
+                    end
             end
     end.
 
 -spec schedule_clear_multi_buy(binary()) -> ok.
 schedule_clear_multi_buy(PHash) ->
-    {ok, _Tref} = timer:apply_after(multi_buy_eviction_timeout(), ?MODULE, clear_multi_buy, [PHash]),
+    _TRef = erlang:send_after(multi_buy_eviction_timeout(), pp_metrics, {multi_buy_evict, PHash}),
     ok.
 
 -spec clear_multi_buy(binary()) -> ok.
@@ -231,6 +261,22 @@ multi_buy_eviction_timeout() ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
+
+print_handle_offer_resp(Routing, HandlerPid, ok) ->
+    case Routing of
+        {eui, EUI} ->
+            lager:debug("offer: buying join [EUI: ~p]", [EUI]);
+        {devaddr, DevAddr} ->
+            {ok, NetID} = lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>),
+            lager:debug("offer: buying packet [DevAddr: ~p] [NetID: ~p]", [DevAddr, NetID])
+    end;
+print_handle_offer_resp(Routing, HandlerPid, {error, Err}) ->
+    case Routing of
+        {eui, EUI} ->
+            lager:warning("offer: ignoring join [EUI: ~p] [Err: ~p]", [EUI, Err]);
+        {devaddr, DevAddr} ->
+            lager:warning("offer: ignoring packet [Devaddr: ~p] [Err: ~p]", [DevAddr, Err])
+    end.
 
 -spec should_accept_join(#eui_pb{}) -> boolean().
 should_accept_join(#eui_pb{} = EUI) ->

@@ -126,6 +126,9 @@ handle_cast({location, PubKeyBin}, #state{seen = SeenMap} = State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+handle_info({multi_buy_evict, PHash}, State) ->
+    ok = pp_sc_packet_handler:clear_multi_buy(PHash),
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
