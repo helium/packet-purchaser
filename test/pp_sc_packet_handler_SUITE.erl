@@ -17,8 +17,8 @@
     single_hotspot_multi_net_id_test/1,
     multi_buy_join_test/1,
     multi_buy_packet_test/1,
-    multi_buy_eviction_test/1
-    %% multi_buy_worst_case_stress_test/1
+    multi_buy_eviction_test/1,
+    multi_buy_worst_case_stress_test/1
 ]).
 
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
@@ -71,8 +71,8 @@ all() ->
         single_hotspot_multi_net_id_test,
         multi_buy_join_test,
         multi_buy_packet_test,
-        multi_buy_eviction_test
-        %% multi_buy_worst_case_stress_test
+        multi_buy_eviction_test,
+        multi_buy_worst_case_stress_test
     ].
 
 %%--------------------------------------------------------------------
@@ -533,10 +533,8 @@ single_hotspot_multi_net_id_test(_Config) ->
     ok.
 
 multi_buy_worst_case_stress_test(_Config) ->
-    %% NumActors = 30,
-    %% NumPackets = 1000,
-    %% MultiBuy = 5,
     <<DevNum:32/integer-unsigned>> = ?DEVADDR_COMCAST,
+
     MakeOfferFun = fun(Payload) ->
         fun(PubKeyBin, SigFun) ->
             Packet = blockchain_helium_packet_v1:new(
@@ -555,7 +553,8 @@ multi_buy_worst_case_stress_test(_Config) ->
         end
     end,
 
-    RunCycle = fun(NumActors, NumPackets, MultiBuy) ->
+    RunCycle = fun(#{actors := NumActors, packets := NumPackets, multi_buy := MultiBuy}) ->
+
         Actors = lists:map(
             fun(_I) ->
                 #{public := PubKey, secret := PrivKey} = libp2p_crypto:generate_keys(ecc_compact),
@@ -567,7 +566,7 @@ multi_buy_worst_case_stress_test(_Config) ->
                     sig_fun => SigFun,
                     public => PubKey,
                     secret => PrivKey,
-                    wait_time => rand:uniform(2000)
+                    wait_time => rand:uniform(200)
                 }
             end,
             lists:seq(1, NumActors + 1)
@@ -600,8 +599,8 @@ multi_buy_worst_case_stress_test(_Config) ->
             "Actors: ~p~n"
             "MultiBuy: ~p~n"
             "Time: ~ph ~pm ~ps ~pms~n"
-            "Average: ~pms Max: ~pms Min: ~pms~n"
-            "ETS Info: ~p",
+            "Average: ~pms Max: ~pms Min: ~pms~n",
+            %% "ETS Info: ~p",
             [
                 NumPackets,
                 NumActors,
@@ -612,18 +611,31 @@ multi_buy_worst_case_stress_test(_Config) ->
                 (Mills - (Second * 1000)),
                 round(Average),
                 Max,
-                Min,
-                ets:info(multi_buy_ets)
+                Min
+                %% ets:info(multi_buy_ets)
             ]
         ),
-        timer:sleep(timer:seconds(3))
+        {Average, Max}
     end,
-    %% RunCycle(10, 10, 1),
-    RunCycle(30, 1000, 1),
-    RunCycle(30, 1000, 5),
-    RunCycle(30, 1000, 9999),
-    %% RunCycle(100, 5000, 4),
-    %% RunCycle(30, 1000, 9999),
+
+    %% First run is to eat some time costs
+    RunCycle(#{actors => 10, packets => 10, multi_buy => 1}),
+    %% NOTE: Limits in ms. This test is a heuristic to let us know if we've
+    %% added something that slows down the offer pipeline
+    AvgLimit = 10,
+    MaxLimit = 100,
+    lists:foreach(
+        fun(ArgMap) ->
+            {Avg, Max} = RunCycle(ArgMap),
+            ?assert(Avg < AvgLimit),
+            ?assert(Max < MaxLimit)
+        end,
+        [
+            #{actors => 30, packets => 500, multi_buy => 1},
+            #{actors => 30, packets => 500, multi_buy => 5},
+            #{actors => 30, packets => 500, multi_buy => 9999}
+        ]
+    ),
 
     ok.
 
