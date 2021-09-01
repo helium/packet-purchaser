@@ -17,8 +17,8 @@
     single_hotspot_multi_net_id_test/1,
     multi_buy_join_test/1,
     multi_buy_packet_test/1,
-    multi_buy_eviction_test/1,
-    multi_buy_worst_case_stress_test/1
+    multi_buy_eviction_test/1
+    %% multi_buy_worst_case_stress_test/1
 ]).
 
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
@@ -71,8 +71,8 @@ all() ->
         single_hotspot_multi_net_id_test,
         multi_buy_join_test,
         multi_buy_packet_test,
-        multi_buy_eviction_test,
-        multi_buy_worst_case_stress_test
+        multi_buy_eviction_test
+        %% multi_buy_worst_case_stress_test
     ].
 
 %%--------------------------------------------------------------------
