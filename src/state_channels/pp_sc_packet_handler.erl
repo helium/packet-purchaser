@@ -35,8 +35,8 @@ handle_offer(Offer, _HandlerPid) ->
     #routing_information_pb{data = Routing} = blockchain_state_channel_offer_v1:routing(Offer),
     Resp =
         case Routing of
-            {eui, EUI} -> join_offer(EUI, Offer);
-            {devaddr, DevAddr} -> packet_offer(DevAddr, Offer)
+            {eui, EUI} -> handle_join_offer(EUI, Offer);
+            {devaddr, DevAddr} -> handle_packet_offer(DevAddr, Offer)
         end,
     erlang:spawn(fun() ->
         print_handle_offer_resp(Routing, Resp)
@@ -123,7 +123,7 @@ handle_packet(SCPacket, _PacketTime, Pid) ->
 %% Buying Functions
 %% ------------------------------------------------------------------
 
-join_offer(EUI, Offer) ->
+handle_join_offer(EUI, Offer) ->
     case join_eui_to_net_id(EUI) of
         {error, _} ->
             {error, ?UNMAPPED_EUI};
@@ -131,7 +131,7 @@ join_offer(EUI, Offer) ->
             pp_multi_buy:maybe_buy_offer(Offer, NetID)
     end.
 
-packet_offer(DevAddr, Offer) ->
+handle_packet_offer(DevAddr, Offer) ->
     case allowed_net_ids() of
         allow_all ->
             ok;
