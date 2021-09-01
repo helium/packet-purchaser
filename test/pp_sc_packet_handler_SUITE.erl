@@ -533,7 +533,7 @@ single_hotspot_multi_net_id_test(_Config) ->
     ok.
 
 multi_buy_worst_case_stress_test(_Config) ->
-    %% ActorsNum = 30,
+    %% NumActors = 30,
     %% NumPackets = 1000,
     %% MultiBuy = 5,
     <<DevNum:32/integer-unsigned>> = ?DEVADDR_COMCAST,
@@ -555,7 +555,7 @@ multi_buy_worst_case_stress_test(_Config) ->
         end
     end,
 
-    RunCycle = fun(ActorsNum, NumPackets, MultiBuy) ->
+    RunCycle = fun(NumActors, NumPackets, MultiBuy) ->
         Actors = lists:map(
             fun(_I) ->
                 #{public := PubKey, secret := PrivKey} = libp2p_crypto:generate_keys(ecc_compact),
@@ -570,14 +570,14 @@ multi_buy_worst_case_stress_test(_Config) ->
                     wait_time => rand:uniform(2000)
                 }
             end,
-            lists:seq(1, ActorsNum + 1)
+            lists:seq(1, NumActors + 1)
         ),
 
         application:set_env(packet_purchaser, net_ids, #{
             ?NET_ID_COMCAST => #{address => "1.1.1.1", port => 1111, multi_buy => MultiBuy}
         }),
 
-        Start = erlang:monotonic_time(millisecond),
+        Start = erlang:system_time(millisecond),
         lists:foreach(
             fun(_I) ->
                 Payload = crypto:strong_rand_bytes(20),
@@ -585,9 +585,9 @@ multi_buy_worst_case_stress_test(_Config) ->
             end,
             lists:seq(1, NumPackets + 1)
         ),
-        Times = all_dead(ActorsNum * NumPackets, ActorsNum * NumPackets, []),
+        Times = all_dead(NumActors * NumPackets, NumActors * NumPackets, []),
 
-        End = erlang:monotonic_time(millisecond),
+        End = erlang:system_time(millisecond),
         Mills = End - Start,
         TotalSeconds = erlang:convert_time_unit(Mills, millisecond, second),
         Average = lists:sum(Times) / length(Times),
@@ -604,7 +604,7 @@ multi_buy_worst_case_stress_test(_Config) ->
             "ETS Info: ~p",
             [
                 NumPackets,
-                ActorsNum,
+                NumActors,
                 MultiBuy,
                 Hour,
                 Minute,
@@ -620,7 +620,7 @@ multi_buy_worst_case_stress_test(_Config) ->
     end,
     %% RunCycle(10, 10, 1),
     RunCycle(30, 1000, 1),
-    RunCycle(30, 1000, 5),RunCycle(30, 1000, 5),
+    RunCycle(30, 1000, 5),
     RunCycle(30, 1000, 9999),
     %% RunCycle(100, 5000, 4),
     %% RunCycle(30, 1000, 9999),
