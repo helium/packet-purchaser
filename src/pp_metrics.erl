@@ -67,7 +67,12 @@ get_netid_packet_counts() ->
 
 -spec get_location_packet_counts() -> map().
 get_location_packet_counts() ->
-    maps:from_list([{Location, Count} || {{location, Location}, Count} <- ets:tab2list(?PACKET_ETS)]).
+    maps:from_list(
+        [
+            {Location, Count}
+            || {{location, Location}, Count} <- ets:tab2list(?PACKET_ETS)
+        ]
+    ).
 
 -spec get_lns_metrics() -> map().
 get_lns_metrics() ->

@@ -252,7 +252,12 @@ should_accept_join_test() ->
     ?assertEqual(true, should_accept_join(EUI1), "Wildcard EUI Mapped 1"),
     ?assertEqual(
         true,
-        should_accept_join(#eui_pb{deveui = rand:uniform(trunc(math:pow(2, 64) - 1)), appeui = App1}),
+        should_accept_join(
+            #eui_pb{
+                deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
+                appeui = App1
+            }
+        ),
         "Wildcard random device EUI Mapped 1"
     ),
     ?assertEqual(true, should_accept_join(EUI2), "Wildcard EUI Mapped 2"),

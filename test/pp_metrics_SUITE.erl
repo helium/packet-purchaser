@@ -52,7 +52,13 @@ location_counter_test(_Config) ->
     SendPacketFun = fun(DevAddr, PubKeyBins) ->
         lists:foreach(
             fun(PubKeyBin) ->
-                Packet = frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{dont_encode => true}),
+                Packet = frame_packet(
+                    ?UNCONFIRMED_UP,
+                    PubKeyBin,
+                    DevAddr,
+                    0,
+                    #{dont_encode => true}
+                ),
                 pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self())
             end,
             PubKeyBins
@@ -112,9 +118,17 @@ net_ids_counter_test(_Config) ->
         pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
 
         {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        {state, PubKeyBin, _Socket, Address, Port, _PushData, _ScPid, _PullData, _PullDataTimer} = sys:get_state(
-            Pid
-        ),
+        {
+            state,
+            PubKeyBin,
+            _Socket,
+            Address,
+            Port,
+            _PushData,
+            _ScPid,
+            _PullData,
+            _PullDataTimer
+        } = sys:get_state(Pid),
         {Address, Port}
     end,
 

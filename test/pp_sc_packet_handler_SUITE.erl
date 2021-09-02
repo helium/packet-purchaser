@@ -160,9 +160,17 @@ join_net_id_packet_test(_Config) ->
     pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
     {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin1, NetID}),
 
-    {state, PubKeyBin1, _Socket, Address, Port, _PushData, _ScPid, _PullData, _PullDataTimer} = sys:get_state(
-        Pid
-    ),
+    {
+        state,
+        PubKeyBin1,
+        _Socket,
+        Address,
+        Port,
+        _PushData,
+        _ScPid,
+        _PullData,
+        _PullDataTimer
+    } = sys:get_state(Pid),
     ?assertEqual({"3.3.3.3", 3333}, {Address, Port}),
 
     %% ------------------------------------------------------------
@@ -171,7 +179,14 @@ join_net_id_packet_test(_Config) ->
     PubKeyBin2 = libp2p_crypto:pubkey_to_bin(PubKey2),
     Routing2 = blockchain_helium_packet_v1:make_routing_info({eui, DevEUI2, AppEUI2}),
 
-    Packet2 = frame_packet(?UNCONFIRMED_UP, PubKeyBin2, DevAddr, 0, Routing2, #{dont_encode => true}),
+    Packet2 = frame_packet(
+        ?UNCONFIRMED_UP,
+        PubKeyBin2,
+        DevAddr,
+        0,
+        Routing2,
+        #{dont_encode => true}
+    ),
 
     {error, not_found} = pp_udp_sup:lookup_worker({PubKeyBin2, NetID}),
     pp_sc_packet_handler:handle_packet(Packet2, erlang:system_time(millisecond), self()),
@@ -435,9 +450,17 @@ net_ids_map_packet_test(_Config) ->
         pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
 
         {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        {state, PubKeyBin, _Socket, Address, Port, _PushData, _ScPid, _PullData, _PullDataTimer} = sys:get_state(
-            Pid
-        ),
+        {
+            state,
+            PubKeyBin,
+            _Socket,
+            Address,
+            Port,
+            _PushData,
+            _ScPid,
+            _PullData,
+            _PullDataTimer
+        } = sys:get_state(Pid),
         {Address, Port}
     end,
 
@@ -484,9 +507,17 @@ net_ids_env_packet_test(_Config) ->
         pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
 
         {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        {state, PubKeyBin, _Socket, Address, Port, _PushData, _ScPid, _PullData, _PullDataTimer} = sys:get_state(
-            Pid
-        ),
+        {
+            state,
+            PubKeyBin,
+            _Socket,
+            Address,
+            Port,
+            _PushData,
+            _ScPid,
+            _PullData,
+            _PullDataTimer
+        } = sys:get_state(Pid),
         {Address, Port}
     end,
 
@@ -515,9 +546,17 @@ single_hotspot_multi_net_id_test(_Config) ->
         pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
 
         {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        {state, PubKeyBin, _Socket, Address, Port, _PushData, _ScPid, _PullData, _PullDataTimer} = sys:get_state(
-            Pid
-        ),
+        {
+            state,
+            PubKeyBin,
+            _Socket,
+            Address,
+            Port,
+            _PushData,
+            _ScPid,
+            _PullData,
+            _PullDataTimer
+        } = sys:get_state(Pid),
         {Address, Port}
     end,
 
@@ -554,7 +593,6 @@ multi_buy_worst_case_stress_test(_Config) ->
     end,
 
     RunCycle = fun(#{actors := NumActors, packets := NumPackets, multi_buy := MultiBuy}) ->
-
         Actors = lists:map(
             fun(_I) ->
                 #{public := PubKey, secret := PrivKey} = libp2p_crypto:generate_keys(ecc_compact),
