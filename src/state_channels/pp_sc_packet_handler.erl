@@ -24,7 +24,7 @@
 %% Offer rejected reasons
 -define(UNMAPPED_EUI, unmapped_eui).
 -define(NET_ID_REJECTED, net_id_rejected).
--define(NET_ID_INVALID, net_id_invalid).
+%% -define(NET_ID_INVALID, net_id_invalid).
 
 %% ------------------------------------------------------------------
 %% Packet Handler Functions
@@ -32,40 +32,16 @@
 
 -spec handle_offer(blockchain_state_channel_offer_v1:offer(), pid()) -> ok.
 handle_offer(Offer, _HandlerPid) ->
-    case blockchain_state_channel_offer_v1:routing(Offer) of
-        #routing_information_pb{data = {eui, EUI}} ->
-            case should_accept_join(EUI) of
-                true ->
-                    lager:debug("offer: buying join ~p", [EUI]),
-                    ok;
-                false ->
-                    lager:debug("offer: ignoring join ~p", [EUI]),
-                    {error, ?UNMAPPED_EUI}
-            end;
-        #routing_information_pb{data = {devaddr, DevAddr}} ->
-            case allowed_net_ids() of
-                allow_all ->
-                    ok;
-                IDs ->
-                    case lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>) of
-                        {ok, NetID} ->
-                            lager:debug(
-                                "Offer [Devaddr: ~p] [NetID: ~p]",
-                                [DevAddr, NetID]
-                            ),
-                            case lists:member(NetID, IDs) of
-                                true -> ok;
-                                false -> {error, ?NET_ID_REJECTED}
-                            end;
-                        {error, _Error} ->
-                            lager:warning(
-                                "Offer Invalid NetID [DevAddr: ~p] [Error: ~p]",
-                                [DevAddr, _Error]
-                            ),
-                            {error, ?NET_ID_INVALID}
-                    end
-            end
-    end.
+    #routing_information_pb{data = Routing} = blockchain_state_channel_offer_v1:routing(Offer),
+    Resp =
+        case Routing of
+            {eui, EUI} -> handle_join_offer(EUI, Offer);
+            {devaddr, DevAddr} -> handle_packet_offer(DevAddr, Offer)
+        end,
+    erlang:spawn(fun() ->
+        print_handle_offer_resp(Routing, Resp)
+    end),
+    Resp.
 
 -spec handle_packet(blockchain_state_channel_packet_v1:packet(), pos_integer(), pid()) -> ok.
 handle_packet(SCPacket, _PacketTime, Pid) ->
@@ -144,12 +120,52 @@ handle_packet(SCPacket, _PacketTime, Pid) ->
     end.
 
 %% ------------------------------------------------------------------
-%% Counter Functions
+%% Buying Functions
 %% ------------------------------------------------------------------
+
+handle_join_offer(EUI, Offer) ->
+    case join_eui_to_net_id(EUI) of
+        {error, _} ->
+            {error, ?UNMAPPED_EUI};
+        {ok, NetID} ->
+            pp_multi_buy:maybe_buy_offer(Offer, NetID)
+    end.
+
+handle_packet_offer(DevAddr, Offer) ->
+    case allowed_net_ids() of
+        allow_all ->
+            ok;
+        IDs ->
+            case lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>) of
+                {ok, NetID} ->
+                    case lists:member(NetID, IDs) of
+                        true -> pp_multi_buy:maybe_buy_offer(Offer, NetID);
+                        false -> {error, ?NET_ID_REJECTED}
+                    end;
+                Err ->
+                    Err
+            end
+    end.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
+
+print_handle_offer_resp(Routing, ok) ->
+    case Routing of
+        {eui, EUI} ->
+            lager:debug("offer: buying join [EUI: ~p]", [EUI]);
+        {devaddr, DevAddr} ->
+            {ok, NetID} = lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>),
+            lager:debug("offer: buying packet [DevAddr: ~p] [NetID: ~p]", [DevAddr, NetID])
+    end;
+print_handle_offer_resp(Routing, {error, Err}) ->
+    case Routing of
+        {eui, EUI} ->
+            lager:warning("offer: ignoring join [EUI: ~p] [Err: ~p]", [EUI, Err]);
+        {devaddr, DevAddr} ->
+            lager:warning("offer: ignoring packet [Devaddr: ~p] [Err: ~p]", [DevAddr, Err])
+    end.
 
 -spec should_accept_join(#eui_pb{}) -> boolean().
 should_accept_join(#eui_pb{} = EUI) ->
@@ -236,7 +252,12 @@ should_accept_join_test() ->
     ?assertEqual(true, should_accept_join(EUI1), "Wildcard EUI Mapped 1"),
     ?assertEqual(
         true,
-        should_accept_join(#eui_pb{deveui = rand:uniform(trunc(math:pow(2, 64) - 1)), appeui = App1}),
+        should_accept_join(
+            #eui_pb{
+                deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
+                appeui = App1
+            }
+        ),
         "Wildcard random device EUI Mapped 1"
     ),
     ?assertEqual(true, should_accept_join(EUI2), "Wildcard EUI Mapped 2"),

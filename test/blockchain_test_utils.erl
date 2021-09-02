@@ -168,7 +168,8 @@ add_block(Block, Chain, Sender, SwarmTID) ->
                         ok;
                     plausible ->
                         lager:warning(
-                            "plausuble gossipped block doesn't fit with our chain, will start sync if not already active"
+                            "plausuble gossipped block doesn't fit with our chain, "
+                            "will start sync if not already active"
                         ),
                         blockchain_worker:maybe_sync(),
                         %% pass it along
