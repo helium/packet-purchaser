@@ -110,14 +110,6 @@ pull_ack_missed(Address) ->
     ok = inc_lns_metric(Address, pull_ack, miss).
 
 %% -------------------------------------------------------------------
-%% Internal gen_server API
-%% -------------------------------------------------------------------
-
--spec maybe_fetch_location(libp2p_crypto:pubkey_bin()) -> ok.
-maybe_fetch_location(PubKeyBin) ->
-    gen_server:cast(?MODULE, {location, PubKeyBin}).
-
-%% -------------------------------------------------------------------
 %% gen_server Callbacks
 %% -------------------------------------------------------------------
 
