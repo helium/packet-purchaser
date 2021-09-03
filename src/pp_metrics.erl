@@ -83,29 +83,37 @@ get_netid_packet_counts() ->
 
 -spec get_location_packet_counts() -> map().
 get_location_packet_counts() ->
-    Country = '$1',
-    State = '$2',
-    City = '$3',
-    NetID = '$4',
-    Count = '$5',
-    Spec = [
-        {
-            {
-                {
-                    packet,
-                    %% #hotspot{country = '$1', state = '$2', city = '$3', _ = '_'},
-                    %% Dialyzer doesn't like this record construction
-                    {hotspot, '_', '_', Country, State, City, '_', '_'},
-                    NetID
-                },
-                Count
-            },
-            [],
-            [
-                {{{{Country, State, City}}, Count}}
-            ]
-        }
-    ],
+    %% Country = '$1',
+    %% State = '$2',
+    %% City = '$3',
+    %% NetID = '$4',
+    %% Count = '$5',
+    %% Spec = [
+    %%     {
+    %%         {
+    %%             {
+    %%                 packet,
+    %%                 %% #hotspot{country = '$1', state = '$2', city = '$3', _ = '_'},
+    %%                 %% Dialyzer doesn't like this record construction
+    %%                 {hotspot, '_', '_', Country, State, City, '_', '_'},
+    %%                 NetID
+    %%             },
+    %%             Count
+    %%         },
+    %%         [],
+    %%         [
+    %%             {{{{Country, State, City}}, Count}}
+    %%         ]
+    %%     }
+    %% ],
+    PubKeyBin = '$1',
+    Count = '$2',
+    Spec = [{
+             {{packet, PubKeyBin, '_'}, Count},
+             [],
+             [{{PubKeyBin, Count}}]
+            }
+           ],
     Values = ets:select(?ETS, Spec),
     Fun = fun(Key) -> {Key, lists:sum(proplists:get_all_values(Key, Values))} end,
     maps:from_list(lists:map(Fun, proplists:get_keys(Values))).
@@ -147,16 +155,16 @@ init([]) ->
 handle_call(_Request, _From, State) ->
     {reply, ignored, State}.
 
-handle_cast({offer, PubKeyBin, NetID}, #state{seen = SeenMap} = State) ->
-    Hotspot = get_hotspot(PubKeyBin, SeenMap),
-    ok = inc_offer(Hotspot, NetID),
-    NewSeenMap = maps:put(PubKeyBin, Hotspot, SeenMap),
-    {noreply, State#state{seen = NewSeenMap}};
-handle_cast({packet, PubKeyBin, NetID}, #state{seen = SeenMap} = State) ->
-    Hotspot = get_hotspot(PubKeyBin, SeenMap),
-    ok = inc_packet(Hotspot, NetID),
-    NewSeenMap = maps:put(PubKeyBin, Hotspot, SeenMap),
-    {noreply, State#state{seen = NewSeenMap}};
+handle_cast({offer, PubKeyBin, NetID}, #state{seen = _SeenMap} = State) ->
+    %% Hotspot = get_hotspot(PubKeyBin, SeenMap),
+    ok = inc_offer(PubKeyBin, NetID),
+    %% NewSeenMap = maps:put(PubKeyBin, Hotspot, SeenMap),
+    {noreply, State};
+handle_cast({packet, PubKeyBin, NetID}, #state{seen = _SeenMap} = State) ->
+    %% Hotspot = get_hotspot(PubKeyBin, SeenMap),
+    ok = inc_packet(PubKeyBin, NetID),
+    %% NewSeenMap = maps:put(PubKeyBin, Hotspot, SeenMap),
+    {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -220,46 +228,46 @@ inc_offer(Hotspot, NetID) ->
     _ = ets:update_counter(?ETS, Key, 1, {Key, 0}),
     ok.
 
--spec get_hotspot(PubKeyBin :: libp2p_crypto:pubkey_bin(), map()) -> #hotspot{}.
-get_hotspot(PubKeyBin, SeenMap) ->
-    case maps:get(PubKeyBin, SeenMap, undefined) of
-        undefined -> fetch_hotspot(PubKeyBin);
-        HS -> HS
-    end.
+%% -spec get_hotspot(PubKeyBin :: libp2p_crypto:pubkey_bin(), map()) -> #hotspot{}.
+%% get_hotspot(PubKeyBin, SeenMap) ->
+%%     case maps:get(PubKeyBin, SeenMap, undefined) of
+%%         undefined -> fetch_hotspot(PubKeyBin);
+%%         HS -> HS
+%%     end.
 
--spec fetch_hotspot(PubKeyBin :: libp2p_crypto:pubkey_bin()) ->
-    #hotspot{} | {fetch_failed, PubKeyBin :: libp2p_crypto:pubkey_bin()}.
-fetch_hotspot(PubKeyBin) ->
-    B58 = libp2p_crypto:bin_to_b58(PubKeyBin),
-    Prefix = "https://api.helium.io/v1/hotspots/",
-    Url = erlang:list_to_binary(io_lib:format("~s~s", [Prefix, B58])),
+%% -spec fetch_hotspot(PubKeyBin :: libp2p_crypto:pubkey_bin()) ->
+%%     #hotspot{} | {fetch_failed, PubKeyBin :: libp2p_crypto:pubkey_bin()}.
+%% fetch_hotspot(PubKeyBin) ->
+%%     B58 = libp2p_crypto:bin_to_b58(PubKeyBin),
+%%     Prefix = "https://api.helium.io/v1/hotspots/",
+%%     Url = erlang:list_to_binary(io_lib:format("~s~s", [Prefix, B58])),
 
-    case hackney:get(Url, [], <<>>, [with_body]) of
-        {ok, 200, _Headers, Body} ->
-            #{
-                <<"data">> := #{
-                    <<"lat">> := Lat,
-                    <<"lng">> := Long,
-                    <<"location_hex">> := LocationHex,
-                    <<"name">> := Name,
-                    <<"geocode">> := #{
-                        <<"long_country">> := Country,
-                        <<"long_state">> := State,
-                        <<"long_city">> := City
-                    }
-                }
-            } = jsx:decode(Body, [return_maps]),
+%%     case hackney:get(Url, [], <<>>, [with_body]) of
+%%         {ok, 200, _Headers, Body} ->
+%%             #{
+%%                 <<"data">> := #{
+%%                     <<"lat">> := Lat,
+%%                     <<"lng">> := Long,
+%%                     <<"location_hex">> := LocationHex,
+%%                     <<"name">> := Name,
+%%                     <<"geocode">> := #{
+%%                         <<"long_country">> := Country,
+%%                         <<"long_state">> := State,
+%%                         <<"long_city">> := City
+%%                     }
+%%                 }
+%%             } = jsx:decode(Body, [return_maps]),
 
-            #hotspot{
-                address = PubKeyBin,
-                name = Name,
-                country = Country,
-                state = State,
-                city = City,
-                geo = {Lat, Long},
-                hex = LocationHex
-            };
-        _Other ->
-            lager:info("fetching hotspot ~p failed: ~p", [PubKeyBin, _Other]),
-            {fetch_failed, PubKeyBin}
-    end.
+%%             #hotspot{
+%%                 address = PubKeyBin,
+%%                 name = Name,
+%%                 country = Country,
+%%                 state = State,
+%%                 city = City,
+%%                 geo = {Lat, Long},
+%%                 hex = LocationHex
+%%             };
+%%         _Other ->
+%%             lager:info("fetching hotspot ~p failed: ~p", [PubKeyBin, _Other]),
+%%             {fetch_failed, PubKeyBin}
+%%     end.

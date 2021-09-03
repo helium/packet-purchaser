@@ -81,41 +81,30 @@ location_counter_test(_Config) ->
     OrangeDevAddr = pp_utils:hex_to_binary(<<"1E123456">>),
     ComcastDevAddr = pp_utils:hex_to_binary(<<"45000042">>),
 
+    WinterHaven = libp2p_crypto:b58_to_bin("1129zHtCXModu3mzP98TMCs63WZnm2xGT3WHQQbmizgEmqWQw9Vd"),
+    Bloomington = libp2p_crypto:b58_to_bin("112goQHPf921bTU2c46zSvETfLqcdT1RQwvX9NDucHHBVrEMJuBp"),
+    Burnaby = libp2p_crypto:b58_to_bin("112s3a4PkmZZt3F9qD1nhrF643D8uaY4dwmznyRKMpXkcsAWrnkF"),
+
     SendPacketFun(
         ActilityDevAddr,
-        [
-            %% {US, FL, Winter Haven}
-            libp2p_crypto:b58_to_bin("1129zHtCXModu3mzP98TMCs63WZnm2xGT3WHQQbmizgEmqWQw9Vd"),
-            %% {US, CA, Bloomington}
-            libp2p_crypto:b58_to_bin("112goQHPf921bTU2c46zSvETfLqcdT1RQwvX9NDucHHBVrEMJuBp"),
-            %% {CA, BC, Burnaby}
-            libp2p_crypto:b58_to_bin("112s3a4PkmZZt3F9qD1nhrF643D8uaY4dwmznyRKMpXkcsAWrnkF")
-        ]
+        [WinterHaven, Bloomington, Burnaby]
     ),
     SendPacketFun(
         OrangeDevAddr,
-        [
-            %% {US, FL, Winter Haven}
-            libp2p_crypto:b58_to_bin("1129zHtCXModu3mzP98TMCs63WZnm2xGT3WHQQbmizgEmqWQw9Vd"),
-            %% {US, CA, Bloomington}
-            libp2p_crypto:b58_to_bin("112goQHPf921bTU2c46zSvETfLqcdT1RQwvX9NDucHHBVrEMJuBp")
-        ]
+        [WinterHaven, Bloomington]
     ),
     SendPacketFun(
         ComcastDevAddr,
-        [
-            %% {US, FL, Winter Haven}
-            libp2p_crypto:b58_to_bin("1129zHtCXModu3mzP98TMCs63WZnm2xGT3WHQQbmizgEmqWQw9Vd")
-        ]
+        [WinterHaven]
     ),
 
     ok = wait_until_messages_consumed(whereis(pp_metrics)),
 
-    Expected = #{
-        {<<"United States">>, <<"Florida">>, <<"Winter Haven">>} => 3,
-        {<<"United States">>, <<"California">>, <<"Bloomington">>} => 2,
-        {<<"Canada">>, <<"British Columbia">>, <<"Burnaby">>} => 1
-    },
+    Expected = #{WinterHaven => 3, Bloomington => 2, Burnaby => 1},
+    %%     {<<"United States">>, <<"Florida">>, <<"Winter Haven">>} => 3,
+    %%     {<<"United States">>, <<"California">>, <<"Bloomington">>} => 2,
+    %%     {<<"Canada">>, <<"British Columbia">>, <<"Burnaby">>} => 1
+    %% },
     Actual = pp_metrics:get_location_packet_counts(),
     ?assertEqual(Expected, Actual),
 
