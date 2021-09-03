@@ -11,6 +11,7 @@
 %% Metrics Reporting API
 -export([
     get_netid_packet_counts/0,
+    get_netid_offer_counts/0,
     get_location_packet_counts/0,
     get_lns_metrics/0
 ]).
@@ -65,6 +66,13 @@ handle_offer(PubKeyBin, NetID) ->
 -spec handle_packet(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
 handle_packet(PubKeyBin, NetID) ->
     gen_server:cast(?MODULE, {packet, PubKeyBin, NetID}).
+
+-spec get_netid_offer_counts() -> map().
+get_netid_offer_counts() ->
+    Spec = [{{{offer, '_', '$1'}, '$2'}, [], [{{'$1', '$2'}}]}],
+    Values = ets:select(?ETS, Spec),
+    Fun = fun(Key) -> {Key, lists:sum(proplists:get_all_values(Key, Values))} end,
+    maps:from_list(lists:map(Fun, proplists:get_keys(Values))).
 
 -spec get_netid_packet_counts() -> map().
 get_netid_packet_counts() ->
