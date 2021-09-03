@@ -8,16 +8,17 @@
 %% gen_server API
 -export([start_link/0]).
 
-%% Metrics API
+%% Metrics Reporting API
 -export([
     get_netid_packet_counts/0,
     get_location_packet_counts/0,
-    get_lns_metrics/0,
-    handle_packet/2,
-    handle_offer/2
+    get_lns_metrics/0
 ]).
 
+%% Metrics Recording API
 -export([
+    handle_offer/2,
+    handle_packet/2,
     push_ack/1,
     push_ack_missed/1,
     pull_ack/1,
@@ -74,10 +75,28 @@ get_netid_packet_counts() ->
 
 -spec get_location_packet_counts() -> map().
 get_location_packet_counts() ->
+    Country = '$1',
+    State = '$2',
+    City = '$3',
+    NetID = '$4',
+    Count = '$5',
     Spec = [
-        {{{packet, #hotspot{country = '$1', state = '$2', city = '$3', _ = '_'}, '$4'}, '$5'}, [], [
-            {{{{'$1', '$2', '$3'}}, '$5'}}
-        ]}
+        {
+            {
+                {
+                    packet,
+                    %% #hotspot{country = '$1', state = '$2', city = '$3', _ = '_'},
+                    %% Dialyzer doesn't like this record construction
+                    {hotspot, '_', '_', Country, State, City, '_', '_'},
+                    NetID
+                },
+                Count
+            },
+            [],
+            [
+                {{{{Country, State, City}}, Count}}
+            ]
+        }
     ],
     Values = ets:select(?ETS, Spec),
     Fun = fun(Key) -> {Key, lists:sum(proplists:get_all_values(Key, Values))} end,
@@ -155,7 +174,7 @@ init_ets() ->
             lager:info("Packet metrics continued from last shutdown");
         {error, _} = Err ->
             lager:warning("Unable to open ~p ~p. Metrics will start over", [File, Err]),
-            ?ETS = ets:new(?ETS, [public, named_table, set])
+            ?ETS = ets:new(?ETS, [public, named_table, set, {write_concurrency, true}])
     end,
     File2 = pp_utils:get_lns_metrics_filename(),
     case ets:file2tab(File2) of
