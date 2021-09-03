@@ -228,9 +228,7 @@ get_hotspot(PubKeyBin, SeenMap) ->
     end.
 
 -spec fetch_hotspot(PubKeyBin :: libp2p_crypto:pubkey_bin()) ->
-    #hotspot{} | {Err, PubKeyBin :: libp2p_crypto:pubkey_bin()}
-when
-    Err :: fetch_failed.
+    #hotspot{} | {fetch_failed, PubKeyBin :: libp2p_crypto:pubkey_bin()}.
 fetch_hotspot(PubKeyBin) ->
     B58 = libp2p_crypto:bin_to_b58(PubKeyBin),
     Prefix = "https://api.helium.io/v1/hotspots/",
@@ -262,6 +260,6 @@ fetch_hotspot(PubKeyBin) ->
                 hex = LocationHex
             };
         _Other ->
-            lager:info("fetchign hotspots failed: ~p", [_Other]),
+            lager:info("fetching hotspot ~p failed: ~p", [PubKeyBin, _Other]),
             {fetch_failed, PubKeyBin}
     end.
