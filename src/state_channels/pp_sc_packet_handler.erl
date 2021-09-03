@@ -160,8 +160,13 @@ handle_offer_resp(Routing, Offer, Resp) ->
     PubKeyBin = blockchain_state_channel_offer_v1:hotspot(Offer),
     {ok, NetID} =
         case Routing of
-            {eui, EUI} -> join_eui_to_net_id(EUI);
-            {devaddr, DevAddr0} -> lorawan_devaddr:net_id(DevAddr0)
+            {eui, EUI} ->
+                case join_eui_to_net_id(EUI) of
+                    {error, no_mapping} -> {ok, no_mapping};
+                    V -> V
+                end;
+            {devaddr, DevAddr0} ->
+                lorawan_devaddr:net_id(DevAddr0)
         end,
     ok = pp_metrics:handle_offer(PubKeyBin, NetID),
 
