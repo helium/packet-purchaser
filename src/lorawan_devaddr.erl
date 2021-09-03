@@ -2,7 +2,7 @@
 
 -export([net_id/1]).
 
--spec net_id(binary()) -> {ok, non_neg_integer()} | {error, invalid_net_id_type}.
+-spec net_id(number() | binary()) -> {ok, non_neg_integer()} | {error, invalid_net_id_type}.
 net_id(DevNum) when erlang:is_number(DevNum) ->
     net_id(<<DevNum:32/integer-unsigned>>);
 net_id(DevAddr) ->
