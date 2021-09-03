@@ -166,7 +166,10 @@ handle_offer_resp(Routing, Offer, Resp) ->
                     V -> V
                 end;
             {devaddr, DevAddr0} ->
-                lorawan_devaddr:net_id(DevAddr0)
+                case lorawan_devaddr:net_id(DevAddr0) of
+                    {error, Err} -> {ok, Err};
+                    V -> V
+                end
         end,
     ok = pp_metrics:handle_offer(PubKeyBin, NetID),
 
