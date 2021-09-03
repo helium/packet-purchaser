@@ -151,25 +151,38 @@ handle_packet_offer(DevAddr, Offer) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-handle_offer_resp(Routing, Offer, ok) ->
+-spec handle_offer_resp(
+    Routing :: {devaddr, non_neg_integer()} | {eui, blockchain_state_channel_v1_pb:eui_pb()},
+    Offer :: blockchain_state_channel_offer_v1:offer(),
+    Resp :: ok | {error, any()}
+) -> ok.
+handle_offer_resp(Routing, Offer, Resp) ->
     PubKeyBin = blockchain_state_channel_offer_v1:hotspot(Offer),
-    case Routing of
-        {eui, EUI} ->
-            {ok, NetID} = join_eui_to_net_id(EUI),
-            ok = pp_metrics:handle_offer(PubKeyBin, NetID),
-            lager:debug("offer: buying join [EUI: ~p]", [EUI]);
-        {devaddr, DevAddr} ->
-            {ok, NetID} = lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>),
-            ok = pp_metrics:handle_offer(PubKeyBin, NetID),
-            lager:debug("offer: buying packet [DevAddr: ~p] [NetID: ~p]", [DevAddr, NetID])
-    end;
-handle_offer_resp(Routing, _Offer, {error, Err}) ->
-    case Routing of
-        {eui, EUI} ->
-            lager:warning("offer: ignoring join [EUI: ~p] [Err: ~p]", [EUI, Err]);
-        {devaddr, DevAddr} ->
-            lager:warning("offer: ignoring packet [Devaddr: ~p] [Err: ~p]", [DevAddr, Err])
-    end.
+    {ok, NetID} =
+        case Routing of
+            {eui, EUI} -> join_eui_to_net_id(EUI);
+            {devaddr, DevAddr0} -> lorawan_devaddr:net_id(DevAddr0)
+        end,
+    ok = pp_metrics:handle_offer(PubKeyBin, NetID),
+
+    Action =
+        case Resp of
+            ok -> buying;
+            {error, _} -> ignoring
+        end,
+    OfferType =
+        case Routing of
+            {eui, _} -> join;
+            {devaddr, _} -> packet
+        end,
+
+    lager:debug("offer: ~s ~s [net_id: ~p] [routing: ~p] [resp: ~p]", [
+        Action,
+        OfferType,
+        NetID,
+        Routing,
+        Resp
+    ]).
 
 -spec should_accept_join(#eui_pb{}) -> boolean().
 should_accept_join(#eui_pb{} = EUI) ->
