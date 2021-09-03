@@ -39,7 +39,7 @@ handle_offer(Offer, _HandlerPid) ->
             {devaddr, DevAddr} -> handle_packet_offer(DevAddr, Offer)
         end,
     erlang:spawn(fun() ->
-        print_handle_offer_resp(Routing, Resp)
+        handle_offer_resp(Routing, Offer, Resp)
     end),
     Resp.
 
@@ -81,7 +81,7 @@ handle_packet(SCPacket, _PacketTime, Pid) ->
                 ),
                 case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, net_id_udp_args(NetID)) of
                     {ok, WorkerPid} ->
-                        ok = pp_metrics:handle_packet(NetID, PubKeyBin),
+                        ok = pp_metrics:handle_packet(PubKeyBin, NetID),
                         pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
                     {error, _Reason} = Error ->
                         lager:error(
@@ -151,21 +151,38 @@ handle_packet_offer(DevAddr, Offer) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-print_handle_offer_resp(Routing, ok) ->
-    case Routing of
-        {eui, EUI} ->
-            lager:debug("offer: buying join [EUI: ~p]", [EUI]);
-        {devaddr, DevAddr} ->
-            {ok, NetID} = lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>),
-            lager:debug("offer: buying packet [DevAddr: ~p] [NetID: ~p]", [DevAddr, NetID])
-    end;
-print_handle_offer_resp(Routing, {error, Err}) ->
-    case Routing of
-        {eui, EUI} ->
-            lager:warning("offer: ignoring join [EUI: ~p] [Err: ~p]", [EUI, Err]);
-        {devaddr, DevAddr} ->
-            lager:warning("offer: ignoring packet [Devaddr: ~p] [Err: ~p]", [DevAddr, Err])
-    end.
+-spec handle_offer_resp(
+    Routing :: {devaddr, non_neg_integer()} | {eui, blockchain_state_channel_v1_pb:eui_pb()},
+    Offer :: blockchain_state_channel_offer_v1:offer(),
+    Resp :: ok | {error, any()}
+) -> ok.
+handle_offer_resp(Routing, Offer, Resp) ->
+    PubKeyBin = blockchain_state_channel_offer_v1:hotspot(Offer),
+    {ok, NetID} =
+        case Routing of
+            {eui, EUI} -> join_eui_to_net_id(EUI);
+            {devaddr, DevAddr0} -> lorawan_devaddr:net_id(DevAddr0)
+        end,
+    ok = pp_metrics:handle_offer(PubKeyBin, NetID),
+
+    Action =
+        case Resp of
+            ok -> buying;
+            {error, _} -> ignoring
+        end,
+    OfferType =
+        case Routing of
+            {eui, _} -> join;
+            {devaddr, _} -> packet
+        end,
+
+    lager:debug("offer: ~s ~s [net_id: ~p] [routing: ~p] [resp: ~p]", [
+        Action,
+        OfferType,
+        NetID,
+        Routing,
+        Resp
+    ]).
 
 -spec should_accept_join(#eui_pb{}) -> boolean().
 should_accept_join(#eui_pb{} = EUI) ->
