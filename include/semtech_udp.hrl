@@ -11,7 +11,7 @@
 %%  NONE              | Packet has been programmed for downlink
 %%  TOO_LATE          | Rejected because it was already too late to program this packet for downlink
 %%  TOO_EARLY         | Rejected because downlink packet timestamp is too much in advance
-%%  COLLISION_PACKET  | Rejected because there was already a packet programmed in requested timeframe
+%%  COLLISION_PACKET  | Rejected because there was already a packet programmed in req timeframe
 %%  COLLISION_BEACON  | Rejected because there was already a beacon planned in requested timeframe
 %%  TX_FREQ           | Rejected because requested frequency is not supported by TX RF chain
 %%  TX_POWER          | Rejected because requested power is not supported by gateway

@@ -70,7 +70,13 @@ location_counter_test(_Config) ->
     SendPacketFun = fun(DevAddr, PubKeyBins) ->
         lists:foreach(
             fun(PubKeyBin) ->
-                Packet = frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{dont_encode => true}),
+                Packet = frame_packet(
+                    ?UNCONFIRMED_UP,
+                    PubKeyBin,
+                    DevAddr,
+                    0,
+                    #{dont_encode => true}
+                ),
                 pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self())
             end,
             PubKeyBins

@@ -108,12 +108,13 @@ get_location_packet_counts() ->
     %% ],
     PubKeyBin = '$1',
     Count = '$2',
-    Spec = [{
-             {{packet, PubKeyBin, '_'}, Count},
-             [],
-             [{{PubKeyBin, Count}}]
-            }
-           ],
+    Spec = [
+        {
+            {{packet, PubKeyBin, '_'}, Count},
+            [],
+            [{{PubKeyBin, Count}}]
+        }
+    ],
     Values = ets:select(?ETS, Spec),
     Fun = fun(Key) -> {Key, lists:sum(proplists:get_all_values(Key, Values))} end,
     maps:from_list(lists:map(Fun, proplists:get_keys(Values))).
