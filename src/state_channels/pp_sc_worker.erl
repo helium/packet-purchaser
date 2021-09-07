@@ -44,6 +44,7 @@
 ]).
 
 -define(SERVER, ?MODULE).
+-define(SC_BUFFER, 15).
 -define(SC_EXPIRATION, 25).
 % budget 100 data credits
 -define(SC_AMOUNT, 100).
@@ -270,7 +271,7 @@ maybe_start_state_channel(#state{in_flight = [], open_sc_limit = Limit} = State)
                 "[active: ~p] [opened: ~p] [in flight ~p] [max: ~p] all active, opening more",
                 [ActiveCount, OpenedCount, InFlightCount, Limit]
             ),
-            {ok, ID} = open_next_state_channel(State),
+            {ok, ID} = open_next_state_channel(OpenedCount, State),
             State#state{in_flight = [ID]};
         {true, _} ->
             %% ActiveCount is less than OpenedCount, where we want to be
@@ -298,8 +299,14 @@ maybe_start_state_channel(#state{in_flight = InFlight, open_sc_limit = Limit} = 
     ),
     State.
 
--spec open_next_state_channel(State :: state()) -> {ok, blockchain_txn_state_channel_open_v1:id()}.
-open_next_state_channel(#state{pubkey = PubKey, sig_fun = SigFun, oui = OUI, chain = Chain}) ->
+-spec open_next_state_channel(NumExistingSCs :: non_neg_integer(), State :: state()) ->
+    {ok, blockchain_txn_state_channel_open_v1:id()}.
+open_next_state_channel(NumExistingSCs, #state{
+    pubkey = PubKey,
+    sig_fun = SigFun,
+    oui = OUI,
+    chain = Chain
+}) ->
     Ledger = blockchain:ledger(Chain),
     {ok, ChainHeight} = blockchain:height(Chain),
     NextExpiration =
@@ -311,7 +318,8 @@ open_next_state_channel(#state{pubkey = PubKey, sig_fun = SigFun, oui = OUI, cha
             {ok, ActiveSCExpiration} ->
                 %% We set the next SC expiration to the difference between
                 %% current chain height and active plus the expiration_interval
-                abs(ActiveSCExpiration - ChainHeight) + get_sc_expiration_interval()
+                abs(ActiveSCExpiration - ChainHeight) + get_sc_expiration_interval() +
+                    (get_sc_buffer() * NumExistingSCs)
         end,
     PubkeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
     Nonce = get_nonce(PubkeyBin, Ledger),
@@ -369,6 +377,7 @@ get_nonce(PubkeyBin, Ledger) ->
 -spec get_sc_amount() -> pos_integer().
 get_sc_amount() ->
     case application:get_env(?APP, sc_open_dc_amount, ?SC_AMOUNT) of
+        [] -> ?SC_AMOUNT;
         Str when is_list(Str) -> erlang:list_to_integer(Str);
         Amount -> Amount
     end.
@@ -376,6 +385,15 @@ get_sc_amount() ->
 -spec get_sc_expiration_interval() -> pos_integer().
 get_sc_expiration_interval() ->
     case application:get_env(?APP, sc_expiration_interval, ?SC_EXPIRATION) of
+        [] -> ?SC_EXPIRATION;
+        Str when is_list(Str) -> erlang:list_to_integer(Str);
+        I -> I
+    end.
+
+-spec get_sc_buffer() -> pos_integer().
+get_sc_buffer() ->
+    case application:get_env(?APP, sc_expiration_buffer, ?SC_BUFFER) of
+        [] -> ?SC_BUFFER;
         Str when is_list(Str) -> erlang:list_to_integer(Str);
         I -> I
     end.
