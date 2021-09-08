@@ -12,7 +12,6 @@ RUN make
 COPY include/ include/
 COPY priv/ priv/
 COPY src/ src/
-COPY test/pp_lns.erl src/pp_lns.erl
 RUN make
 
 COPY config/ config/
