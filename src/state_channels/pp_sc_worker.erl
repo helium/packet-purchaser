@@ -44,6 +44,7 @@
 ]).
 
 -define(SERVER, ?MODULE).
+-define(SC_CONSIDERED_FULL_MULT, 0.99).
 -define(SC_BUFFER, 15).
 -define(SC_EXPIRATION, 25).
 % budget 100 data credits
@@ -246,7 +247,8 @@ maybe_start_state_channel(#state{in_flight = [], open_sc_limit = Limit} = State)
     OpenedSCs = maps:filter(
         fun(_ID, {SC, _}) ->
             blockchain_state_channel_v1:state(SC) == open andalso
-                blockchain_state_channel_v1:total_dcs(SC) < blockchain_state_channel_v1:amount(SC)
+                blockchain_state_channel_v1:total_dcs(SC) <
+                    (blockchain_state_channel_v1:amount(SC) * ?SC_CONSIDERED_FULL_MULT)
         end,
         SCs
     ),
