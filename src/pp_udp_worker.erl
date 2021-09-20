@@ -248,7 +248,7 @@ handle_pull_resp(
         maps:get(<<"freq">>, Map),
         erlang:binary_to_list(maps:get(<<"datr">>, Map))
     ),
-    catch blockchain_state_channel_handler:send_response(
+    catch blockchain_state_channel_common:send_response(
         SCPid,
         blockchain_state_channel_response_v1:new(true, DownlinkPacket)
     ),

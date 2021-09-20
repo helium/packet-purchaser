@@ -43,34 +43,12 @@
         {log_root, "${PP_BASE_DIR}/log"},
         {crash_log, "crash.log"},
         {handlers, [
-            {lager_console_backend, [
-                {level, warning},
-                {formatter_config, [
-                    "[",
-                    date,
-                    " ",
-                    time,
-                    "] ",
-                    pid,
-                    " [",
-                    severity,
-                    "]",
-                    {gateway_id, [" [", gateway_id, "]"], ""},
-                    " [",
-                    {module, ""},
-                    {function, [":", function], ""},
-                    {line, [":", line], ""},
-                    "] ",
-                    message,
-                    "\n"
-                ]}
-            ]},
             {lager_file_backend, [
                 {file, "packet_purchaser.log"},
-                {level, warning},
+                {level, info},
                 {size, 1000000000},
                 {date, "$D0"},
-                {count, 7},
+                {count, 15},
                 {formatter_config, [
                     "[",
                     date,
@@ -93,11 +71,8 @@
             ]}
         ]},
         {traces, [
-            {lager_console_backend, [{application, packet_purchaser}], debug},
-            {lager_console_backend, [{module, pp_sc_packet_handler}], debug},
-            {{lager_file_backend, "packet_purchaser.log"}, [{application, packet_purchaser}],
-                debug},
-            {{lager_file_backend, "packet_purchaser.log"}, [{module, pp_sc_packet_handler}], debug}
+            {{lager_file_backend, "packet_purchaser.log"}, [{application, packet_purchaser}], info},
+            {{lager_file_backend, "packet_purchaser.log"}, [{module, pp_sc_packet_handler}], info}
         ]}
     ]}
 ].
