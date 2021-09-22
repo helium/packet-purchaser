@@ -15,6 +15,12 @@
 ]).
 
 -export([
+    handle_join_offer/2,
+    handle_packet_offer/2,
+    handle_offer_resp/3
+]).
+
+-export([
     should_accept_join/1,
     join_eui_to_net_id/1,
     allowed_net_ids/0,
@@ -35,11 +41,11 @@ handle_offer(Offer, _HandlerPid) ->
     #routing_information_pb{data = Routing} = blockchain_state_channel_offer_v1:routing(Offer),
     Resp =
         case Routing of
-            {eui, EUI} -> handle_join_offer(EUI, Offer);
-            {devaddr, DevAddr} -> handle_packet_offer(DevAddr, Offer)
+            {eui, EUI} -> ?MODULE:handle_join_offer(EUI, Offer);
+            {devaddr, DevAddr} -> ?MODULE:handle_packet_offer(DevAddr, Offer)
         end,
     erlang:spawn(fun() ->
-        handle_offer_resp(Routing, Offer, Resp)
+        ?MODULE:handle_offer_resp(Routing, Offer, Resp)
     end),
     Resp.
 
