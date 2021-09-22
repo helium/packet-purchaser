@@ -44,7 +44,7 @@ handle_offer(Offer, _HandlerPid) ->
     Resp.
 
 -spec handle_packet(blockchain_state_channel_packet_v1:packet(), pos_integer(), pid()) -> ok.
-handle_packet(SCPacket, _PacketTime, Pid) ->
+handle_packet(SCPacket, PacketTime, Pid) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
     Token = semtech_udp:token(),
@@ -55,7 +55,9 @@ handle_packet(SCPacket, _PacketTime, Pid) ->
         Token,
         MAC,
         #{
-            time => iso8601:format(calendar:system_time_to_universal_time(Tmst, millisecond)),
+            time => iso8601:format(
+                calendar:system_time_to_universal_time(PacketTime, millisecond)
+            ),
             tmst => Tmst band 16#FFFFFFFF,
             freq => blockchain_helium_packet_v1:frequency(Packet),
             rfch => 0,
