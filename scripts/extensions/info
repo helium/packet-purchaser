@@ -15,5 +15,5 @@ done
 
 buf="${buf%?}]]"
 
-relx_nodetool rpc router_console command "$buf"
+relx_nodetool rpc pp_console command "$buf"
 exit $?
