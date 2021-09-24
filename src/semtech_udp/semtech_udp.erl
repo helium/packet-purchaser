@@ -34,7 +34,7 @@
     map()
 ) -> binary().
 push_data(Token, MAC, Map) ->
-    BinJSX = jsx:encode(#{rxpk => [Map]}),
+    BinJSX = jsx:encode(#{rxpk => [Map]}, [{float_formatter, fun round_to_fourth_decimal/1 }]),
     <<?PROTOCOL_2:8/integer-unsigned, Token/binary, ?PUSH_DATA:8/integer-unsigned, MAC:8/binary,
         BinJSX/binary>>.
 
