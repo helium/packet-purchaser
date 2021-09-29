@@ -34,7 +34,7 @@
     map()
 ) -> binary().
 push_data(Token, MAC, Map) ->
-    BinJSX = jsx:encode(#{rxpk => [Map]}, [{float_formatter, fun round_to_fourth_decimal/1 }]),
+    BinJSX = jsx:encode(#{rxpk => [Map]}, [{float_formatter, fun round_to_fourth_decimal/1}]),
     <<?PROTOCOL_2:8/integer-unsigned, Token/binary, ?PUSH_DATA:8/integer-unsigned, MAC:8/binary,
         BinJSX/binary>>.
 
@@ -88,7 +88,7 @@ round_to_fourth_decimal(Float) ->
     map()
 ) -> binary().
 pull_resp(Token, Map) ->
-    BinJSX = jsx:encode(#{txpk => Map}, [{float_formatter, fun round_to_fourth_decimal/1 }]),
+    BinJSX = jsx:encode(#{txpk => Map}, [{float_formatter, fun round_to_fourth_decimal/1}]),
     <<?PROTOCOL_2:8/integer-unsigned, Token/binary, ?PULL_RESP:8/integer-unsigned, BinJSX/binary>>.
 
 %%%-------------------------------------------------------------------
@@ -358,15 +358,19 @@ json_data_test() ->
 
 encode_with_float_formatter_test() ->
     ?assertEqual(
-        jsx:encode([#{<<"pi">> => 3.000967890987654321}], [{float_formatter, fun round_to_fourth_decimal/1 }]),
+        jsx:encode([#{<<"pi">> => 3.000967890987654321}], [
+            {float_formatter, fun round_to_fourth_decimal/1}
+        ]),
         <<"[{\"pi\":3.0010}]">>
     ),
     ?assertEqual(
-        jsx:encode([#{<<"pi">> => 3.000467890987654321}], [{float_formatter, fun round_to_fourth_decimal/1 }]),
+        jsx:encode([#{<<"pi">> => 3.000467890987654321}], [
+            {float_formatter, fun round_to_fourth_decimal/1}
+        ]),
         <<"[{\"pi\":3.0005}]">>
     ),
     ?assertEqual(
-        jsx:encode([#{<<"pi">> => 905.299987}], [{float_formatter, fun round_to_fourth_decimal/1 }]),
+        jsx:encode([#{<<"pi">> => 905.299987}], [{float_formatter, fun round_to_fourth_decimal/1}]),
         <<"[{\"pi\":905.3000}]">>
     ),
     ok.
