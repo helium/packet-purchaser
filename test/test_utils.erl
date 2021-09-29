@@ -59,6 +59,7 @@ init_per_testcase(TestCase, Config) ->
             ok
     end,
 
+    {ok, FakeLNSPid} = pp_lns:start_link(#{port => 1700, forward => self()}),
     {ok, _} = application:ensure_all_started(?APP),
 
     SwarmKey = filename:join([
@@ -74,7 +75,6 @@ init_per_testcase(TestCase, Config) ->
         [{PPPrivKey, PPPubKey}]
     ),
 
-    {ok, FakeLNSPid} = pp_lns:start_link(#{port => 1700, forward => self()}),
     {PubKeyBin, WorkerPid} = start_gateway(),
 
     DefaultEnv = application:get_all_env(?APP),

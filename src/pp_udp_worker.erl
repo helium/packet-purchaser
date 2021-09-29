@@ -137,10 +137,11 @@ handle_info(
     {noreply, State#state{pull_data = RefAndToken}};
 handle_info(
     ?PULL_DATA_TIMEOUT_TICK,
-    State
+    #state{pull_data_timer = PullDataTimer} = State
 ) ->
-    lager:debug("got a pull data timeout, ignoring missed pull_ack"),
+    lager:debug("got a pull data timeout, ignoring missed pull_ack [retry: ~p]", [PullDataTimer]),
     ok = pp_metrics:pull_ack_missed(State#state.address),
+    _ = schedule_pull_data(PullDataTimer),
     {noreply, State};
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p, ~p", [_Msg, State]),
