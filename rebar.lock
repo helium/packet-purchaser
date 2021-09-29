@@ -100,7 +100,7 @@
   0},
  {<<"jsx">>,
   {git,"https://github.com/lthiery/jsx",
-       {ref,"d5370d3d46e7658090b87580415ef639d075eda3"}},
+       {ref,"2df9fed951964d465ca200d1491de07ddfa50ec1"}},
   0},
  {<<"kvc">>,
   {git,"https://github.com/etrepum/kvc",
