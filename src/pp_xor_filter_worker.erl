@@ -203,7 +203,7 @@ terminate(_Reason, #state{}) ->
         | {update, non_neg_integer(), devices_dev_eui_app_eui()}
     ]}.
 should_update_filters(Chain, OUI, FilterToDevices) ->
-    case pp_integration:get_devices() of
+    try pp_integration:get_devices() of
         {error, _Reason} ->
             lager:error("failed to get device ~p", [_Reason]),
             noop;
@@ -235,6 +235,10 @@ should_update_filters(Chain, OUI, FilterToDevices) ->
                     ),
                     {Routing, [{update, Index, R ++ Added} | OtherUpdates]}
             end
+    catch
+        exit:{timeout, Err} ->
+            lager:error("failed to get devices from integration", [Err]),
+            noop
     end.
 
 -spec smallest_first([{any(), L1 :: list()} | {any(), any(), L1 :: list()}]) -> list().
