@@ -34,7 +34,7 @@
     map()
 ) -> binary().
 push_data(Token, MAC, Map) ->
-    BinJSX = jsx:encode(#{rxpk => [Map]}),
+    BinJSX = jsx:encode(#{rxpk => [Map]}, [{float_formatter, fun round_to_fourth_decimal/1}]),
     <<?PROTOCOL_2:8/integer-unsigned, Token/binary, ?PUSH_DATA:8/integer-unsigned, MAC:8/binary,
         BinJSX/binary>>.
 
@@ -69,6 +69,16 @@ pull_ack(Token) ->
 
 %%%-------------------------------------------------------------------
 %% @doc
+%% This is a function for custom float encoding to JSON
+%% It prevents float mangling by rounding to the 4th decimal
+%% which makes things easier for the LNS
+%% @end
+%%%-------------------------------------------------------------------
+round_to_fourth_decimal(Float) ->
+    io_lib:format("~.4f", [Float]).
+
+%%%-------------------------------------------------------------------
+%% @doc
 %% That packet type is used by the server to send RF packets and associated
 %% metadata that will have to be emitted by the gateway.
 %% @end
@@ -78,7 +88,7 @@ pull_ack(Token) ->
     map()
 ) -> binary().
 pull_resp(Token, Map) ->
-    BinJSX = jsx:encode(#{txpk => Map}),
+    BinJSX = jsx:encode(#{txpk => Map}, [{float_formatter, fun round_to_fourth_decimal/1}]),
     <<?PROTOCOL_2:8/integer-unsigned, Token/binary, ?PULL_RESP:8/integer-unsigned, BinJSX/binary>>.
 
 %%%-------------------------------------------------------------------
@@ -266,7 +276,7 @@ pull_resp_test() ->
         #{
             <<"txpk">> => #{
                 <<"imme">> => true,
-                <<"freq">> => 864.123456,
+                <<"freq">> => 864.1235,
                 <<"rfch">> => 0,
                 <<"powe">> => 14,
                 <<"modu">> => <<"LORA">>,
@@ -346,4 +356,22 @@ json_data_test() ->
     ),
     ok.
 
+encode_with_float_formatter_test() ->
+    ?assertEqual(
+        jsx:encode([#{<<"pi">> => 3.000967890987654321}], [
+            {float_formatter, fun round_to_fourth_decimal/1}
+        ]),
+        <<"[{\"pi\":3.0010}]">>
+    ),
+    ?assertEqual(
+        jsx:encode([#{<<"pi">> => 3.000467890987654321}], [
+            {float_formatter, fun round_to_fourth_decimal/1}
+        ]),
+        <<"[{\"pi\":3.0005}]">>
+    ),
+    ?assertEqual(
+        jsx:encode([#{<<"pi">> => 905.299987}], [{float_formatter, fun round_to_fourth_decimal/1}]),
+        <<"[{\"pi\":905.3000}]">>
+    ),
+    ok.
 -endif.

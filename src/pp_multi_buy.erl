@@ -73,7 +73,7 @@ maybe_buy_offer(Offer, NetID) ->
                     ok = schedule_clear_multi_buy(PHash),
                     true = ets:insert(?MB_ETS, {PHash, Max, 1}),
                     ok;
-                [{PHash, _Max, _Max}] ->
+                [{PHash, Max, Max}] ->
                     {error, ?MB_MAX_PACKET};
                 [{PHash, _Max, _Curr}] ->
                     case ets:select_replace(?MB_ETS, ?MB_FUN(PHash)) of
