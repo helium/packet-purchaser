@@ -124,18 +124,19 @@ handle_offer_resp(Routing, Offer, Resp) ->
                 end
         end,
 
-    ok = pp_metrics:handle_offer(PubKeyBin, NetID),
-
     Action =
         case Resp of
-            ok -> buying;
-            {error, _} -> ignoring
+            ok -> accepted;
+            {error, _} -> rejected
         end,
     OfferType =
         case Routing of
             {eui, _} -> join;
             {devaddr, _} -> packet
         end,
+
+    PayloadSize = blockchain_state_channel_offer_v1:payload_size(Offer),
+    ok = pp_metrics:handle_offer(PubKeyBin, NetID, OfferType, Action, PayloadSize),
 
     lager:debug("offer: ~s ~s [net_id: ~p] [routing: ~p] [resp: ~p]", [
         Action,

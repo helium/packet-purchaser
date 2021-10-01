@@ -38,6 +38,7 @@
     blockchain :: blockchain:blockchain() | undefined,
     location :: {pos_integer(), float(), float()} | undefined,
     pubkeybin :: libp2p_crypto:pubkey_bin(),
+    net_id :: non_neg_integer(),
     socket :: pp_udp_socket:socket(),
     address :: inet:socket_address() | inet:hostname(),
     port :: inet:port_number(),
@@ -67,6 +68,7 @@ init(Args) ->
     lager:info("~p init with ~p", [?SERVER, Args]),
 
     PubKeyBin = maps:get(pubkeybin, Args),
+    NetID = maps:get(net_id, Args),
     Address = maps:get(address, Args),
     lager:md([{gateway_id, blockchain_utils:addr2name(PubKeyBin)}, {address, Address}]),
 
@@ -81,6 +83,7 @@ init(Args) ->
 
     State = #state{
         pubkeybin = PubKeyBin,
+        net_id = NetID,
         socket = Socket,
         address = Address,
         port = Port,
@@ -144,14 +147,14 @@ handle_info(
     end;
 handle_info(
     {?PUSH_DATA_TICK, Token},
-    #state{push_data = PushData, address = Address} = State
+    #state{push_data = PushData, pubkeybin = PBK, net_id = NetID} = State
 ) ->
     case maps:get(Token, PushData, undefined) of
         undefined ->
             {noreply, State};
         {_Data, _} ->
             lager:debug("got push data timeout ~p, ignoring lack of ack", [Token]),
-            ok = pp_metrics:push_ack_missed(Address),
+            ok = pp_metrics:push_ack_missed(PBK, NetID),
             {noreply, State#state{push_data = maps:remove(Token, PushData)}}
     end;
 handle_info(
@@ -162,10 +165,10 @@ handle_info(
     {noreply, State#state{pull_data = RefAndToken}};
 handle_info(
     ?PULL_DATA_TIMEOUT_TICK,
-    #state{pull_data_timer = PullDataTimer} = State
+    #state{pull_data_timer = PullDataTimer, pubkeybin = PBK, net_id = NetID} = State
 ) ->
     lager:debug("got a pull data timeout, ignoring missed pull_ack [retry: ~p]", [PullDataTimer]),
-    ok = pp_metrics:pull_ack_missed(State#state.address),
+    ok = pp_metrics:pull_ack_missed(PBK, NetID),
     _ = schedule_pull_data(PullDataTimer),
     {noreply, State};
 handle_info(_Msg, State) ->
@@ -272,7 +275,8 @@ handle_push_ack(
     Data,
     #state{
         push_data = PushData,
-        address = Address
+        pubkeybin = PBK,
+        net_id = NetID
     } = State
 ) ->
     Token = semtech_udp:token(Data),
@@ -283,7 +287,7 @@ handle_push_ack(
         {_, TimerRef} ->
             lager:debug("got push ack ~p", [Token]),
             _ = erlang:cancel_timer(TimerRef),
-            ok = pp_metrics:push_ack(Address),
+            ok = pp_metrics:push_ack(PBK, NetID),
             {noreply, State#state{push_data = maps:remove(Token, PushData)}}
     end.
 
@@ -301,7 +305,8 @@ handle_pull_ack(
     #state{
         pull_data = {PullDataRef, PullDataToken},
         pull_data_timer = PullDataTimer,
-        address = Address
+        pubkeybin = PBK,
+        net_id = NetID
     } = State
 ) ->
     case semtech_udp:token(Data) of
@@ -309,7 +314,7 @@ handle_pull_ack(
             erlang:cancel_timer(PullDataRef),
             lager:debug("got pull ack for ~p", [PullDataToken]),
             _ = schedule_pull_data(PullDataTimer),
-            ok = pp_metrics:pull_ack(Address),
+            ok = pp_metrics:pull_ack(PBK, NetID),
             {noreply, State#state{pull_data = undefined}};
         _UnknownToken ->
             lager:warning("got unknown pull ack for ~p", [_UnknownToken]),

@@ -81,6 +81,7 @@ init_per_testcase(TestCase, Config) ->
 %% TEST CASE TEARDOWN
 %%--------------------------------------------------------------------
 end_per_testcase(TestCase, Config) ->
+    ok = pp_metrics_prometheus:wait_for_gather(),
     test_utils:end_per_testcase(TestCase, Config).
 
 %%--------------------------------------------------------------------
@@ -191,6 +192,7 @@ join_net_id_packet_test(_Config) ->
         _Chain,
         _Loc,
         PubKeyBin1,
+        _NetID,
         _Socket,
         Address,
         Port,
@@ -447,6 +449,7 @@ net_ids_map_packet_test(_Config) ->
             _Chain,
             _Loc,
             PubKeyBin,
+            _NetID,
             _Socket,
             Address,
             Port,
@@ -521,6 +524,7 @@ single_hotspot_multi_net_id_test(_Config) ->
             _Chain,
             _Loc,
             PubKeyBin,
+            _NetID,
             _Socket,
             Address,
             Port,
