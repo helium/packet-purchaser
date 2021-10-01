@@ -12,3 +12,9 @@ services:
     volumes:
       - /var/data:/var/data
       - ./routing_config.json:/var/data/routing_config.json
+  prometheus:
+      image: prom/prometheus
+      container_name: helium_prometheus
+      network_mode: host
+      volumes:
+          - "./prometheus.yml:/etc/prometheus/prometheus.yml"
