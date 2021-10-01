@@ -81,7 +81,6 @@ init_per_testcase(TestCase, Config) ->
 %% TEST CASE TEARDOWN
 %%--------------------------------------------------------------------
 end_per_testcase(TestCase, Config) ->
-    ok = pp_metrics_prometheus:wait_for_gather(),
     test_utils:end_per_testcase(TestCase, Config).
 
 %%--------------------------------------------------------------------
