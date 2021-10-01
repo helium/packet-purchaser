@@ -1,29 +1,24 @@
 -module(pp_metrics).
 
 -behaviour(gen_server).
+-behaviour(elli_handler).
 
--define(LNS_ETS, lns_stats_ets).
+-include_lib("elli/include/elli.hrl").
+
 -define(ETS, pp_metrics_ets).
 
 %% gen_server API
 -export([start_link/0]).
 
-%% Metrics Reporting API
+%% Prometheus API
 -export([
-    get_netid_packet_counts/0,
-    get_netid_offer_counts/0,
-    get_location_packet_counts/0,
-    get_lns_metrics/0
-]).
-
-%% Metrics Recording API
--export([
-    handle_offer/2,
-    handle_packet/2,
-    push_ack/1,
-    push_ack_missed/1,
-    pull_ack/1,
-    pull_ack_missed/1
+    handle_offer/5,
+    handle_packet/3,
+    %% GWMP
+    pull_ack/2,
+    pull_ack_missed/2,
+    push_ack/2,
+    push_ack_missed/2
 ]).
 
 %% gen_server callbacks
@@ -36,21 +31,13 @@
     code_change/3
 ]).
 
--record(hotspot, {
-    address :: binary(),
-    name :: binary(),
-    country :: binary(),
-    state :: binary(),
-    city :: binary(),
-    geo :: {Lat :: float(), Long :: float()},
-    hex :: binary()
-}).
+%% Elli API
+-export([
+    handle/2,
+    handle_event/3
+]).
 
--record(state, {
-    seen :: #{libp2p_crypto:pubkey_bin() => #hotspot{}}
-}).
-
--type lns_address() :: inet:socket_address() | inet:hostname().
+-record(state, {}).
 
 %% -------------------------------------------------------------------
 %% API Functions
@@ -59,113 +46,71 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec handle_offer(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
-handle_offer(PubKeyBin, NetID) ->
-    gen_server:cast(?MODULE, {offer, PubKeyBin, NetID}).
+%% -------------------------------------------------------------------
+%% Prometheus API Functions
+%% -------------------------------------------------------------------
 
--spec handle_packet(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
-handle_packet(PubKeyBin, NetID) ->
-    gen_server:cast(?MODULE, {packet, PubKeyBin, NetID}).
+-spec handle_offer(
+    PubKeyBin :: libp2p_crypto:pubkey_bin(),
+    NetID :: non_neg_integer(),
+    OfferType :: join | packet,
+    Action :: accepted | rejected,
+    PayloadSize :: non_neg_integer()
+) -> ok.
+handle_offer(PubKeyBin, NetID, OfferType, Action, PayloadSize) ->
+    {ok, AName} = animal_name(PubKeyBin),
+    DC = calculate_dc_amount(PayloadSize),
+    prometheus_counter:inc(packet_purchaser_offer_count, [AName, NetID, OfferType, Action, DC]).
 
--spec get_netid_offer_counts() -> map().
-get_netid_offer_counts() ->
-    Spec = [{{{offer, '_', '$1'}, '$2'}, [], [{{'$1', '$2'}}]}],
-    Values = ets:select(?ETS, Spec),
-    Fun = fun(Key) -> {Key, lists:sum(proplists:get_all_values(Key, Values))} end,
-    maps:from_list(lists:map(Fun, proplists:get_keys(Values))).
+-spec handle_packet(
+    PubKeyBin :: libp2p_crypto:pubkey_bin(),
+    NetID :: non_neg_integer(),
+    PacketType :: join | packet
+) -> ok.
+handle_packet(PubKeyBin, NetID, PacketType) ->
+    {ok, AName} = animal_name(PubKeyBin),
+    prometheus_counter:inc(packet_purchaser_packet_count, [AName, NetID, PacketType]).
 
--spec get_netid_packet_counts() -> map().
-get_netid_packet_counts() ->
-    Spec = [{{{packet, '_', '$1'}, '$2'}, [], [{{'$1', '$2'}}]}],
-    Values = ets:select(?ETS, Spec),
-    Fun = fun(Key) -> {Key, lists:sum(proplists:get_all_values(Key, Values))} end,
-    maps:from_list(lists:map(Fun, proplists:get_keys(Values))).
+-spec push_ack(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
+push_ack(PubKeyBin, NetID) ->
+    {ok, AName} = animal_name(PubKeyBin),
+    prometheus_counter:inc(packet_purchaser_gwmp_counter, [AName, NetID, push_ack, hit]).
 
--spec get_location_packet_counts() -> map().
-get_location_packet_counts() ->
-    %% Country = '$1',
-    %% State = '$2',
-    %% City = '$3',
-    %% NetID = '$4',
-    %% Count = '$5',
-    %% Spec = [
-    %%     {
-    %%         {
-    %%             {
-    %%                 packet,
-    %%                 %% #hotspot{country = '$1', state = '$2', city = '$3', _ = '_'},
-    %%                 %% Dialyzer doesn't like this record construction
-    %%                 {hotspot, '_', '_', Country, State, City, '_', '_'},
-    %%                 NetID
-    %%             },
-    %%             Count
-    %%         },
-    %%         [],
-    %%         [
-    %%             {{{{Country, State, City}}, Count}}
-    %%         ]
-    %%     }
-    %% ],
-    PubKeyBin = '$1',
-    Count = '$2',
-    Spec = [
-        {
-            {{packet, PubKeyBin, '_'}, Count},
-            [],
-            [{{PubKeyBin, Count}}]
-        }
-    ],
-    Values = ets:select(?ETS, Spec),
-    Fun = fun(Key) -> {Key, lists:sum(proplists:get_all_values(Key, Values))} end,
-    maps:from_list(lists:map(Fun, proplists:get_keys(Values))).
+-spec push_ack_missed(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
+push_ack_missed(PubKeyBin, NetID) ->
+    {ok, AName} = animal_name(PubKeyBin),
+    prometheus_counter:inc(packet_purchaser_gwmp_counter, [AName, NetID, push_ack, miss]).
 
--spec get_lns_metrics() -> map().
-get_lns_metrics() ->
-    lists:foldl(
-        fun({{lns, Address, Key}, Count}, Agg) ->
-            maps:update_with(Address, fun(Val) -> [{Key, Count} | Val] end, [{Key, Count}], Agg)
-        end,
-        #{},
-        ets:tab2list(?LNS_ETS)
-    ).
+-spec pull_ack(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
+pull_ack(PubKeyBin, NetID) ->
+    {ok, AName} = animal_name(PubKeyBin),
+    prometheus_counter:inc(packet_purchaser_gwmp_counter, [AName, NetID, pull_ack, hit]).
 
--spec push_ack(LNSAddress :: lns_address()) -> ok.
-push_ack(Address) ->
-    ok = inc_lns_metric(Address, push_ack, hit).
-
--spec push_ack_missed(LNSAddress :: lns_address()) -> ok.
-push_ack_missed(Address) ->
-    ok = inc_lns_metric(Address, push_ack, miss).
-
--spec pull_ack(LNSAddress :: lns_address()) -> ok.
-pull_ack(Address) ->
-    ok = inc_lns_metric(Address, pull_ack, hit).
-
--spec pull_ack_missed(LNSAddress :: lns_address()) -> ok.
-pull_ack_missed(Address) ->
-    ok = inc_lns_metric(Address, pull_ack, miss).
+-spec pull_ack_missed(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
+pull_ack_missed(PubKeyBin, NetID) ->
+    {ok, AName} = animal_name(PubKeyBin),
+    prometheus_counter:inc(packet_purchaser_gwmp_counter, [AName, NetID, pull_ack, miss]).
 
 %% -------------------------------------------------------------------
 %% gen_server Callbacks
 %% -------------------------------------------------------------------
 
-init([]) ->
+init(Args) ->
+    ElliOpts = [
+        {callback, ?MODULE},
+        {callback_args, #{forward => self()}},
+        {port, proplists:get_value(port, Args, 3000)}
+    ],
+    {ok, _Pid} = elli:start_link(ElliOpts),
+
     ok = init_ets(),
-    {ok, #state{seen = #{}}}.
+    ok = declare_metrics(),
+
+    {ok, #state{}}.
 
 handle_call(_Request, _From, State) ->
     {reply, ignored, State}.
 
-handle_cast({offer, PubKeyBin, NetID}, #state{seen = _SeenMap} = State) ->
-    %% Hotspot = get_hotspot(PubKeyBin, SeenMap),
-    ok = inc_offer(PubKeyBin, NetID),
-    %% NewSeenMap = maps:put(PubKeyBin, Hotspot, SeenMap),
-    {noreply, State};
-handle_cast({packet, PubKeyBin, NetID}, #state{seen = _SeenMap} = State) ->
-    %% Hotspot = get_hotspot(PubKeyBin, SeenMap),
-    ok = inc_packet(PubKeyBin, NetID),
-    %% NewSeenMap = maps:put(PubKeyBin, Hotspot, SeenMap),
-    {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -173,11 +118,24 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, _State) ->
-    ok = cleanup_ets(),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+%% ------------------------------------------------------------------
+%% elli Function Definitions
+%% ------------------------------------------------------------------
+handle(Req, _Args) ->
+    handle(Req#req.method, elli_request:path(Req), Req).
+
+handle('GET', [<<"metrics">>], _Req) ->
+    {ok, [], prometheus_text_format:format()};
+handle(_Verb, _Path, _Req) ->
+    {ok, [], "Hello world"}.
+
+handle_event(_Event, _Data, _Args) ->
+    ok.
 
 %% -------------------------------------------------------------------
 %% Internal Functions
@@ -185,90 +143,59 @@ code_change(_OldVsn, State, _Extra) ->
 
 -spec init_ets() -> ok.
 init_ets() ->
-    File = pp_utils:get_metrics_filename(),
-    case ets:file2tab(File) of
-        {ok, ?ETS} ->
-            lager:info("Packet metrics continued from last shutdown");
-        {error, _} = Err ->
-            lager:warning("Unable to open ~p ~p. Metrics will start over", [File, Err]),
-            ?ETS = ets:new(?ETS, [public, named_table, set, {write_concurrency, true}])
-    end,
-    File2 = pp_utils:get_lns_metrics_filename(),
-    case ets:file2tab(File2) of
-        {ok, ?LNS_ETS} ->
-            lager:info("LNS metrics continued from last shutdown");
-        {error, _} = Err2 ->
-            lager:warning("Unable to topen ~p ~p. Metrics will start over", [File2, Err2]),
-            ?LNS_ETS = ets:new(?LNS_ETS, [public, named_table, set, {write_concurrency, true}])
-    end,
+    ?ETS = ets:new(?ETS, [public, named_table, set]),
     ok.
 
--spec cleanup_ets() -> ok.
-cleanup_ets() ->
-    File = pp_utils:get_metrics_filename(),
-    ok = ets:tab2file(?ETS, File, [{sync, true}]),
-    File2 = pp_utils:get_lns_metrics_filename(),
-    ok = ets:tab2file(?LNS_ETS, File2, [{sync, true}]),
+-spec declare_metrics() -> ok.
+declare_metrics() ->
+    %% type = frame type :: join | packet
+    %% status = bought :: accepted | rejected
+    prometheus_counter:declare([
+        {name, packet_purchaser_offer_count},
+        {help, "Offer count for NetID"},
+        {labels, [animal_name, net_id, type, status, dc]}
+    ]),
+
+    %% type = frame type :: join | packet
+    prometheus_counter:declare([
+        {name, packet_purchaser_packet_count},
+        {help, "Packet count for NetID"},
+        {labels, [animal_name, net_id, type]}
+    ]),
+
+    %% type = gwmp packet type :: push_ack | pull_ack
+    %% status = received :: hit | miss
+    prometheus_counter:declare([
+        {name, packet_purchaser_gwmp_counter},
+        {help, "Semtech UDP acks for Gateway and NetID"},
+        {labels, [animal_name, net_id, type, status]}
+    ]),
+
     ok.
 
--spec inc_lns_metric(Address :: lns_address(), pull_ack | push_ack, hit | miss) -> ok.
-inc_lns_metric(LNSAddress, MessageType, Status) ->
-    Key = {lns, LNSAddress, {MessageType, Status}},
-    _ = ets:update_counter(?LNS_ETS, Key, 1, {Key, 0}),
-    ok.
+-spec animal_name(PubKeyBin :: libp2p_crypto:pubkey_bin()) -> {ok, string()}.
+animal_name(PubKeyBin) ->
+    erl_angry_purple_tiger:animal_name(libp2p_crypto:bin_to_b58(PubKeyBin)).
 
--spec inc_packet(Hotspot :: #hotspot{}, NetID :: non_neg_integer()) -> ok.
-inc_packet(Hotspot, NetID) ->
-    Key = {packet, Hotspot, NetID},
-    _ = ets:update_counter(?ETS, Key, 1, {Key, 0}),
-    ok.
+-spec calculate_dc_amount(PayloadSize :: non_neg_integer()) ->
+    failed_to_calculate_dc | non_neg_integer().
+calculate_dc_amount(PayloadSize) ->
+    Ledger = get_ledger(),
+    case blockchain_utils:calculate_dc_amount(Ledger, PayloadSize) of
+        {error, Reason} ->
+            Reason;
+        DCAmount ->
+            DCAmount
+    end.
 
--spec inc_offer(Hotspot :: #hotspot{}, NetID :: non_neg_integer()) -> ok.
-inc_offer(Hotspot, NetID) ->
-    Key = {offer, Hotspot, NetID},
-    _ = ets:update_counter(?ETS, Key, 1, {Key, 0}),
-    ok.
-
-%% -spec get_hotspot(PubKeyBin :: libp2p_crypto:pubkey_bin(), map()) -> #hotspot{}.
-%% get_hotspot(PubKeyBin, SeenMap) ->
-%%     case maps:get(PubKeyBin, SeenMap, undefined) of
-%%         undefined -> fetch_hotspot(PubKeyBin);
-%%         HS -> HS
-%%     end.
-
-%% -spec fetch_hotspot(PubKeyBin :: libp2p_crypto:pubkey_bin()) ->
-%%     #hotspot{} | {fetch_failed, PubKeyBin :: libp2p_crypto:pubkey_bin()}.
-%% fetch_hotspot(PubKeyBin) ->
-%%     B58 = libp2p_crypto:bin_to_b58(PubKeyBin),
-%%     Prefix = "https://api.helium.io/v1/hotspots/",
-%%     Url = erlang:list_to_binary(io_lib:format("~s~s", [Prefix, B58])),
-
-%%     case hackney:get(Url, [], <<>>, [with_body]) of
-%%         {ok, 200, _Headers, Body} ->
-%%             #{
-%%                 <<"data">> := #{
-%%                     <<"lat">> := Lat,
-%%                     <<"lng">> := Long,
-%%                     <<"location_hex">> := LocationHex,
-%%                     <<"name">> := Name,
-%%                     <<"geocode">> := #{
-%%                         <<"long_country">> := Country,
-%%                         <<"long_state">> := State,
-%%                         <<"long_city">> := City
-%%                     }
-%%                 }
-%%             } = jsx:decode(Body, [return_maps]),
-
-%%             #hotspot{
-%%                 address = PubKeyBin,
-%%                 name = Name,
-%%                 country = Country,
-%%                 state = State,
-%%                 city = City,
-%%                 geo = {Lat, Long},
-%%                 hex = LocationHex
-%%             };
-%%         _Other ->
-%%             lager:info("fetching hotspot ~p failed: ~p", [PubKeyBin, _Other]),
-%%             {fetch_failed, PubKeyBin}
-%%     end.
+-spec get_ledger() -> blockchain_ledger_v1:ledger().
+get_ledger() ->
+    Key = blockchain_ledger,
+    case ets:lookup(?ETS, Key) of
+        [] ->
+            Ledger = blockchain:ledger(),
+            true = ets:insert(?ETS, {Key, Ledger}),
+            Ledger;
+        [{Key, Ledger}] ->
+            Ledger
+    end.
