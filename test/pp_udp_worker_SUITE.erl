@@ -27,6 +27,7 @@
     blockchain :: blockchain:blockchain() | undefined,
     location :: {pos_integer(), float(), float()} | undefined,
     pubkeybin :: libp2p_crypto:pubkey_bin(),
+    net_id :: non_neg_integer(),
     socket :: pp_udp_socket:socket(),
     address :: inet:socket_address() | inet:hostname(),
     port :: inet:port_number(),
