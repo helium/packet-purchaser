@@ -23,7 +23,6 @@
 -export([
     should_accept_join/1,
     join_eui_to_net_id/1,
-    allowed_net_ids/0,
     net_id_udp_args/1
 ]).
 
@@ -140,19 +139,11 @@ handle_join_offer(EUI, Offer) ->
     end.
 
 handle_packet_offer(DevAddr, Offer) ->
-    case allowed_net_ids() of
-        allow_all ->
-            ok;
-        IDs ->
-            case lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>) of
-                {ok, NetID} ->
-                    case lists:member(NetID, IDs) of
-                        true -> pp_multi_buy:maybe_buy_offer(Offer, NetID);
-                        false -> {error, ?NET_ID_REJECTED}
-                    end;
-                Err ->
-                    Err
-            end
+    case lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>) of
+        {ok, NetID} ->
+            pp_multi_buy:maybe_buy_offer(Offer, NetID);
+        Err ->
+            Err
     end.
 
 %% ------------------------------------------------------------------
@@ -221,25 +212,6 @@ join_eui_to_net_id({eui, DevEUI, AppEUI}) ->
             {ok, NetID}
     end.
 
--spec allowed_net_ids() -> list(integer()) | allow_all.
-allowed_net_ids() ->
-    case application:get_env(?APP, net_ids, []) of
-        [] ->
-            allow_all;
-        [allow_all] ->
-            allow_all;
-        NetIdsMap when is_map(NetIdsMap) ->
-            maps:keys(NetIdsMap);
-        %% What you put in the list is what you get out.
-        %% Ex: [16#000001, 16#000002]
-        [ID | _] = IDS when erlang:is_number(ID) ->
-            IDS;
-        %% Comma separated string, will be turned into base-16 integers.
-        %% ex: "000001, 0000002"
-        IDS when erlang:is_list(IDS) ->
-            Nums = string:split(IDS, ",", all),
-            lists:map(fun(Num) -> erlang:list_to_integer(string:trim(Num), 16) end, Nums)
-    end.
 
 -spec net_id_udp_args(non_neg_integer()) -> map().
 net_id_udp_args(NetID) ->
@@ -313,33 +285,6 @@ should_accept_join_test() ->
             }
         ),
         "Wildcard random device EUI and unknown join eui no joins"
-    ),
-
-    ok.
-
-allowed_net_ids_test() ->
-    application:set_env(?APP, net_ids, []),
-    ?assertEqual(allow_all, allowed_net_ids(), "Empty list is open filter"),
-
-    %% Case to support putting multiple net ids from .env file
-    application:set_env(?APP, net_ids, [allow_all]),
-    ?assertEqual(allow_all, allowed_net_ids(), "allow_all atom in list allows all"),
-
-    application:set_env(?APP, net_ids, [16#000016, 16#000035]),
-    ?assertEqual([16#000016, 16#000035], allowed_net_ids(), "Base 16 numbers"),
-
-    application:set_env(?APP, net_ids, ["000016, 000035"]),
-    ?assertEqual(
-        [16#000016, 16#000035],
-        allowed_net_ids(),
-        "Strings numbers get interpreted as base 16"
-    ),
-
-    application:set_env(?APP, net_ids, #{16#000016 => test, 16#000035 => test}),
-    ?assertEqual(
-        [16#000016, 16#000035],
-        allowed_net_ids(),
-        "Map returns list of configured net ids"
     ),
 
     ok.
