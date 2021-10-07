@@ -38,8 +38,12 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
--spec maybe_start_worker({PubKeyBin :: binary(), NetID :: non_neg_integer()}, map()) ->
-    {ok, pid()} | {error, any()}.
+-spec maybe_start_worker(
+    WorkerKey :: {PubKeyBin :: binary(), NetID :: non_neg_integer()},
+    Args :: map() | {error, any()}
+) -> {ok, pid()} | {error, any()}.
+maybe_start_worker(_WorkerKey, {error, _} = Err) ->
+    Err;
 maybe_start_worker(WorkerKey, Args) ->
     case ets:lookup(?ETS, WorkerKey) of
         [] ->
