@@ -106,7 +106,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
             try
                 {ok, NetID} = join_eui_to_net_id(EUI),
                 lager:debug(
-                    "Packet [EUI: ~p] [NetID: ~p] ~p",
+                    "Packet [EUI: ~p] [NetID: ~p]",
                     [EUI, NetID]
                 ),
                 case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, net_id_udp_args(NetID)) of
