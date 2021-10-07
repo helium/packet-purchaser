@@ -15,6 +15,7 @@
 -spec init_per_testcase(atom(), list()) -> list().
 init_per_testcase(TestCase, Config) ->
     BaseDir = erlang:atom_to_list(TestCase),
+    ok = application:set_env(packet_purchaser, routing_config_filename, testing),
     ok = application:set_env(blockchain, base_dir, BaseDir ++ "/blockchain_data"),
     ok = application:set_env(lager, log_root, BaseDir ++ "/log"),
     ok = application:set_env(lager, crash_log, "crash.log"),
