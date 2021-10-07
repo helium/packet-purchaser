@@ -62,17 +62,25 @@ maybe_buy_offer(Offer, NetID) ->
     BFRef = lookup_bf(?BF_KEY),
     case bloom:set(BFRef, PHash) of
         false ->
-            {ok, Max} = multi_buy_max_for_net_id(NetID),
-            ok = schedule_clear_multi_buy(PHash),
-            true = ets:insert(?MB_ETS, {PHash, Max, 1}),
-            ok;
-        true ->
-            case ets:lookup(?MB_ETS, PHash) of
-                [] ->
-                    {ok, Max} = multi_buy_max_for_net_id(NetID),
+            case pp_config:multi_buy_for_net_id(NetID) of
+                {ok, Max} ->
                     ok = schedule_clear_multi_buy(PHash),
                     true = ets:insert(?MB_ETS, {PHash, Max, 1}),
                     ok;
+                {error, not_found} ->
+                    {error, net_id_rejected}
+            end;
+        true ->
+            case ets:lookup(?MB_ETS, PHash) of
+                [] ->
+                    case pp_config:multi_buy_for_net_id(NetID) of
+                        {ok, Max} ->
+                            ok = schedule_clear_multi_buy(PHash),
+                            true = ets:insert(?MB_ETS, {PHash, Max, 1}),
+                            ok;
+                        {error, not_found} ->
+                            {error, net_id_rejected}
+                    end;
                 [{PHash, Max, Max}] ->
                     {error, ?MB_MAX_PACKET};
                 [{PHash, _Max, _Curr}] ->
@@ -127,15 +135,6 @@ code_change(_OldVsn, State, _Extra) ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
-
--spec multi_buy_max_for_net_id(non_neg_integer()) -> {ok, non_neg_integer()}.
-multi_buy_max_for_net_id(NetID) ->
-    case pp_sc_packet_handler:net_id_udp_args(NetID) of
-        #{multi_buy := PacketMax} ->
-            {ok, PacketMax};
-        _ ->
-            {ok, ?MB_UNLIMITED}
-    end.
 
 -spec lookup_bf(atom()) -> reference().
 lookup_bf(Key) ->
