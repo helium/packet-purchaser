@@ -9,10 +9,8 @@
 -export([
     join_net_id_offer_test/1,
     join_net_id_packet_test/1,
-    net_ids_env_offer_test/1,
     net_ids_map_offer_test/1,
     net_ids_map_packet_test/1,
-    net_ids_env_packet_test/1,
     net_ids_no_config_test/1,
     single_hotspot_multi_net_id_test/1,
     multi_buy_join_test/1,
@@ -63,10 +61,8 @@ all() ->
     [
         join_net_id_offer_test,
         join_net_id_packet_test,
-        net_ids_env_offer_test,
         net_ids_map_offer_test,
         net_ids_map_packet_test,
-        net_ids_env_packet_test,
         net_ids_no_config_test,
         single_hotspot_multi_net_id_test,
         multi_buy_join_test,
@@ -392,55 +388,6 @@ net_ids_map_offer_test(_Config) ->
 
     ok.
 
-net_ids_env_offer_test(_Config) ->
-    SendPacketOfferFun = fun(DevAddr) ->
-        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
-        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
-
-        Offer = packet_offer(PubKeyBin, DevAddr),
-        pp_sc_packet_handler:handle_offer(Offer, self())
-    end,
-
-    %% Buy all NetIDs
-    ok = application:set_env(packet_purchaser, net_ids, []),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_COMCAST)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ORANGE)),
-
-    %% Buy Only Actility1 ID
-    ok = application:set_env(packet_purchaser, net_ids, [?NET_ID_ACTILITY]),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_COMCAST)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_ORANGE)),
-
-    %% Buy Multiple IDs
-    ok = application:set_env(packet_purchaser, net_ids, [?NET_ID_ACTILITY, ?NET_ID_ORANGE]),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_COMCAST)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ORANGE)),
-
-    %% Buy all the IDs we know about
-    ok = application:set_env(packet_purchaser, net_ids, [
-        ?NET_ID_EXPERIMENTAL,
-        ?NET_ID_ACTILITY,
-        ?NET_ID_TEKTELIC,
-        ?NET_ID_ORANGE,
-        ?NET_ID_COMCAST
-    ]),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_COMCAST)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ORANGE)),
-
-    ok.
-
 net_ids_map_packet_test(_Config) ->
     SendPacketFun = fun(DevAddr, NetID) ->
         #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
@@ -496,44 +443,6 @@ net_ids_no_config_test(_Config) ->
     ?assertMatch({error, not_found}, SendPacketFun(?DEVADDR_ORANGE, ?NET_ID_ORANGE)),
     ?assertMatch({error, not_found}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
 
-    ok.
-
-net_ids_env_packet_test(_Config) ->
-    SendPacketFun = fun(DevAddr, NetID) ->
-        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
-        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
-
-        Packet = frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{dont_encode => true}),
-        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
-
-        {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        {
-            state,
-            PubKeyBin,
-            _Socket,
-            Address,
-            Port,
-            _PushData,
-            _ScPid,
-            _PullData,
-            _PullDataTimer
-        } = sys:get_state(Pid),
-        {Address, Port}
-    end,
-
-    application:set_env(packet_purchaser, net_ids, [
-        ?NET_ID_ACTILITY,
-        ?NET_ID_ORANGE,
-        ?NET_ID_COMCAST
-    ]),
-    application:set_env(packet_purchaser, pp_udp_worker, [
-        {address, "1.1.1.1"},
-        {port, 1337}
-    ]),
-
-    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?DEVADDR_ACTILITY, ?NET_ID_ACTILITY)),
-    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?DEVADDR_ORANGE, ?NET_ID_ORANGE)),
-    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
     ok.
 
 single_hotspot_multi_net_id_test(_Config) ->
