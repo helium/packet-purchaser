@@ -64,25 +64,11 @@ maybe_buy_offer(Offer, NetID) ->
     BFRef = lookup_bf(?BF_KEY),
     case bloom:set(BFRef, PHash) of
         false ->
-            case pp_config:multi_buy_for_net_id(NetID) of
-                {ok, Max} ->
-                    ok = schedule_clear_multi_buy(PHash),
-                    true = ets:insert(?MB_ETS, {PHash, Max, 1}),
-                    ok;
-                {error, not_found} ->
-                    {error, ?NET_ID_NOT_CONFIGURED}
-            end;
+            maybe_buy_offer_unseen_hash(NetID, PHash);
         true ->
             case ets:lookup(?MB_ETS, PHash) of
                 [] ->
-                    case pp_config:multi_buy_for_net_id(NetID) of
-                        {ok, Max} ->
-                            ok = schedule_clear_multi_buy(PHash),
-                            true = ets:insert(?MB_ETS, {PHash, Max, 1}),
-                            ok;
-                        {error, not_found} ->
-                            {error, ?NET_ID_NOT_CONFIGURED}
-                    end;
+                    maybe_buy_offer_unseen_hash(NetID, PHash);
                 [{PHash, Max, Max}] ->
                     {error, ?MB_MAX_PACKET};
                 [{PHash, _Max, _Curr}] ->
@@ -91,6 +77,17 @@ maybe_buy_offer(Offer, NetID) ->
                         1 -> ok
                     end
             end
+    end.
+
+-spec maybe_buy_offer_unseen_hash(non_neg_integer(), binary()) -> ok | {error, any()}.
+maybe_buy_offer_unseen_hash(NetID, PHash) ->
+    case pp_config:multi_buy_for_net_id(NetID) of
+        {ok, Max} ->
+            ok = schedule_clear_multi_buy(PHash),
+            true = ets:insert(?MB_ETS, {PHash, Max, 1}),
+            ok;
+        {error, not_found} ->
+            {error, ?NET_ID_NOT_CONFIGURED}
     end.
 
 %% -------------------------------------------------------------------
