@@ -21,9 +21,7 @@
 ]).
 
 -export([
-    should_accept_join/1,
-    join_eui_to_net_id/1,
-    net_id_udp_args/1
+    join_eui_to_net_id/1
 ]).
 
 %% Offer rejected reasons
@@ -191,35 +189,14 @@ handle_offer_resp(Routing, Offer, Resp) ->
         Resp
     ]).
 
--spec should_accept_join(#eui_pb{}) -> boolean().
-should_accept_join(#eui_pb{} = EUI) ->
-    case join_eui_to_net_id(EUI) of
-        {error, _} -> false;
-        {ok, _} -> true
-    end.
-
 -spec join_eui_to_net_id(#eui_pb{} | {eui, non_neg_integer(), non_neg_integer()}) ->
     {ok, non_neg_integer()} | {error, no_mapping}.
 join_eui_to_net_id(#eui_pb{deveui = Dev, appeui = App}) ->
     join_eui_to_net_id({eui, Dev, App});
-join_eui_to_net_id({eui, DevEUI, AppEUI}) ->
-    Map = application:get_env(?APP, join_net_ids, #{}),
-
-    case maps:get({DevEUI, AppEUI}, Map, maps:get({'*', AppEUI}, Map, undefined)) of
-        undefined ->
-            {error, no_mapping};
-        NetID ->
-            {ok, NetID}
-    end.
-
-
--spec net_id_udp_args(non_neg_integer()) -> map().
-net_id_udp_args(NetID) ->
-    case application:get_env(?APP, net_ids, undefined) of
-        Map when erlang:is_map(Map) ->
-            maps:get(NetID, Map);
-        _UndefinedOrList ->
-            #{}
+join_eui_to_net_id({eui, _DevEUI, _AppEUI} = J) ->
+    case pp_config:lookup_join(J) of
+        undefined -> {error, no_mapping};
+        NetID -> {ok, NetID}
     end.
 
 %% ------------------------------------------------------------------
@@ -229,7 +206,8 @@ net_id_udp_args(NetID) ->
 
 -include_lib("eunit/include/eunit.hrl").
 
-should_accept_join_test() ->
+join_eui_to_net_id_test() ->
+    {ok, _} = pp_config:start_link(testing),
     Dev1 = 7,
     App1 = 13,
     Dev2 = 13,
@@ -238,26 +216,47 @@ should_accept_join_test() ->
     EUI2 = #eui_pb{deveui = Dev2, appeui = App2},
 
     NoneMapped = #{},
-    OneMapped = #{{Dev1, App1} => 2},
-    BothMapped = #{{Dev1, App1} => 2, {Dev2, App2} => 99},
-    WildcardMapped = #{{'*', App1} => 2, {'*', App2} => 99},
+    OneMapped = #{
+        <<"joins">> => [#{<<"app_eui">> => App1, <<"dev_eui">> => Dev1, <<"net_id">> => 2}],
+        <<"routing">> => [#{<<"net_id">> => 2, <<"address">> => <<>>, <<"port">> => 1337}]
+    },
+    BothMapped = #{
+        <<"joins">> => [
+            #{<<"app_eui">> => App1, <<"dev_eui">> => Dev1, <<"net_id">> => 2},
+            #{<<"app_eui">> => App2, <<"dev_eui">> => Dev2, <<"net_id">> => 99}
+        ],
+        <<"routing">> => [
+            #{<<"net_id">> => 1, <<"address">> => <<>>, <<"port">> => 1337},
+            #{<<"net_id">> => 99, <<"address">> => <<>>, <<"port">> => 1337}
+        ]
+    },
+    WildcardMapped = #{
+        <<"joins">> => [
+            #{<<"app_eui">> => App1, <<"dev_eui">> => '*', <<"net_id">> => 2},
+            #{<<"app_eui">> => App2, <<"dev_eui">> => '*', <<"net_id">> => 99}
+        ],
+        <<"routing">> => [
+            #{<<"net_id">> => 1, <<"address">> => <<>>, <<"port">> => 1337},
+            #{<<"net_id">> => 99, <<"address">> => <<>>, <<"port">> => 1337}
+        ]
+    },
 
-    application:set_env(?APP, join_net_ids, NoneMapped),
-    ?assertEqual(false, should_accept_join(EUI1), "Empty mapping, no joins"),
+    ok = pp_config:load_config(NoneMapped),
+    ?assertMatch({error, _}, join_eui_to_net_id(EUI1), "Empty mapping, no joins"),
 
-    application:set_env(?APP, join_net_ids, OneMapped),
-    ?assertEqual(true, should_accept_join(EUI1), "One EUI mapping, this one"),
-    ?assertEqual(false, should_accept_join(EUI2), "One EUI mapping, not this one"),
+    ok = pp_config:load_config(OneMapped),
+    ?assertMatch({ok, _}, join_eui_to_net_id(EUI1), "One EUI mapping, this one"),
+    ?assertMatch({error, _}, join_eui_to_net_id(EUI2), "One EUI mapping, not this one"),
 
-    application:set_env(?APP, join_net_ids, BothMapped),
-    ?assertEqual(true, should_accept_join(EUI1), "All EUI Mapped 1"),
-    ?assertEqual(true, should_accept_join(EUI2), "All EUI Mapped 2"),
+    ok = pp_config:load_config(BothMapped),
+    ?assertMatch({ok, _}, join_eui_to_net_id(EUI1), "All EUI Mapped 1"),
+    ?assertMatch({ok, _}, join_eui_to_net_id(EUI2), "All EUI Mapped 2"),
 
-    application:set_env(?APP, join_net_ids, WildcardMapped),
-    ?assertEqual(true, should_accept_join(EUI1), "Wildcard EUI Mapped 1"),
-    ?assertEqual(
-        true,
-        should_accept_join(
+    ok = pp_config:load_config(WildcardMapped),
+    ?assertMatch({ok, _}, join_eui_to_net_id(EUI1), "Wildcard EUI Mapped 1"),
+    ?assertMatch(
+        {ok, _},
+        join_eui_to_net_id(
             #eui_pb{
                 deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
                 appeui = App1
@@ -265,10 +264,10 @@ should_accept_join_test() ->
         ),
         "Wildcard random device EUI Mapped 1"
     ),
-    ?assertEqual(true, should_accept_join(EUI2), "Wildcard EUI Mapped 2"),
-    ?assertEqual(
-        true,
-        should_accept_join(
+    ?assertMatch({ok, _}, join_eui_to_net_id(EUI2), "Wildcard EUI Mapped 2"),
+    ?assertMatch(
+        {ok, _},
+        join_eui_to_net_id(
             #eui_pb{
                 deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
                 appeui = App2
@@ -276,9 +275,9 @@ should_accept_join_test() ->
         ),
         "Wildcard random device EUI Mapped 2"
     ),
-    ?assertEqual(
-        false,
-        should_accept_join(
+    ?assertMatch(
+        {error, _},
+        join_eui_to_net_id(
             #eui_pb{
                 deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
                 appeui = rand:uniform(trunc(math:pow(2, 64) - 1000)) + 1000
@@ -291,10 +290,12 @@ should_accept_join_test() ->
 
 net_id_udp_args_test() ->
     application:set_env(?APP, net_ids, not_a_map),
-    ?assertEqual(#{}, net_id_udp_args(35), "Anything not a map returns empty args"),
+    ?assertEqual({error, routing_not_found}, pp_config:lookup_routing(35)),
 
-    application:set_env(?APP, net_ids, #{35 => #{address => "one.two", port => 1122}}),
-    ?assertEqual(#{address => "one.two", port => 1122}, net_id_udp_args(35)),
+    pp_config:load_config(#{
+        <<"routing">> => [#{<<"net_id">> => 35, <<"address">> => <<"one.two">>, <<"port">> => 1122}]
+    }),
+    ?assertEqual({ok, #{address => "one.two", port => 1122}}, pp_config:lookup_routing(35)),
 
     ok.
 
