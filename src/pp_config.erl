@@ -98,9 +98,9 @@ lookup_join({eui, DevEUI, AppEUI}) ->
 lookup_routing(NetID) ->
     case ets:lookup(?ROUTING_ETS, NetID) of
         [] ->
-            {error, not_found};
+            {error, routing_not_found};
         [#routing{address = Address, port = Port}] ->
-            #{address => erlang:binary_to_list(Address), port => Port}
+            {ok, #{address => erlang:binary_to_list(Address), port => Port}}
     end.
 
 reset_config() ->

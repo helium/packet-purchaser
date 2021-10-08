@@ -88,8 +88,8 @@ start_worker({PubKeyBin, NetID} = WorkerKey, Args) ->
     AppArgs = get_app_args(),
     ChildArgs = maps:merge(#{pubkeybin => PubKeyBin, net_id => NetID}, maps:merge(AppArgs, Args)),
     case supervisor:start_child(?MODULE, [ChildArgs]) of
-        {error, _Err} = Err ->
-            Err;
+        {error, Err} ->
+            {error, worker_not_started, Err};
         {ok, Pid} = OK ->
             case ets:insert_new(?ETS, {WorkerKey, Pid}) of
                 true ->

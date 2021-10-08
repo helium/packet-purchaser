@@ -80,47 +80,43 @@ handle_packet(SCPacket, PacketTime, Pid) ->
         {devaddr, DevAddr} ->
             try
                 {ok, NetID} = lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>),
-                lager:debug(
-                    "Packet [Devaddr: ~p] [NetID: ~p]",
-                    [DevAddr, NetID]
-                ),
-                case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, net_id_udp_args(NetID)) of
-                    {ok, WorkerPid} ->
-                        ok = pp_metrics:handle_packet(PubKeyBin, NetID),
-                        pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
-                    {error, _Reason} = Error ->
-                        lager:error(
-                            "failed to start udp connector for ~p: ~p",
-                            [blockchain_utils:addr2name(PubKeyBin), _Reason]
-                        ),
-                        Error
-                end
+                lager:debug("packet: [devaddr: ~p] [netid: ~p]", [DevAddr, NetID]),
+                {ok, WorkerArgs} = pp_config:lookup_routing(NetID),
+                {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs),
+                ok = pp_metrics:handle_packet(PubKeyBin, NetID),
+                pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid)
             catch
                 error:{badkey, KeyNetID} ->
-                    lager:debug("packet: ignoring unconfigured NetID ~p", [KeyNetID])
+                    lager:debug("packet: ignoring unconfigured NetID ~p", [KeyNetID]);
+                error:{badmatch, {error, routing_not_found}} ->
+                    lager:warning("packet: routing information not found for packet");
+                error:{badmatch, {error, worker_not_started, _Reason} = Error} ->
+                    lager:error("failed to start udp connector for ~p: ~p", [
+                        blockchain_utils:addr2name(PubKeyBin),
+                        _Reason
+                    ]),
+                    Error
             end;
         {eui, _, _} = EUI ->
             try
                 {ok, NetID} = join_eui_to_net_id(EUI),
-                lager:debug(
-                    "Packet [EUI: ~p] [NetID: ~p]",
-                    [EUI, NetID]
-                ),
-                case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, net_id_udp_args(NetID)) of
-                    {ok, WorkerPid} ->
-                        pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid);
-                    {error, _Reason} = Error ->
-                        lager:error(
-                            "failed to start udp connector for ~p: ~p",
-                            [blockchain_utils:addr2name(PubKeyBin), _Reason]
-                        ),
-                        Error
-                end
+                lager:debug("join: [eui: ~p] [netid: ~p]", [EUI, NetID]),
+                {ok, WorkerArgs} = pp_config:lookup_routing(NetID),
+                {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs),
+                pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid)
             catch
                 error:{badkey, KeyNetID} ->
                     lager:debug("join: ignoring unconfigured NetID ~p", [KeyNetID]);
                 error:{badmatch, {error, no_mapping}} ->
-                    lager:debug("join: ignoring no mapping for EUI ~p", [EUI])
+                    lager:debug("join: ignoring no mapping for EUI ~p", [EUI]);
+                error:{badmatch, {error, routing_not_found}} ->
+                    lager:warning("join: routing information not found for join");
+                error:{badmatch, {error, worker_not_started, _Reason} = Error} ->
+                    lager:error("failed to start udp connector for ~p: ~p", [
+                        blockchain_utils:addr2name(PubKeyBin),
+                        _Reason
+                    ]),
+                    Error
             end
     end.
 
