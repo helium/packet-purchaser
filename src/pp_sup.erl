@@ -70,7 +70,7 @@ init([]) ->
     IntegrationModule = pp_integration:module(),
     IntegrationArgs = maps:from_list(application:get_env(?APP, IntegrationModule, [])),
 
-    {ok, ConfigFilename} = application:get_env(packet_purchaser, routing_config_filename),
+    {ok, ConfigFilename} = application:get_env(packet_purchaser, pp_routing_config_filename),
 
     ChildSpecs = [
         ?SUP(blockchain_sup, [BlockchainOpts]),
