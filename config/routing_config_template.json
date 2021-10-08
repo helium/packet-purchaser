@@ -1,0 +1,35 @@
+// Hex numbers are strings prefixed with "0x"
+{
+    "net_id_aliases": {
+        "name": "0x000009",
+        "another_name": 1337
+    },
+    "routing": {
+        {
+            "net_id": 1,
+            "address": "www.internet.com",
+            "port": 1337,
+            "multi_buy": 1
+        },
+        // "net_id_alias" can be used in place of "net_id"
+        {
+            "net_id_alias": "name",
+            "address": "www.internet.com",
+            "port": 1337,
+            "multi_buy": 1
+        },
+        // "multi_buy" default is 'unlimited'
+        {
+            "net_id": 1,
+            "address": "www.internet.com",
+            "port": 1337
+        }
+    },
+    "joins": {
+        // "net_id" and "net_id_alias" in this section must have a matching entry in "routing"
+        {"net_id_alias": "name", "app_eui": "0x0000000000000000", "dev_eui": "0x0000000000000000"},
+        {"net_id": 1, "app_eui": 0, "dev_eui": 0},
+        // "dev_eui" supports wildcards
+        {"net_id": 2, "app_eui": 1337, "dev_eui": "*"}
+    }
+}
