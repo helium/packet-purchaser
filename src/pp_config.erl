@@ -181,7 +181,7 @@ transform_config(Config) ->
         <<"routing">> := Routing0
     } = maps:merge(?DEFAULT_CONFIG, Config),
 
-    NetIdAliases1 = maps:map(fun(_, Val) -> clean_base16(Val) end, NetIdAliases0),
+    NetIdAliases1 = maps:map(fun(_, Val) -> clean_config_value(Val) end, NetIdAliases0),
     Joins1 = lists:map(fun(Entry) -> json_to_join_record(Entry, NetIdAliases1) end, Joins0),
     Routing1 = lists:map(fun(Entry) -> json_to_routing_record(Entry, NetIdAliases1) end, Routing0),
 
@@ -203,8 +203,8 @@ json_to_join_record(Entry, NetIDAliases) ->
     NetID = resolve_net_id(Entry, NetIDAliases),
     #join{
         net_id = NetID,
-        app_eui = clean_base16(maps:get(<<"app_eui">>, Entry)),
-        dev_eui = clean_base16(maps:get(<<"dev_eui">>, Entry))
+        app_eui = clean_config_value(maps:get(<<"app_eui">>, Entry)),
+        dev_eui = clean_config_value(maps:get(<<"dev_eui">>, Entry))
     }.
 
 -spec json_to_routing_record(map(), map()) -> #routing{}.
@@ -225,8 +225,18 @@ resolve_net_id(#{<<"net_id_alias">> := Alias}, Aliases) ->
 resolve_net_id(_, _) ->
     throw({bad_config, no_net_id}).
 
--spec clean_base16(binary()) -> '*' | non_neg_integer().
-clean_base16(<<"*">>) -> '*';
-clean_base16(<<"0x", Base16Number/binary>>) -> erlang:binary_to_integer(Base16Number, 16);
-clean_base16(Bin) -> Bin.
+%%--------------------------------------------------------------------
+%% @doc
+%% Valid config values include:
+%%   "*"        :: wildcard
+%%   "0x123abc" :: hex number
+%%   1337       :: integer
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec clean_config_value(binary()) -> '*' | non_neg_integer().
+clean_config_value(Num) when erlang:is_integer(Num) -> Num;
+clean_config_value(<<"*">>) -> '*';
+clean_config_value(<<"0x", Base16Number/binary>>) -> erlang:binary_to_integer(Base16Number, 16);
+clean_config_value(Bin) -> Bin.
 %% clean_base16(_) -> throw(malformed_base16).
