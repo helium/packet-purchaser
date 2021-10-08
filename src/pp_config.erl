@@ -35,7 +35,7 @@
 -define(DEFAULT_CONFIG, #{<<"net_id_aliases">> => #{}, <<"joins">> => [], <<"routing">> => []}).
 
 -record(state, {
-    filename :: string(),
+    filename :: testing | string(),
     config :: map()
 }).
 
@@ -78,12 +78,14 @@ lookup_join({eui, DevEUI, AppEUI}) ->
     %% end).
     Spec = [
         {
-            #join{net_id = '$1', app_eui = '$2', dev_eui = '$3'},
+            %% #join{net_id = '$1', app_eui = '$2', dev_eui = '$3'},
+            {join, '$1', '$2', '$3'},
             [{'andalso', {'==', '$2', AppEUI}, {'==', '$3', DevEUI}}],
             ['$1']
         },
         {
-            #join{net_id = '$1', app_eui = '$2', dev_eui = '*'},
+            %% #join{net_id = '$1', app_eui = '$2', dev_eui = '*'},
+            {join, '$1', '$2', '$3'},
             [{'==', '$2', AppEUI}],
             ['$1']
         }
