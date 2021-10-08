@@ -406,11 +406,11 @@ net_ids_map_offer_test(_Config) ->
 
     %% Reject all NetIDs
     ok = pp_config:load_config(#{}),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_ACTILITY)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_COMCAST)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_ORANGE)),
+    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_ACTILITY)),
+    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
+    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_COMCAST)),
+    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
+    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     %% Buy Only Actility1 ID
     ok = pp_config:load_config(#{
@@ -419,10 +419,10 @@ net_ids_map_offer_test(_Config) ->
         ]
     }),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_COMCAST)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_ORANGE)),
+    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
+    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_COMCAST)),
+    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
+    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     %% Buy Multiple IDs
     ok = pp_config:load_config(#{
@@ -432,9 +432,9 @@ net_ids_map_offer_test(_Config) ->
         ]
     }),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_COMCAST)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
+    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
+    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_COMCAST)),
+    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     %% Buy all the IDs we know about

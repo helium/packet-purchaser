@@ -46,6 +46,8 @@
 -define(BF_FILTERS_MAX, 14).
 -define(BF_ROTATE_AFTER, 1000).
 
+-define(NET_ID_NOT_CONFIGURED, net_id_not_configured).
+
 -record(state, {}).
 
 %% -------------------------------------------------------------------
@@ -68,7 +70,7 @@ maybe_buy_offer(Offer, NetID) ->
                     true = ets:insert(?MB_ETS, {PHash, Max, 1}),
                     ok;
                 {error, not_found} ->
-                    {error, net_id_rejected}
+                    {error, ?NET_ID_NOT_CONFIGURED}
             end;
         true ->
             case ets:lookup(?MB_ETS, PHash) of
@@ -79,7 +81,7 @@ maybe_buy_offer(Offer, NetID) ->
                             true = ets:insert(?MB_ETS, {PHash, Max, 1}),
                             ok;
                         {error, not_found} ->
-                            {error, net_id_rejected}
+                            {error, ?NET_ID_NOT_CONFIGURED}
                     end;
                 [{PHash, Max, Max}] ->
                     {error, ?MB_MAX_PACKET};

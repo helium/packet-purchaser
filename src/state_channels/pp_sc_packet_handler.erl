@@ -26,7 +26,6 @@
 
 %% Offer rejected reasons
 -define(UNMAPPED_EUI, unmapped_eui).
--define(NET_ID_REJECTED, net_id_rejected).
 %% -define(NET_ID_INVALID, net_id_invalid).
 
 %% ------------------------------------------------------------------
