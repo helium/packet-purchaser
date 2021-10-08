@@ -221,7 +221,7 @@ json_to_routing_record(Entry, NetIDAliases) ->
 
 -spec resolve_net_id(map(), map()) -> non_neg_integer().
 resolve_net_id(#{<<"net_id">> := NetID}, _) ->
-    NetID;
+    clean_config_value(NetID);
 resolve_net_id(#{<<"net_id_alias">> := Alias}, Aliases) ->
     maps:get(Alias, Aliases);
 resolve_net_id(_, _) ->
