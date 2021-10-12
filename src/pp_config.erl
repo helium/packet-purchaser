@@ -2,12 +2,14 @@
 
 -behaviour(gen_server).
 
+-include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
+
 %% gen_server API
 -export([
     start_link/1,
     multi_buy_for_net_id/1,
-    lookup_join/1,
-    lookup_routing/1
+    lookup_eui/1,
+    lookup_devaddr/1
 ]).
 
 %% helper API
@@ -30,25 +32,29 @@
     code_change/3
 ]).
 
--define(JOIN_ETS, pp_config_join_ets).
--define(ROUTING_ETS, pp_config_routing_ets).
+-define(EUI_ETS, pp_config_join_ets).
+-define(DEVADDR_ETS, pp_config_routing_ets).
 
 -record(state, {
     filename :: testing | string(),
     config :: map()
 }).
 
--record(join, {
-    net_id :: non_neg_integer(),
-    app_eui :: non_neg_integer(),
-    dev_eui :: '*' | non_neg_integer()
-}).
-
--record(routing, {
+-record(eui, {
+    name :: noname | binary(),
     net_id :: non_neg_integer(),
     address :: binary(),
     port :: non_neg_integer(),
-    multi_buy :: non_neg_integer()
+    dev_eui :: '*' | non_neg_integer(),
+    app_eui :: non_neg_integer()
+}).
+
+-record(devaddr, {
+    name :: noname | binary(),
+    net_id :: non_neg_integer(),
+    address :: binary(),
+    port :: non_neg_integer(),
+    multi_buy :: unlimited | non_neg_integer()
 }).
 
 %% -------------------------------------------------------------------
@@ -58,60 +64,79 @@
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [Args], []).
 
+-spec multi_buy_for_net_id(NetID :: non_neg_integer()) ->
+    {ok, non_neg_integer()} | {error, not_found}.
 multi_buy_for_net_id(NetID) ->
-    case ets:lookup(?ROUTING_ETS, NetID) of
+    case ets:lookup(?DEVADDR_ETS, NetID) of
         [] ->
             {error, not_found};
-        [#routing{multi_buy = MultiBuy}] ->
+        [#devaddr{multi_buy = MultiBuy}] ->
             {ok, MultiBuy}
     end.
 
-lookup_join({eui, DevEUI, AppEUI}) ->
-    %% ets:fun2ms(fun
-    %%     (#join{app_eui = AppEUI, dev_eui = DevEUI, net_id=NetID}) when
-    %%         AppEUI == 1234 andalso DevEUI == 2345
-    %%     ->
-    %%         NetID;
-    %%     (#join{app_eui = AppEUI, dev_eui = '*', net_id=NetID}) when AppEUI == 1234 ->
-    %%         NetID
+-spec lookup_eui(EUI) -> {ok, NetID, WorkerArgs} | {error, unmapped_eui} when
+    EUI ::
+        {eui, #eui_pb{}}
+        | #eui_pb{}
+        | {eui, DevEUI :: non_neg_integer(), AppEUI :: non_neg_integer()},
+    NetID :: non_neg_integer(),
+    WorkerArgs :: map().
+lookup_eui({eui, #eui_pb{deveui = DevEUI, appeui = AppEUI}}) ->
+    lookup_eui({eui, DevEUI, AppEUI});
+lookup_eui(#eui_pb{deveui = DevEUI, appeui = AppEUI}) ->
+    lookup_eui({eui, DevEUI, AppEUI});
+lookup_eui({eui, DevEUI, AppEUI}) ->
+    %% ets:fun2ms(fun(#eui{app_eui = AppEUI, dev_eui = DevEUI} = EUI) when
+    %%     AppEUI == 1234 andalso (DevEUI == 2345 orelse DevEUI == '*')
+    %% ->
+    %%     EUI
     %% end).
     Spec = [
         {
-            %% #join{net_id = '$1', app_eui = '$2', dev_eui = '$3'},
-            {join, '$1', '$2', '$3'},
-            [{'andalso', {'==', '$2', AppEUI}, {'==', '$3', DevEUI}}],
-            ['$1']
-        },
-        {
-            %% #join{net_id = '$1', app_eui = '$2', dev_eui = '*'},
-            {join, '$1', '$2', '$3'},
-            [{'==', '$2', AppEUI}],
-            ['$1']
+            %% #eui{name = '_', net_id = '_', address = '_', port = '_', dev_eui = '$1', app_eui = '$2'},
+            {eui, '_', '$3', '_', '_', '$1', '$2'},
+            [
+                {
+                    'andalso',
+                    {'==', '$2', AppEUI},
+                    {'orelse', {'==', '$1', DevEUI}, {'==', '$1', '*'}}
+                }
+            ],
+            ['$_']
         }
     ],
-    case ets:select(?JOIN_ETS, Spec) of
+    case ets:select(?EUI_ETS, Spec) of
         [] ->
-            undefined;
-        [NetID] ->
-            NetID
+            {error, unmapped_eui};
+        [#eui{address = Address, port = Port, net_id = NetID}] ->
+            {ok, NetID, #{address => erlang:binary_to_list(Address), port => Port}}
     end.
 
-lookup_routing(NetID) ->
-    case ets:lookup(?ROUTING_ETS, NetID) of
-        [] ->
-            {error, routing_not_found};
-        [#routing{address = Address, port = Port}] ->
-            {ok, #{address => erlang:binary_to_list(Address), port => Port}}
+-spec lookup_devaddr({devaddr, non_neg_integer()}) ->
+    {ok, non_neg_integer(), map()} | {error, routing_not_found | invalid_net_id_type}.
+lookup_devaddr({devaddr, DevAddr}) ->
+    case lorawan_devaddr:net_id(DevAddr) of
+        {ok, NetID} ->
+            case ets:lookup(?DEVADDR_ETS, NetID) of
+                [] ->
+                    {error, routing_not_found};
+                [#devaddr{address = Address, port = Port}] ->
+                    {ok, NetID, #{address => erlang:binary_to_list(Address), port => Port}}
+            end;
+        Err ->
+            Err
     end.
 
+-spec reset_config() -> ok.
 reset_config() ->
-    true = ets:delete_all_objects(?JOIN_ETS),
-    true = ets:delete_all_objects(?ROUTING_ETS),
+    true = ets:delete_all_objects(?EUI_ETS),
+    true = ets:delete_all_objects(?DEVADDR_ETS),
     ok.
 
-load_config(ConfigMap) ->
+-spec load_config(list(map())) -> ok.
+load_config(ConfigList) ->
     ok = ?MODULE:reset_config(),
-    Config = ?MODULE:transform_config(ConfigMap),
+    Config = ?MODULE:transform_config(ConfigList),
     ok = ?MODULE:write_config_to_ets(Config).
 
 %% -------------------------------------------------------------------
@@ -153,19 +178,19 @@ code_change(_OldVsn, State, _Extra) ->
 
 -spec init_ets() -> ok.
 init_ets() ->
-    ?JOIN_ETS = ets:new(?JOIN_ETS, [
+    ?EUI_ETS = ets:new(?EUI_ETS, [
         public,
         named_table,
         set,
         {read_concurrency, true},
-        {keypos, #join.net_id}
+        {keypos, #eui.net_id}
     ]),
-    ?ROUTING_ETS = ets:new(?ROUTING_ETS, [
+    ?DEVADDR_ETS = ets:new(?DEVADDR_ETS, [
         public,
         named_table,
         set,
         {read_concurrency, true},
-        {keypos, #routing.net_id}
+        {keypos, #devaddr.net_id}
     ]),
     ok.
 
@@ -183,7 +208,6 @@ transform_config(ConfigList0) ->
         )
     ),
     #{
-        net_id_aliases => [],
         joins => proplists:append_values(joins, ConfigList1),
         routing => proplists:append_values(routing, ConfigList1)
     }.
@@ -196,19 +220,24 @@ transform_config_entry(Entry) ->
         <<"port">> := Port,
         <<"joins">> := Joins
     } = Entry,
+    Name = maps:get(<<"name">>, Entry, <<"no_name">>),
     MultiBuy = maps:get(<<"multi_buy">>, Entry, unlimited),
 
     JoinRecords = lists:map(
         fun(#{<<"dev_eui">> := DevEUI, <<"app_eui">> := AppEUI}) ->
-            #join{
+            #eui{
+                name = Name,
                 net_id = clean_config_value(NetID),
-                app_eui = clean_config_value(AppEUI),
-                dev_eui = clean_config_value(DevEUI)
+                address = Address,
+                port = Port,
+                dev_eui = clean_config_value(DevEUI),
+                app_eui = clean_config_value(AppEUI)
             }
         end,
         Joins
     ),
-    Routing = #routing{
+    Routing = #devaddr{
+        name = Name,
         net_id = clean_config_value(NetID),
         address = Address,
         port = Port,
@@ -219,34 +248,13 @@ transform_config_entry(Entry) ->
 -spec write_config_to_ets(map()) -> ok.
 write_config_to_ets(Config) ->
     #{joins := Joins, routing := Routing} = Config,
-    true = ets:insert(?JOIN_ETS, Joins),
-    true = ets:insert(?ROUTING_ETS, Routing),
+    true = ets:insert(?EUI_ETS, Joins),
+    true = ets:insert(?DEVADDR_ETS, Routing),
     ok.
-
--spec json_to_join_record(map(), map()) -> #join{}.
-json_to_join_record(Entry, NetIDAliases) ->
-    NetID = resolve_net_id(Entry, NetIDAliases),
-    #join{
-        net_id = NetID,
-        app_eui = clean_config_value(maps:get(<<"app_eui">>, Entry)),
-        dev_eui = clean_config_value(maps:get(<<"dev_eui">>, Entry))
-    }.
-
--spec json_to_routing_record(map(), map()) -> #routing{}.
-json_to_routing_record(Entry, NetIDAliases) ->
-    NetID = resolve_net_id(Entry, NetIDAliases),
-    #routing{
-        net_id = NetID,
-        address = maps:get(<<"address">>, Entry),
-        port = maps:get(<<"port">>, Entry),
-        multi_buy = maps:get(<<"multi_buy">>, Entry, unlimited)
-    }.
 
 -spec resolve_net_id(map(), map()) -> non_neg_integer().
 resolve_net_id(#{<<"net_id">> := NetID}, _) ->
     clean_config_value(NetID);
-resolve_net_id(#{<<"net_id_alias">> := Alias}, Aliases) ->
-    maps:get(Alias, Aliases);
 resolve_net_id(_, _) ->
     throw({bad_config, no_net_id}).
 
@@ -265,3 +273,108 @@ clean_config_value(<<"*">>) -> '*';
 clean_config_value(<<"0x", Base16Number/binary>>) -> erlang:binary_to_integer(Base16Number, 16);
 clean_config_value(Bin) -> Bin.
 %% clean_base16(_) -> throw(malformed_base16).
+
+-ifdef(TEST).
+
+-include_lib("eunit/include/eunit.hrl").
+
+join_eui_to_net_id_test() ->
+    {ok, _} = pp_config:start_link(testing),
+    Dev1 = 7,
+    App1 = 13,
+    Dev2 = 13,
+    App2 = 17,
+    EUI1 = #eui_pb{deveui = Dev1, appeui = App1},
+    EUI2 = #eui_pb{deveui = Dev2, appeui = App2},
+
+    NoneMapped = [],
+    OneMapped = [
+        #{
+            <<"name">> => <<"test">>,
+            <<"net_id">> => 2,
+            <<"address">> => <<>>,
+            <<"port">> => 1337,
+            <<"joins">> => [#{<<"app_eui">> => App1, <<"dev_eui">> => Dev1}]
+        }
+    ],
+    BothMapped = [
+        #{
+            <<"name">> => <<"test">>,
+            <<"net_id">> => 2,
+            <<"address">> => <<>>,
+            <<"port">> => 1337,
+            <<"joins">> => [#{<<"app_eui">> => App1, <<"dev_eui">> => Dev1}]
+        },
+        #{
+            <<"name">> => <<"test">>,
+            <<"net_id">> => 99,
+            <<"address">> => <<>>,
+            <<"port">> => 1337,
+            <<"joins">> => [#{<<"app_eui">> => App2, <<"dev_eui">> => Dev2}]
+        }
+    ],
+    WildcardMapped = [
+        #{
+            <<"name">> => <<"test">>,
+            <<"net_id">> => 2,
+            <<"address">> => <<>>,
+            <<"port">> => 1337,
+            <<"joins">> => [#{<<"app_eui">> => App1, <<"dev_eui">> => <<"*">>}]
+        },
+        #{
+            <<"name">> => <<"test">>,
+            <<"net_id">> => 99,
+            <<"address">> => <<>>,
+            <<"port">> => 1337,
+            <<"joins">> => [#{<<"app_eui">> => App2, <<"dev_eui">> => <<"*">>}]
+        }
+    ],
+
+    ok = pp_config:load_config(NoneMapped),
+    ?assertMatch({error, _}, ?MODULE:lookup_eui(EUI1), "Empty mapping, no joins"),
+
+    ok = pp_config:load_config(OneMapped),
+    ?assertMatch({ok, 2, _}, ?MODULE:lookup_eui(EUI1), "One EUI mapping, this one"),
+    ?assertMatch({error, _}, ?MODULE:lookup_eui(EUI2), "One EUI mapping, not this one"),
+
+    ok = pp_config:load_config(BothMapped),
+    ?assertMatch({ok, 2, _}, ?MODULE:lookup_eui(EUI1), "All EUI Mapped 1"),
+    ?assertMatch({ok, 99, _}, ?MODULE:lookup_eui(EUI2), "All EUI Mapped 2"),
+
+    ok = pp_config:load_config(WildcardMapped),
+    ?assertMatch({ok, 2, _}, ?MODULE:lookup_eui(EUI1), "Wildcard EUI Mapped 1"),
+    ?assertMatch(
+        {ok, 2, _},
+        ?MODULE:lookup_eui(
+            #eui_pb{
+                deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
+                appeui = App1
+            }
+        ),
+        "Wildcard random device EUI Mapped 1"
+    ),
+    ?assertMatch({ok, _, _}, ?MODULE:lookup_eui(EUI2), "Wildcard EUI Mapped 2"),
+    ?assertMatch(
+        {ok, 99, _},
+        ?MODULE:lookup_eui(
+            #eui_pb{
+                deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
+                appeui = App2
+            }
+        ),
+        "Wildcard random device EUI Mapped 2"
+    ),
+    ?assertMatch(
+        {error, _},
+        ?MODULE:lookup_eui(
+            #eui_pb{
+                deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
+                appeui = rand:uniform(trunc(math:pow(2, 64) - 1000)) + 1000
+            }
+        ),
+        "Wildcard random device EUI and unknown join eui no joins"
+    ),
+
+    ok.
+
+-endif.

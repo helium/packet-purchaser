@@ -121,10 +121,6 @@ join_net_id_offer_test(_Config) ->
             ]
         }
     ],
-    %% OneMapped = #{
-    %%     <<"joins">> => [#{<<"app_eui">> => AppEUI2, <<"dev_eui">> => DevEUI2, <<"net_id">> => 2}],
-    %%     <<"routing">> => [#{<<"net_id">> => 2, <<"address">> => <<>>, <<"port">> => 1337}]
-    %% },
     ok = pp_config:load_config(OneMapped),
     ?assertMatch({error, unmapped_eui}, SendJoinOfferFun(DevEUI1, AppEUI1)),
     ?assertMatch(ok, SendJoinOfferFun(DevEUI2, AppEUI2)),
