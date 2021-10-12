@@ -252,12 +252,6 @@ write_config_to_ets(Config) ->
     true = ets:insert(?DEVADDR_ETS, Routing),
     ok.
 
--spec resolve_net_id(map(), map()) -> non_neg_integer().
-resolve_net_id(#{<<"net_id">> := NetID}, _) ->
-    clean_config_value(NetID);
-resolve_net_id(_, _) ->
-    throw({bad_config, no_net_id}).
-
 %%--------------------------------------------------------------------
 %% @doc
 %% Valid config values include:
