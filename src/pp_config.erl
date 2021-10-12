@@ -32,7 +32,6 @@
 
 -define(JOIN_ETS, pp_config_join_ets).
 -define(ROUTING_ETS, pp_config_routing_ets).
--define(DEFAULT_CONFIG, #{<<"net_id_aliases">> => #{}, <<"joins">> => [], <<"routing">> => []}).
 
 -record(state, {
     filename :: testing | string(),
@@ -170,28 +169,52 @@ init_ets() ->
     ]),
     ok.
 
--spec read_config(string()) -> map().
+-spec read_config(string()) -> list(map()).
 read_config(Filename) ->
     {ok, Config} = file:read_file(Filename),
     jsx:decode(Config, [return_maps]).
 
--spec transform_config(map()) -> map().
-transform_config(Config) ->
+-spec transform_config(list()) -> map().
+transform_config(ConfigList0) ->
+    ConfigList1 = lists:flatten(
+        lists:map(
+            fun transform_config_entry/1,
+            ConfigList0
+        )
+    ),
     #{
-        <<"net_id_aliases">> := NetIdAliases0,
-        <<"joins">> := Joins0,
-        <<"routing">> := Routing0
-    } = maps:merge(?DEFAULT_CONFIG, Config),
-
-    NetIdAliases1 = maps:map(fun(_, Val) -> clean_config_value(Val) end, NetIdAliases0),
-    Joins1 = lists:map(fun(Entry) -> json_to_join_record(Entry, NetIdAliases1) end, Joins0),
-    Routing1 = lists:map(fun(Entry) -> json_to_routing_record(Entry, NetIdAliases1) end, Routing0),
-
-    #{
-        net_id_aliases => NetIdAliases1,
-        joins => Joins1,
-        routing => Routing1
+        net_id_aliases => [],
+        joins => proplists:append_values(joins, ConfigList1),
+        routing => proplists:append_values(routing, ConfigList1)
     }.
+
+-spec transform_config_entry(Entry :: map()) -> proplists:proplist().
+transform_config_entry(Entry) ->
+    #{
+        <<"net_id">> := NetID,
+        <<"address">> := Address,
+        <<"port">> := Port,
+        <<"joins">> := Joins
+    } = Entry,
+    MultiBuy = maps:get(<<"multi_buy">>, Entry, unlimited),
+
+    JoinRecords = lists:map(
+        fun(#{<<"dev_eui">> := DevEUI, <<"app_eui">> := AppEUI}) ->
+            #join{
+                net_id = clean_config_value(NetID),
+                app_eui = clean_config_value(AppEUI),
+                dev_eui = clean_config_value(DevEUI)
+            }
+        end,
+        Joins
+    ),
+    Routing = #routing{
+        net_id = clean_config_value(NetID),
+        address = Address,
+        port = Port,
+        multi_buy = MultiBuy
+    },
+    [{joins, JoinRecords}, {routing, Routing}].
 
 -spec write_config_to_ets(map()) -> ok.
 write_config_to_ets(Config) ->
