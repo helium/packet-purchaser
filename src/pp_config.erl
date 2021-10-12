@@ -215,11 +215,11 @@ transform_config_entry(Entry) ->
     #{
         <<"net_id">> := NetID,
         <<"address">> := Address,
-        <<"port">> := Port,
-        <<"joins">> := Joins
+        <<"port">> := Port
     } = Entry,
     Name = maps:get(<<"name">>, Entry, <<"no_name">>),
     MultiBuy = maps:get(<<"multi_buy">>, Entry, unlimited),
+    Joins = maps:get(<<"joins">>, Entry, []),
 
     JoinRecords = lists:map(
         fun(#{<<"dev_eui">> := DevEUI, <<"app_eui">> := AppEUI}) ->

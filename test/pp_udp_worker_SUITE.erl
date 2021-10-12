@@ -68,8 +68,7 @@ init_per_testcase(TestCase, Config0) ->
             <<"name">> => <<"udp_worker_test">>,
             <<"net_id">> => NetID,
             <<"address">> => <<>>,
-            <<"port">> => 1337,
-            <<"joins">> => []
+            <<"port">> => 1337
         }
     ]),
     Config1.
