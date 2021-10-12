@@ -111,16 +111,16 @@ handle_packet(SCPacket, PacketTime, Pid) ->
 
 handle_join_offer(EUI, Offer) ->
     case pp_config:lookup_eui(EUI) of
-        {ok, #{multi_buy := MultiBuy}} ->
-            pp_multi_buy:maybe_buy_offer(Offer, MultiBuy);
+        {ok, #{multi_buy := MultiBuyMax}} ->
+            pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
         Err ->
             Err
     end.
 
 handle_packet_offer(DevAddr, Offer) ->
     case pp_config:lookup_devaddr(DevAddr) of
-        {ok, #{multi_buy := MultiBuy}} ->
-            pp_multi_buy:maybe_buy_offer(Offer, MultiBuy);
+        {ok, #{multi_buy := MultiBuyMax}} ->
+            pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
         Err ->
             Err
     end.
