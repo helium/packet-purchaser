@@ -106,6 +106,7 @@ join_net_id_offer_test(_Config) ->
     AppEUI2 = <<0, 0, 0, 2, 0, 0, 0, 2>>,
 
     %% Empty mapping, no joins
+    ok = pp_config:load_config([]),
     ?assertMatch({error, unmapped_eui}, SendJoinOfferFun(DevEUI1, AppEUI1)),
     ?assertMatch({error, unmapped_eui}, SendJoinOfferFun(DevEUI2, AppEUI2)),
 
@@ -339,8 +340,7 @@ multi_buy_packet_test(_Config) ->
         <<"net_id">> => ?NET_ID_COMCAST,
         <<"address">> => <<"3.3.3.3">>,
         <<"port">> => 3333,
-        <<"multi_buy">> => 1,
-        <<"joins">> => []
+        <<"multi_buy">> => 1
     },
     ok = pp_config:load_config([BaseConfig]),
     Offer1 = MakePacketOffer(),
@@ -392,8 +392,7 @@ net_ids_map_offer_test(_Config) ->
         <<"name">> => "test",
         <<"net_id">> => unset,
         <<"address">> => <<>>,
-        <<"port">> => 1337,
-        <<"joins">> => []
+        <<"port">> => 1337
     },
     ActilityConfig = maps:merge(BaseConfig, #{<<"net_id">> => ?NET_ID_ACTILITY}),
     OrangeConfig = maps:merge(BaseConfig, #{<<"net_id">> => ?NET_ID_ORANGE}),
@@ -459,22 +458,19 @@ net_ids_map_packet_test(_Config) ->
             <<"name">> => "test",
             <<"net_id">> => ?NET_ID_ACTILITY,
             <<"address">> => <<"1.1.1.1">>,
-            <<"port">> => 1111,
-            <<"joins">> => []
+            <<"port">> => 1111
         },
         #{
             <<"name">> => "test",
             <<"net_id">> => ?NET_ID_ORANGE,
             <<"address">> => <<"2.2.2.2">>,
-            <<"port">> => 2222,
-            <<"joins">> => []
+            <<"port">> => 2222
         },
         #{
             <<"name">> => "test",
             <<"net_id">> => ?NET_ID_COMCAST,
             <<"address">> => <<"3.3.3.3">>,
-            <<"port">> => 3333,
-            <<"joins">> => []
+            <<"port">> => 3333
         }
     ]),
     ?assertMatch({"1.1.1.1", 1111}, SendPacketFun(?DEVADDR_ACTILITY, ?NET_ID_ACTILITY)),
@@ -497,8 +493,7 @@ net_ids_no_config_test(_Config) ->
             <<"name">> => "test",
             <<"net_id">> => ?NET_ID_ACTILITY,
             <<"address">> => <<"1.1.1.1">>,
-            <<"port">> => 1111,
-            <<"joins">> => []
+            <<"port">> => 1111
         }
     ]),
     ?assertMatch({ok, _}, SendPacketFun(?DEVADDR_ACTILITY, ?NET_ID_ACTILITY)),
@@ -535,22 +530,19 @@ single_hotspot_multi_net_id_test(_Config) ->
             <<"name">> => "test",
             <<"net_id">> => ?NET_ID_ACTILITY,
             <<"address">> => <<"1.1.1.1">>,
-            <<"port">> => 1111,
-            <<"joins">> => []
+            <<"port">> => 1111
         },
         #{
             <<"name">> => "test",
             <<"net_id">> => ?NET_ID_ORANGE,
             <<"address">> => <<"2.2.2.2">>,
-            <<"port">> => 2222,
-            <<"joins">> => []
+            <<"port">> => 2222
         },
         #{
             <<"name">> => "test",
             <<"net_id">> => ?NET_ID_COMCAST,
             <<"address">> => <<"3.3.3.3">>,
-            <<"port">> => 3333,
-            <<"joins">> => []
+            <<"port">> => 3333
         }
     ]),
     ?assertMatch({"1.1.1.1", 1111}, SendPacketFun(?DEVADDR_ACTILITY, ?NET_ID_ACTILITY)),
@@ -603,8 +595,7 @@ multi_buy_worst_case_stress_test(_Config) ->
                 <<"net_id">> => ?NET_ID_COMCAST,
                 <<"address">> => <<"1.1.1.1">>,
                 <<"port">> => 1111,
-                <<"multi_buy">> => MultiBuy,
-                <<"joins">> => []
+                <<"multi_buy">> => MultiBuy
             }
         ]),
 
