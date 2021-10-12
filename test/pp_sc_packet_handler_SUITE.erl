@@ -67,8 +67,8 @@ all() ->
         single_hotspot_multi_net_id_test,
         multi_buy_join_test,
         multi_buy_packet_test,
-        multi_buy_eviction_test
-        %% multi_buy_worst_case_stress_test
+        multi_buy_eviction_test,
+        multi_buy_worst_case_stress_test
     ].
 
 %%--------------------------------------------------------------------
