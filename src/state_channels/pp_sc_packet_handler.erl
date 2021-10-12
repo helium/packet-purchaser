@@ -32,8 +32,8 @@ handle_offer(Offer, _HandlerPid) ->
     #routing_information_pb{data = Routing} = blockchain_state_channel_offer_v1:routing(Offer),
     Resp =
         case Routing of
-            {eui, EUI} -> ?MODULE:handle_join_offer(EUI, Offer);
-            {devaddr, DevAddr} -> ?MODULE:handle_packet_offer(DevAddr, Offer)
+            {eui, _} = EUI -> ?MODULE:handle_join_offer(EUI, Offer);
+            {devaddr, _} = DevAddr -> ?MODULE:handle_packet_offer(DevAddr, Offer)
         end,
     erlang:spawn(fun() ->
         ?MODULE:handle_offer_resp(Routing, Offer, Resp)
@@ -73,7 +73,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
     case blockchain_helium_packet_v1:routing_info(Packet) of
         {devaddr, _} = DevAddr ->
             try
-                {ok, NetID, WorkerArgs} = pp_config:lookup_devaddr(DevAddr),
+                {ok, #{net_id := NetID} = WorkerArgs} = pp_config:lookup_devaddr(DevAddr),
                 lager:debug("packet: [devaddr: ~p] [netid: ~p]", [DevAddr, NetID]),
                 {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs),
                 ok = pp_metrics:handle_packet(PubKeyBin, NetID),
@@ -92,7 +92,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
             end;
         {eui, _, _} = EUI ->
             try
-                {ok, NetID, WorkerArgs} = pp_config:lookup_eui(EUI),
+                {ok, #{net_id := NetID} = WorkerArgs} = pp_config:lookup_eui(EUI),
                 lager:debug("join: [eui: ~p] [netid: ~p]", [EUI, NetID]),
                 {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs),
                 pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid)
@@ -118,14 +118,16 @@ handle_packet(SCPacket, PacketTime, Pid) ->
 
 handle_join_offer(EUI, Offer) ->
     case pp_config:lookup_eui(EUI) of
-        {error, _} -> {error, ?UNMAPPED_EUI};
-        {ok, NetID, _} -> pp_multi_buy:maybe_buy_offer(Offer, NetID)
+        {error, _} ->
+            {error, ?UNMAPPED_EUI};
+        {ok, #{multi_buy := MultiBuy}} ->
+            pp_multi_buy:maybe_buy_offer(Offer, MultiBuy)
     end.
 
 handle_packet_offer(DevAddr, Offer) ->
-    case lorawan_devaddr:net_id(<<DevAddr:32/integer-unsigned>>) of
-        {ok, NetID} ->
-            pp_multi_buy:maybe_buy_offer(Offer, NetID);
+    case pp_config:lookup_devaddr(DevAddr) of
+        {ok, #{multi_buy := MultiBuy}} ->
+            pp_multi_buy:maybe_buy_offer(Offer, MultiBuy);
         Err ->
             Err
     end.
@@ -141,7 +143,7 @@ handle_packet_offer(DevAddr, Offer) ->
 ) -> ok.
 handle_offer_resp(Routing, Offer, Resp) ->
     PubKeyBin = blockchain_state_channel_offer_v1:hotspot(Offer),
-    {ok, NetID, _} =
+    {ok, #{net_id := NetID}} =
         case Routing of
             {eui, _} = EUI -> pp_config:lookup_eui(EUI);
             {devaddr, _} = DevAddr -> pp_config:lookup_devaddr(DevAddr)
@@ -167,4 +169,3 @@ handle_offer_resp(Routing, Offer, Resp) ->
         Routing,
         Resp
     ]).
-

@@ -7,7 +7,6 @@
 %% gen_server API
 -export([
     start_link/1,
-    multi_buy_for_net_id/1,
     lookup_eui/1,
     lookup_devaddr/1
 ]).
@@ -45,6 +44,7 @@
     net_id :: non_neg_integer(),
     address :: binary(),
     port :: non_neg_integer(),
+    multi_buy :: unlimited | non_neg_integer(),
     dev_eui :: '*' | non_neg_integer(),
     app_eui :: non_neg_integer()
 }).
@@ -64,23 +64,11 @@
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [Args], []).
 
--spec multi_buy_for_net_id(NetID :: non_neg_integer()) ->
-    {ok, non_neg_integer()} | {error, not_found}.
-multi_buy_for_net_id(NetID) ->
-    case ets:lookup(?DEVADDR_ETS, NetID) of
-        [] ->
-            {error, not_found};
-        [#devaddr{multi_buy = MultiBuy}] ->
-            {ok, MultiBuy}
-    end.
-
--spec lookup_eui(EUI) -> {ok, NetID, WorkerArgs} | {error, unmapped_eui} when
+-spec lookup_eui(EUI) -> {ok, map()} | {error, unmapped_eui} when
     EUI ::
         {eui, #eui_pb{}}
         | #eui_pb{}
-        | {eui, DevEUI :: non_neg_integer(), AppEUI :: non_neg_integer()},
-    NetID :: non_neg_integer(),
-    WorkerArgs :: map().
+        | {eui, DevEUI :: non_neg_integer(), AppEUI :: non_neg_integer()}.
 lookup_eui({eui, #eui_pb{deveui = DevEUI, appeui = AppEUI}}) ->
     lookup_eui({eui, DevEUI, AppEUI});
 lookup_eui(#eui_pb{deveui = DevEUI, appeui = AppEUI}) ->
@@ -93,8 +81,8 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
     %% end).
     Spec = [
         {
-            %% #eui{name = '_', net_id = '_', address = '_', port = '_', dev_eui = '$1', app_eui = '$2'},
-            {eui, '_', '$3', '_', '_', '$1', '$2'},
+            %% #eui{name = '_', net_id = '_', address = '_', port = '_', multi_buy = '_', dev_eui = '$1', app_eui = '$2'},
+            {eui, '_', '_', '_', '_', '_', '$1', '$2'},
             [
                 {
                     'andalso',
@@ -108,20 +96,30 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
     case ets:select(?EUI_ETS, Spec) of
         [] ->
             {error, unmapped_eui};
-        [#eui{address = Address, port = Port, net_id = NetID}] ->
-            {ok, NetID, #{address => erlang:binary_to_list(Address), port => Port}}
+        [#eui{address = Address, port = Port, net_id = NetID, multi_buy = MultiBuy}] ->
+            {ok, #{
+                net_id => NetID,
+                address => erlang:binary_to_list(Address),
+                port => Port,
+                multi_buy => MultiBuy
+            }}
     end.
 
 -spec lookup_devaddr({devaddr, non_neg_integer()}) ->
-    {ok, non_neg_integer(), map()} | {error, routing_not_found | invalid_net_id_type}.
+    {ok, map()} | {error, routing_not_found | invalid_net_id_type}.
 lookup_devaddr({devaddr, DevAddr}) ->
     case lorawan_devaddr:net_id(DevAddr) of
         {ok, NetID} ->
             case ets:lookup(?DEVADDR_ETS, NetID) of
                 [] ->
                     {error, routing_not_found};
-                [#devaddr{address = Address, port = Port}] ->
-                    {ok, NetID, #{address => erlang:binary_to_list(Address), port => Port}}
+                [#devaddr{address = Address, port = Port, multi_buy = MultiBuy}] ->
+                    {ok, #{
+                        net_id => NetID,
+                        address => erlang:binary_to_list(Address),
+                        port => Port,
+                        multi_buy => MultiBuy
+                    }}
             end;
         Err ->
             Err
@@ -230,6 +228,7 @@ transform_config_entry(Entry) ->
                 net_id = clean_config_value(NetID),
                 address = Address,
                 port = Port,
+                multi_buy = MultiBuy,
                 dev_eui = clean_config_value(DevEUI),
                 app_eui = clean_config_value(AppEUI)
             }
@@ -328,17 +327,17 @@ join_eui_to_net_id_test() ->
     ?assertMatch({error, _}, ?MODULE:lookup_eui(EUI1), "Empty mapping, no joins"),
 
     ok = pp_config:load_config(OneMapped),
-    ?assertMatch({ok, 2, _}, ?MODULE:lookup_eui(EUI1), "One EUI mapping, this one"),
+    ?assertMatch({ok, _}, ?MODULE:lookup_eui(EUI1), "One EUI mapping, this one"),
     ?assertMatch({error, _}, ?MODULE:lookup_eui(EUI2), "One EUI mapping, not this one"),
 
     ok = pp_config:load_config(BothMapped),
-    ?assertMatch({ok, 2, _}, ?MODULE:lookup_eui(EUI1), "All EUI Mapped 1"),
-    ?assertMatch({ok, 99, _}, ?MODULE:lookup_eui(EUI2), "All EUI Mapped 2"),
+    ?assertMatch({ok, _}, ?MODULE:lookup_eui(EUI1), "All EUI Mapped 1"),
+    ?assertMatch({ok, _}, ?MODULE:lookup_eui(EUI2), "All EUI Mapped 2"),
 
     ok = pp_config:load_config(WildcardMapped),
-    ?assertMatch({ok, 2, _}, ?MODULE:lookup_eui(EUI1), "Wildcard EUI Mapped 1"),
+    ?assertMatch({ok, _}, ?MODULE:lookup_eui(EUI1), "Wildcard EUI Mapped 1"),
     ?assertMatch(
-        {ok, 2, _},
+        {ok, _},
         ?MODULE:lookup_eui(
             #eui_pb{
                 deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
@@ -347,9 +346,9 @@ join_eui_to_net_id_test() ->
         ),
         "Wildcard random device EUI Mapped 1"
     ),
-    ?assertMatch({ok, _, _}, ?MODULE:lookup_eui(EUI2), "Wildcard EUI Mapped 2"),
+    ?assertMatch({ok, _}, ?MODULE:lookup_eui(EUI2), "Wildcard EUI Mapped 2"),
     ?assertMatch(
-        {ok, 99, _},
+        {ok, _},
         ?MODULE:lookup_eui(
             #eui_pb{
                 deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),

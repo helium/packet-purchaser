@@ -67,8 +67,8 @@ all() ->
         single_hotspot_multi_net_id_test,
         multi_buy_join_test,
         multi_buy_packet_test,
-        multi_buy_eviction_test,
-        multi_buy_worst_case_stress_test
+        multi_buy_eviction_test
+        %% multi_buy_worst_case_stress_test
     ].
 
 %%--------------------------------------------------------------------
@@ -381,11 +381,11 @@ net_ids_map_offer_test(_Config) ->
 
     %% Reject all NetIDs
     ok = pp_config:load_config([]),
-    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_ACTILITY)),
-    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
-    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_COMCAST)),
-    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
-    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_ORANGE)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_ACTILITY)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_COMCAST)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     %% Buy Only Actility1 ID
     BaseConfig = #{
@@ -403,17 +403,17 @@ net_ids_map_offer_test(_Config) ->
 
     ok = pp_config:load_config([ActilityConfig]),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
-    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
-    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_COMCAST)),
-    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
-    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_ORANGE)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_COMCAST)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     %% Buy Multiple IDs
     ok = pp_config:load_config([ActilityConfig, OrangeConfig]),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
-    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
-    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_COMCAST)),
-    ?assertMatch({error, net_id_not_configured}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_COMCAST)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     %% Buy all the IDs we know about

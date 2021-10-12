@@ -57,18 +57,20 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec maybe_buy_offer(blockchain_state_channel_offer_v1:offer(), non_neg_integer()) ->
-    ok | {error, any()}.
-maybe_buy_offer(Offer, NetID) ->
+-spec maybe_buy_offer(
+    Offer :: blockchain_state_channel_offer_v1:offer(),
+    MultiBuy :: unlimited | non_neg_integer()
+) -> ok | {error, any()}.
+maybe_buy_offer(Offer, MultiBuy) ->
     PHash = blockchain_state_channel_offer_v1:packet_hash(Offer),
     BFRef = lookup_bf(?BF_KEY),
     case bloom:set(BFRef, PHash) of
         false ->
-            maybe_buy_offer_unseen_hash(NetID, PHash);
+            maybe_buy_offer_unseen_hash(MultiBuy, PHash);
         true ->
             case ets:lookup(?MB_ETS, PHash) of
                 [] ->
-                    maybe_buy_offer_unseen_hash(NetID, PHash);
+                    maybe_buy_offer_unseen_hash(MultiBuy, PHash);
                 [{PHash, Max, Max}] ->
                     {error, ?MB_MAX_PACKET};
                 [{PHash, _Max, _Curr}] ->
@@ -79,16 +81,13 @@ maybe_buy_offer(Offer, NetID) ->
             end
     end.
 
--spec maybe_buy_offer_unseen_hash(non_neg_integer(), binary()) -> ok | {error, any()}.
-maybe_buy_offer_unseen_hash(NetID, PHash) ->
-    case pp_config:multi_buy_for_net_id(NetID) of
-        {ok, Max} ->
-            ok = schedule_clear_multi_buy(PHash),
-            true = ets:insert(?MB_ETS, {PHash, Max, 1}),
-            ok;
-        {error, not_found} ->
-            {error, ?NET_ID_NOT_CONFIGURED}
-    end.
+-spec maybe_buy_offer_unseen_hash(unlimited | non_neg_integer(), binary()) -> ok | {error, any()}.
+maybe_buy_offer_unseen_hash(unlimited, _PHash) ->
+    ok;
+maybe_buy_offer_unseen_hash(Max, PHash) ->
+    ok = schedule_clear_multi_buy(PHash),
+    true = ets:insert(?MB_ETS, {PHash, Max, 1}),
+    ok.
 
 %% -------------------------------------------------------------------
 %% gen_server Callbacks
