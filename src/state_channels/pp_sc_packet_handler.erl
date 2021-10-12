@@ -20,9 +20,6 @@
     handle_offer_resp/3
 ]).
 
-%% Offer rejected reasons
--define(UNMAPPED_EUI, unmapped_eui).
-
 %% ------------------------------------------------------------------
 %% Packet Handler Functions
 %% ------------------------------------------------------------------
@@ -79,8 +76,6 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 ok = pp_metrics:handle_packet(PubKeyBin, NetID),
                 pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid)
             catch
-                error:{badkey, KeyNetID} ->
-                    lager:debug("packet: ignoring unconfigured NetID ~p", [KeyNetID]);
                 error:{badmatch, {error, routing_not_found}} ->
                     lager:warning("packet: routing information not found for packet");
                 error:{badmatch, {error, worker_not_started, _Reason} = Error} ->
@@ -97,10 +92,8 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs),
                 pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid)
             catch
-                error:{badkey, KeyNetID} ->
-                    lager:debug("join: ignoring unconfigured NetID ~p", [KeyNetID]);
                 error:{badmatch, {error, unmapped_eui}} ->
-                    lager:debug("join: ignoring no mapping for EUI ~p", [EUI]);
+                    lager:warning("join: no mapping for EUI ~p", [EUI]);
                 error:{badmatch, {error, routing_not_found}} ->
                     lager:warning("join: routing information not found for join");
                 error:{badmatch, {error, worker_not_started, _Reason} = Error} ->
@@ -118,10 +111,10 @@ handle_packet(SCPacket, PacketTime, Pid) ->
 
 handle_join_offer(EUI, Offer) ->
     case pp_config:lookup_eui(EUI) of
-        {error, _} ->
-            {error, ?UNMAPPED_EUI};
         {ok, #{multi_buy := MultiBuy}} ->
-            pp_multi_buy:maybe_buy_offer(Offer, MultiBuy)
+            pp_multi_buy:maybe_buy_offer(Offer, MultiBuy);
+        Err ->
+            Err
     end.
 
 handle_packet_offer(DevAddr, Offer) ->
