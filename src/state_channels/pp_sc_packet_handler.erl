@@ -136,16 +136,18 @@ handle_packet_offer(DevAddr, Offer) ->
 ) -> ok.
 handle_offer_resp(Routing, Offer, Resp) ->
     PubKeyBin = blockchain_state_channel_offer_v1:hotspot(Offer),
-    {ok, #{net_id := NetID}} =
+    {ok, NetID} =
         case Routing of
             {eui, _} = EUI ->
                 case pp_config:lookup_eui(EUI) of
                     {error, Reason} -> {ok, Reason};
+                    {ok, #{net_id := NetID0}} -> {ok, NetID0};
                     V -> V
                 end;
             {devaddr, _} = DevAddr ->
                 case pp_config:lookup_devaddr(DevAddr) of
                     {error, Reason} -> {ok, Reason};
+                    {ok, #{net_id := NetID0}} -> {ok, NetID0};
                     V -> V
                 end
         end,
