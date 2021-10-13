@@ -43,7 +43,7 @@
         {handlers, [
             {lager_file_backend, [
                 {file, "packet_purchaser.log"},
-                {level, info},
+                {level, warning},
                 {size, 1000000000},
                 {date, "$D0"},
                 {count, 15},
