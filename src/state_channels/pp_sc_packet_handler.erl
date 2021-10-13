@@ -77,7 +77,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid)
             catch
                 error:{badmatch, {error, routing_not_found}} ->
-                    lager:warning("packet: routing information not found for packet");
+                    lager:warning("packet: routing information not found for packet ~p", [DevAddr]);
                 error:{badmatch, {error, worker_not_started, _Reason} = Error} ->
                     lager:error("failed to start udp connector for ~p: ~p", [
                         blockchain_utils:addr2name(PubKeyBin),
