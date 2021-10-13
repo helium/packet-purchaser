@@ -141,14 +141,12 @@ handle_offer_resp(Routing, Offer, Resp) ->
             {eui, _} = EUI ->
                 case pp_config:lookup_eui(EUI) of
                     {error, Reason} -> {ok, Reason};
-                    {ok, #{net_id := NetID0}} -> {ok, NetID0};
-                    V -> V
+                    {ok, #{net_id := NetID0}} -> {ok, NetID0}
                 end;
             {devaddr, _} = DevAddr ->
                 case pp_config:lookup_devaddr(DevAddr) of
                     {error, Reason} -> {ok, Reason};
-                    {ok, #{net_id := NetID0}} -> {ok, NetID0};
-                    V -> V
+                    {ok, #{net_id := NetID0}} -> {ok, NetID0}
                 end
         end,
 
