@@ -188,6 +188,8 @@ join_net_id_packet_test(_Config) ->
 
     {
         state,
+        _Chain,
+        _Loc,
         PubKeyBin1,
         _Socket,
         Address,
@@ -442,6 +444,8 @@ net_ids_map_packet_test(_Config) ->
         {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
         {
             state,
+            _Chain,
+            _Loc,
             PubKeyBin,
             _Socket,
             Address,
@@ -514,6 +518,8 @@ single_hotspot_multi_net_id_test(_Config) ->
         {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
         {
             state,
+            _Chain,
+            _Loc,
             PubKeyBin,
             _Socket,
             Address,
@@ -577,7 +583,6 @@ multi_buy_worst_case_stress_test(_Config) ->
                 #{public := PubKey, secret := PrivKey} = libp2p_crypto:generate_keys(ecc_compact),
                 PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
                 SigFun = libp2p_crypto:mk_sig_fun(PrivKey),
-
                 #{
                     pubkeybin => PubKeyBin,
                     sig_fun => SigFun,

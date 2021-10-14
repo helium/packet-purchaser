@@ -191,6 +191,8 @@ net_ids_counter_test(_Config) ->
             {ok, Pid} ->
                 {
                     state,
+                    _Chain,
+                    _Loc,
                     PubKeyBin,
                     _Socket,
                     Address,

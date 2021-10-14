@@ -41,32 +41,6 @@ handle_offer(Offer, _HandlerPid) ->
 handle_packet(SCPacket, PacketTime, Pid) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
-    Token = semtech_udp:token(),
-    MAC = pp_utils:pubkeybin_to_mac(PubKeyBin),
-    Tmst = blockchain_helium_packet_v1:timestamp(Packet),
-    Payload = blockchain_helium_packet_v1:payload(Packet),
-    UDPData = semtech_udp:push_data(
-        Token,
-        MAC,
-        #{
-            time => iso8601:format(
-                calendar:system_time_to_universal_time(PacketTime, millisecond)
-            ),
-            tmst => Tmst band 16#FFFFFFFF,
-            freq => blockchain_helium_packet_v1:frequency(Packet),
-            rfch => 0,
-            modu => <<"LORA">>,
-            codr => <<"4/5">>,
-            stat => 1,
-            chan => 0,
-            datr => erlang:list_to_binary(blockchain_helium_packet_v1:datarate(Packet)),
-            rssi => erlang:trunc(blockchain_helium_packet_v1:signal_strength(Packet)),
-            lsnr => blockchain_helium_packet_v1:snr(Packet),
-            size => erlang:byte_size(Payload),
-            data => base64:encode(Payload)
-        }
-    ),
-
     case blockchain_helium_packet_v1:routing_info(Packet) of
         {devaddr, _} = DevAddr ->
             try
@@ -74,7 +48,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 lager:debug("packet: [devaddr: ~p] [netid: ~p]", [DevAddr, NetID]),
                 {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs),
                 ok = pp_metrics:handle_packet(PubKeyBin, NetID),
-                pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid)
+                pp_udp_worker:push_data(WorkerPid, SCPacket, PacketTime, Pid)
             catch
                 error:{badmatch, {error, routing_not_found}} ->
                     lager:warning("packet: routing information not found for packet ~p", [DevAddr]);
@@ -90,7 +64,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 {ok, #{net_id := NetID} = WorkerArgs} = pp_config:lookup_eui(EUI),
                 lager:debug("join: [eui: ~p] [netid: ~p]", [EUI, NetID]),
                 {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs),
-                pp_udp_worker:push_data(WorkerPid, Token, UDPData, Pid)
+                pp_udp_worker:push_data(WorkerPid, SCPacket, PacketTime, Pid)
             catch
                 error:{badmatch, {error, unmapped_eui}} ->
                     lager:warning("join: no mapping for EUI ~p", [EUI]);

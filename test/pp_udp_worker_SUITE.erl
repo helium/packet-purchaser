@@ -24,6 +24,8 @@
 ]).
 
 -record(state, {
+    blockchain :: blockchain:blockchain() | undefined,
+    location :: {pos_integer(), float(), float()} | undefined,
     pubkeybin :: libp2p_crypto:pubkey_bin(),
     socket :: pp_udp_socket:socket(),
     address :: inet:socket_address() | inet:hostname(),
@@ -108,7 +110,14 @@ push_data(Config) ->
                         <<"stat">> => 1,
                         <<"chan">> => 0
                     }
-                ]
+                ],
+                <<"stat">> => #{
+                    <<"regi">> => <<"US915">>,
+                    <<"inde">> => <<"undefined">>,
+                    <<"lati">> => <<"undefined">>,
+                    <<"long">> => <<"undefined">>,
+                    <<"pubk">> => libp2p_crypto:bin_to_b58(PubKeyBin)
+                }
             },
             Map0
         )
@@ -147,7 +156,8 @@ delay_push_data(Config) ->
                         <<"stat">> => 1,
                         <<"chan">> => 0
                     }
-                ]
+                ],
+                <<"stat">> => fun erlang:is_map/1
             },
             Map0
         )
@@ -176,7 +186,8 @@ delay_push_data(Config) ->
                         <<"stat">> => 1,
                         <<"chan">> => 0
                     }
-                ]
+                ],
+                <<"stat">> => fun erlang:is_map/1
             },
             Map1
         )
@@ -215,7 +226,8 @@ missing_push_data_ack(Config) ->
                         <<"stat">> => 1,
                         <<"chan">> => 0
                     }
-                ]
+                ],
+                <<"stat">> => fun erlang:is_map/1
             },
             Map0
         )
@@ -321,9 +333,10 @@ tee_test(_Config) ->
     {ok, TeeSocket} = gen_udp:open(Port2, [binary, {active, true}]),
 
     %% Push data through worker
-    Data = <<"test payload">>,
-    Token = semtech_udp:token(),
-    pp_udp_worker:push_data(Pid, Token, Data, self()),
+    Packet = blockchain_helium_packet_v1:new(),
+    SCPacket = blockchain_state_channel_packet_v1:new(Packet, PubKeyBin, 'US915'),
+    PacketTime = 0,
+    ok = pp_udp_worker:push_data(Pid, SCPacket, PacketTime, self()),
 
     %% Receive on primary socket
     Receive1 =
@@ -382,7 +395,8 @@ multi_hotspots(Config) ->
                         <<"stat">> => 1,
                         <<"chan">> => 0
                     }
-                ]
+                ],
+                <<"stat">> => fun erlang:is_map/1
             },
             Map0
         )
@@ -408,7 +422,8 @@ multi_hotspots(Config) ->
                         <<"stat">> => 1,
                         <<"chan">> => 0
                     }
-                ]
+                ],
+                <<"stat">> => fun erlang:is_map/1
             },
             Map1
         )
