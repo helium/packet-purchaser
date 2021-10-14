@@ -302,6 +302,7 @@ record_dc_balance(PubKeyBin) ->
             ok = ?MODULE:dcs(Balance)
     end,
     ok.
+
 record_chain_blocks() ->
     Chain = get_chain(),
     case blockchain:height(Chain) of
