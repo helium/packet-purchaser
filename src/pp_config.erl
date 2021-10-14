@@ -40,7 +40,7 @@
 }).
 
 -record(eui, {
-    name :: noname | binary(),
+    name :: undefined | binary(),
     net_id :: non_neg_integer(),
     address :: binary(),
     port :: non_neg_integer(),
@@ -50,7 +50,7 @@
 }).
 
 -record(devaddr, {
-    name :: noname | binary(),
+    name :: undefined | binary(),
     net_id :: non_neg_integer(),
     address :: binary(),
     port :: non_neg_integer(),
