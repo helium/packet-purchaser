@@ -13,13 +13,11 @@
             {api_key, "${PP_CHIRPSTACK_API_KEY}"},
             {app_eui, "${PP_CHIRPSTACK_APP_EUI}"}
         ]},
-        {accept_joins, "${PP_ACCEPT_JOINS}"},
-        {join_net_ids, #{}},
-        {net_ids, "${PP_NET_IDS}"},
         {sc_open_dc_amount, "${PP_SC_OPEN_DC_AMOUNT}"},
         {sc_expiration_interval, "${PP_SC_EXPIRATION_INTERVAL}"},
         {sc_expiration_buffer, "${PP_SC_EXPIRATION_BUFFER}"},
-        {pp_metrics_file, "${PP_BASE_DIR}/${PP_METRICS_FILE}"}
+        {pp_metrics_file, "${PP_BASE_DIR}/${PP_METRICS_FILE}"},
+        {pp_routing_config_filename, "${PP_BASE_DIR}/${PP_ROUTING_CONFIG_FILE}"}
     ]},
     {blockchain, [
         {port, 2154},
@@ -45,7 +43,7 @@
         {handlers, [
             {lager_file_backend, [
                 {file, "packet_purchaser.log"},
-                {level, info},
+                {level, warning},
                 {size, 1000000000},
                 {date, "$D0"},
                 {count, 15},

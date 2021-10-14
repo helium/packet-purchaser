@@ -49,9 +49,9 @@
 %%--------------------------------------------------------------------
 all() ->
     [
-        net_ids_counter_test,
-        net_ids_offer_counter_test,
-        location_counter_test
+        %% net_ids_counter_test,
+        %% net_ids_offer_counter_test,
+        %% location_counter_test
     ].
 
 %%--------------------------------------------------------------------

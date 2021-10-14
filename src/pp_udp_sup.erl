@@ -38,8 +38,12 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
--spec maybe_start_worker({PubKeyBin :: binary(), NetID :: non_neg_integer()}, map()) ->
-    {ok, pid()} | {error, any()}.
+-spec maybe_start_worker(
+    WorkerKey :: {PubKeyBin :: binary(), NetID :: non_neg_integer()},
+    Args :: map() | {error, any()}
+) -> {ok, pid()} | {error, any()}.
+maybe_start_worker(_WorkerKey, {error, _} = Err) ->
+    Err;
 maybe_start_worker(WorkerKey, Args) ->
     case ets:lookup(?ETS, WorkerKey) of
         [] ->
@@ -84,8 +88,8 @@ start_worker({PubKeyBin, NetID} = WorkerKey, Args) ->
     AppArgs = get_app_args(),
     ChildArgs = maps:merge(#{pubkeybin => PubKeyBin, net_id => NetID}, maps:merge(AppArgs, Args)),
     case supervisor:start_child(?MODULE, [ChildArgs]) of
-        {error, _Err} = Err ->
-            Err;
+        {error, Err} ->
+            {error, worker_not_started, Err};
         {ok, Pid} = OK ->
             case ets:insert_new(?ETS, {WorkerKey, Pid}) of
                 true ->

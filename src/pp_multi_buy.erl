@@ -46,6 +46,8 @@
 -define(BF_FILTERS_MAX, 14).
 -define(BF_ROTATE_AFTER, 1000).
 
+-define(NET_ID_NOT_CONFIGURED, net_id_not_configured).
+
 -record(state, {}).
 
 %% -------------------------------------------------------------------
@@ -55,24 +57,20 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec maybe_buy_offer(blockchain_state_channel_offer_v1:offer(), non_neg_integer()) ->
-    ok | {error, any()}.
-maybe_buy_offer(Offer, NetID) ->
+-spec maybe_buy_offer(
+    Offer :: blockchain_state_channel_offer_v1:offer(),
+    MultiBuyMax :: unlimited | non_neg_integer()
+) -> ok | {error, any()}.
+maybe_buy_offer(Offer, MultiBuyMax) ->
     PHash = blockchain_state_channel_offer_v1:packet_hash(Offer),
     BFRef = lookup_bf(?BF_KEY),
     case bloom:set(BFRef, PHash) of
         false ->
-            {ok, Max} = multi_buy_max_for_net_id(NetID),
-            ok = schedule_clear_multi_buy(PHash),
-            true = ets:insert(?MB_ETS, {PHash, Max, 1}),
-            ok;
+            maybe_buy_offer_unseen_hash(MultiBuyMax, PHash);
         true ->
             case ets:lookup(?MB_ETS, PHash) of
                 [] ->
-                    {ok, Max} = multi_buy_max_for_net_id(NetID),
-                    ok = schedule_clear_multi_buy(PHash),
-                    true = ets:insert(?MB_ETS, {PHash, Max, 1}),
-                    ok;
+                    maybe_buy_offer_unseen_hash(MultiBuyMax, PHash);
                 [{PHash, Max, Max}] ->
                     {error, ?MB_MAX_PACKET};
                 [{PHash, _Max, _Curr}] ->
@@ -82,6 +80,17 @@ maybe_buy_offer(Offer, NetID) ->
                     end
             end
     end.
+
+-spec maybe_buy_offer_unseen_hash(
+    MultiBuyMax :: unlimited | non_neg_integer(),
+    PacketHash :: binary()
+) -> ok | {error, any()}.
+maybe_buy_offer_unseen_hash(unlimited, _PHash) ->
+    ok;
+maybe_buy_offer_unseen_hash(MultiBuyMax, PHash) ->
+    ok = schedule_clear_multi_buy(PHash),
+    true = ets:insert(?MB_ETS, {PHash, MultiBuyMax, 1}),
+    ok.
 
 %% -------------------------------------------------------------------
 %% gen_server Callbacks
@@ -127,15 +136,6 @@ code_change(_OldVsn, State, _Extra) ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
-
--spec multi_buy_max_for_net_id(non_neg_integer()) -> {ok, non_neg_integer()}.
-multi_buy_max_for_net_id(NetID) ->
-    case pp_sc_packet_handler:net_id_udp_args(NetID) of
-        #{multi_buy := PacketMax} ->
-            {ok, PacketMax};
-        _ ->
-            {ok, ?MB_UNLIMITED}
-    end.
 
 -spec lookup_bf(atom()) -> reference().
 lookup_bf(Key) ->

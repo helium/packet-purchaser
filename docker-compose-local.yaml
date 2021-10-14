@@ -11,3 +11,4 @@ services:
     network_mode: host
     volumes:
       - /var/data:/var/data
+      - ./routing_config.json:/var/data/routing_config.json

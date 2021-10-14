@@ -9,10 +9,8 @@
 -export([
     join_net_id_offer_test/1,
     join_net_id_packet_test/1,
-    net_ids_env_offer_test/1,
     net_ids_map_offer_test/1,
     net_ids_map_packet_test/1,
-    net_ids_env_packet_test/1,
     net_ids_no_config_test/1,
     single_hotspot_multi_net_id_test/1,
     multi_buy_join_test/1,
@@ -63,10 +61,8 @@ all() ->
     [
         join_net_id_offer_test,
         join_net_id_packet_test,
-        net_ids_env_offer_test,
         net_ids_map_offer_test,
         net_ids_map_packet_test,
-        net_ids_env_packet_test,
         net_ids_no_config_test,
         single_hotspot_multi_net_id_test,
         multi_buy_join_test,
@@ -109,22 +105,49 @@ join_net_id_offer_test(_Config) ->
     DevEUI2 = <<0, 0, 0, 0, 0, 0, 0, 2>>,
     AppEUI2 = <<0, 0, 0, 2, 0, 0, 0, 2>>,
 
-    NoneMapped = #{},
-    OneMapped = #{{DevEUI2, AppEUI2} => 2},
-    BothMapped = maps:merge(#{{DevEUI1, AppEUI1} => 1}, OneMapped),
-
     %% Empty mapping, no joins
-    ok = application:set_env(packet_purchaser, join_net_ids, NoneMapped),
+    ok = pp_config:load_config([]),
     ?assertMatch({error, unmapped_eui}, SendJoinOfferFun(DevEUI1, AppEUI1)),
     ?assertMatch({error, unmapped_eui}, SendJoinOfferFun(DevEUI2, AppEUI2)),
 
     %% Accept 1 Pair
-    ok = application:set_env(packet_purchaser, join_net_ids, OneMapped),
+    OneMapped = [
+        #{
+            <<"name">> => "two",
+            <<"net_id">> => 2,
+            <<"address">> => <<>>,
+            <<"port">> => 1337,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI2, <<"app_eui">> => AppEUI2}
+            ]
+        }
+    ],
+    ok = pp_config:load_config(OneMapped),
     ?assertMatch({error, unmapped_eui}, SendJoinOfferFun(DevEUI1, AppEUI1)),
     ?assertMatch(ok, SendJoinOfferFun(DevEUI2, AppEUI2)),
 
     %% Accept Both
-    ok = application:set_env(packet_purchaser, join_net_ids, BothMapped),
+    TwoMapped = [
+        #{
+            <<"name">> => "one",
+            <<"net_id">> => 1,
+            <<"address">> => <<>>,
+            <<"port">> => 1337,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1}
+            ]
+        },
+        #{
+            <<"name">> => "two",
+            <<"net_id">> => 2,
+            <<"address">> => <<>>,
+            <<"port">> => 1337,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI2, <<"app_eui">> => AppEUI2}
+            ]
+        }
+    ],
+    ok = pp_config:load_config(TwoMapped),
     ?assertMatch(ok, SendJoinOfferFun(DevEUI1, AppEUI1)),
     ?assertMatch(ok, SendJoinOfferFun(DevEUI2, AppEUI2)),
 
@@ -139,14 +162,17 @@ join_net_id_packet_test(_Config) ->
     DevEUI2 = <<0, 0, 0, 0, 0, 0, 0, 2>>,
     AppEUI2 = <<0, 0, 0, 2, 0, 0, 0, 2>>,
 
-    application:set_env(packet_purchaser, net_ids, #{
-        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333}
-    }),
-    application:set_env(packet_purchaser, join_net_ids, #{
-        {DevEUI1, AppEUI1} => ?NET_ID_COMCAST
-        %% Uncomment to make test fail
-        %% , {DevEUI2, AppEUI2} => ?NET_ID_COMCAST
-    }),
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_COMCAST,
+            <<"address">> => <<"3.3.3.3">>,
+            <<"port">> => 3333,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1}
+            ]
+        }
+    ]),
 
     %% ------------------------------------------------------------
     %% Send packet with Mapped EUI
@@ -215,20 +241,27 @@ multi_buy_join_test(_Config) ->
 
     %% -------------------------------------------------------------------
     %% Send more than one of the same join packet, only 1 should be bought
-    application:set_env(packet_purchaser, net_ids, #{
-        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333, multi_buy => 1}
-    }),
+    BaseConfig = #{
+        <<"name">> => "two",
+        <<"net_id">> => ?NET_ID_COMCAST,
+        <<"address">> => <<"3.3.3.3">>,
+        <<"port">> => 3333,
+        <<"multi_buy">> => 1,
+        <<"joins">> => [
+            #{<<"dev_eui">> => DevEUI, <<"app_eui">> => AppEUI}
+        ]
+    },
+
+    ok = pp_config:load_config([BaseConfig]),
     Offer1 = MakeJoinOffer(),
-    ct:print("First offer"),
+
     ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer1, self())),
     ?assertMatch({error, multi_buy_max_packet}, pp_sc_packet_handler:handle_offer(Offer1, self())),
     ?assertMatch({error, multi_buy_max_packet}, pp_sc_packet_handler:handle_offer(Offer1, self())),
 
     %% -------------------------------------------------------------------
     %% Send more than one of the same join packet, 2 should be purchased
-    application:set_env(packet_purchaser, net_ids, #{
-        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333, multi_buy => 2}
-    }),
+    ok = pp_config:load_config([maps:merge(BaseConfig, #{<<"multi_buy">> => 2})]),
     Offer2 = MakeJoinOffer(),
     ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer2, self())),
     ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer2, self())),
@@ -236,9 +269,7 @@ multi_buy_join_test(_Config) ->
 
     %% -------------------------------------------------------------------
     %% Send more than one of the same join packet, unlimited should be purchased
-    application:set_env(packet_purchaser, net_ids, #{
-        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333, multi_buy => unlimited}
-    }),
+    ok = pp_config:load_config([maps:merge(BaseConfig, #{<<"multi_buy">> => <<"unlimited">>})]),
     Offer3 = MakeJoinOffer(),
     lists:foreach(
         fun(_Idx) ->
@@ -263,12 +294,18 @@ multi_buy_eviction_test(_Config) ->
     PacketOffer = packet_offer(PubKeyBin, ?DEVADDR_COMCAST),
     Timeout = 50,
 
-    application:set_env(packet_purchaser, join_net_ids, #{
-        {DevEUI, AppEUI} => ?NET_ID_COMCAST
-    }),
-    application:set_env(packet_purchaser, net_ids, #{
-        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333, multi_buy => 1}
-    }),
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_COMCAST,
+            <<"address">> => <<"3.3.3.3">>,
+            <<"port">> => 3333,
+            <<"multi_buy">> => 1,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI, <<"app_eui">> => AppEUI}
+            ]
+        }
+    ]),
     application:set_env(packet_purchaser, multi_buy_eviction_timeout, Timeout),
 
     ErrMaxPacket = {error, multi_buy_max_packet},
@@ -300,9 +337,14 @@ multi_buy_packet_test(_Config) ->
 
     %% -------------------------------------------------------------------
     %% Send more than one of the same join packet, only 1 should be bought
-    application:set_env(packet_purchaser, net_ids, #{
-        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333, multi_buy => 1}
-    }),
+    BaseConfig = #{
+        <<"name">> => "test",
+        <<"net_id">> => ?NET_ID_COMCAST,
+        <<"address">> => <<"3.3.3.3">>,
+        <<"port">> => 3333,
+        <<"multi_buy">> => 1
+    },
+    ok = pp_config:load_config([BaseConfig]),
     Offer1 = MakePacketOffer(),
     ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer1, self())),
     ?assertMatch({error, multi_buy_max_packet}, pp_sc_packet_handler:handle_offer(Offer1, self())),
@@ -310,9 +352,7 @@ multi_buy_packet_test(_Config) ->
 
     %% -------------------------------------------------------------------
     %% Send more than one of the same join packet, 2 should be purchased
-    application:set_env(packet_purchaser, net_ids, #{
-        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333, multi_buy => 2}
-    }),
+    ok = pp_config:load_config([maps:merge(BaseConfig, #{<<"multi_buy">> => 2})]),
     Offer2 = MakePacketOffer(),
     ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer2, self())),
     ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer2, self())),
@@ -320,11 +360,9 @@ multi_buy_packet_test(_Config) ->
 
     %% -------------------------------------------------------------------
     %% Send more than one of the same join packet, unlimited should be purchased
-    application:set_env(packet_purchaser, net_ids, #{
-        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333, multi_buy => unlimited}
-    }),
+    ok = pp_config:load_config([maps:merge(BaseConfig, #{<<"multi_buy">> => <<"unlimited">>})]),
     Offer3 = MakePacketOffer(),
-    ct:print("Third offer"),
+
     lists:foreach(
         fun(_Idx) ->
             ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer3, self()))
@@ -343,97 +381,49 @@ net_ids_map_offer_test(_Config) ->
         pp_sc_packet_handler:handle_offer(Offer, self())
     end,
 
-    %% Buy all NetIDs
-    ok = application:set_env(packet_purchaser, net_ids, [allow_all]),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_COMCAST)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ORANGE)),
-
     %% Reject all NetIDs
-    ok = application:set_env(packet_purchaser, net_ids, #{}),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_ACTILITY)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_COMCAST)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_ORANGE)),
+    ok = pp_config:load_config([]),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_ACTILITY)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_COMCAST)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     %% Buy Only Actility1 ID
-    ok = application:set_env(packet_purchaser, net_ids, #{?NET_ID_ACTILITY => #{}}),
+    BaseConfig = #{
+        <<"name">> => "test",
+        <<"net_id">> => unset,
+        <<"address">> => <<>>,
+        <<"port">> => 1337
+    },
+    ActilityConfig = maps:merge(BaseConfig, #{<<"net_id">> => ?NET_ID_ACTILITY}),
+    OrangeConfig = maps:merge(BaseConfig, #{<<"net_id">> => ?NET_ID_ORANGE}),
+    TektelicConfig = maps:merge(BaseConfig, #{<<"net_id">> => ?NET_ID_TEKTELIC}),
+    ExperimentalConfig = maps:merge(BaseConfig, #{<<"net_id">> => ?NET_ID_EXPERIMENTAL}),
+    ComcastConfig = maps:merge(BaseConfig, #{<<"net_id">> => ?NET_ID_COMCAST}),
+
+    ok = pp_config:load_config([ActilityConfig]),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_COMCAST)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_ORANGE)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_COMCAST)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     %% Buy Multiple IDs
-    ok = application:set_env(packet_purchaser, net_ids, #{
-        ?NET_ID_ACTILITY => #{},
-        ?NET_ID_ORANGE => #{}
-    }),
+    ok = pp_config:load_config([ActilityConfig, OrangeConfig]),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_COMCAST)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_COMCAST)),
+    ?assertMatch({error, routing_not_found}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ORANGE)),
 
     %% Buy all the IDs we know about
-    ok = application:set_env(packet_purchaser, net_ids, #{
-        ?NET_ID_EXPERIMENTAL => #{},
-        ?NET_ID_ACTILITY => #{},
-        ?NET_ID_TEKTELIC => #{},
-        ?NET_ID_ORANGE => #{},
-        ?NET_ID_COMCAST => #{}
-    }),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_COMCAST)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ORANGE)),
-
-    ok.
-
-net_ids_env_offer_test(_Config) ->
-    SendPacketOfferFun = fun(DevAddr) ->
-        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
-        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
-
-        Offer = packet_offer(PubKeyBin, DevAddr),
-        pp_sc_packet_handler:handle_offer(Offer, self())
-    end,
-
-    %% Buy all NetIDs
-    ok = application:set_env(packet_purchaser, net_ids, []),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_COMCAST)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ORANGE)),
-
-    %% Buy Only Actility1 ID
-    ok = application:set_env(packet_purchaser, net_ids, [?NET_ID_ACTILITY]),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_COMCAST)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_ORANGE)),
-
-    %% Buy Multiple IDs
-    ok = application:set_env(packet_purchaser, net_ids, [?NET_ID_ACTILITY, ?NET_ID_ORANGE]),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_COMCAST)),
-    ?assertMatch({error, net_id_rejected}, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
-    ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ORANGE)),
-
-    %% Buy all the IDs we know about
-    ok = application:set_env(packet_purchaser, net_ids, [
-        ?NET_ID_EXPERIMENTAL,
-        ?NET_ID_ACTILITY,
-        ?NET_ID_TEKTELIC,
-        ?NET_ID_ORANGE,
-        ?NET_ID_COMCAST
+    ok = pp_config:load_config([
+        ExperimentalConfig,
+        ActilityConfig,
+        TektelicConfig,
+        OrangeConfig,
+        ComcastConfig
     ]),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ACTILITY)),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_TEKTELIC)),
@@ -467,13 +457,26 @@ net_ids_map_packet_test(_Config) ->
         } = sys:get_state(Pid),
         {Address, Port}
     end,
-
-    application:set_env(packet_purchaser, net_ids, #{
-        ?NET_ID_ACTILITY => #{address => "1.1.1.1", port => 1111},
-        ?NET_ID_ORANGE => #{address => "2.2.2.2", port => 2222},
-        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333}
-    }),
-
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"address">> => <<"1.1.1.1">>,
+            <<"port">> => 1111
+        },
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_ORANGE,
+            <<"address">> => <<"2.2.2.2">>,
+            <<"port">> => 2222
+        },
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_COMCAST,
+            <<"address">> => <<"3.3.3.3">>,
+            <<"port">> => 3333
+        }
+    ]),
     ?assertMatch({"1.1.1.1", 1111}, SendPacketFun(?DEVADDR_ACTILITY, ?NET_ID_ACTILITY)),
     ?assertMatch({"2.2.2.2", 2222}, SendPacketFun(?DEVADDR_ORANGE, ?NET_ID_ORANGE)),
     ?assertMatch({"3.3.3.3", 3333}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
@@ -489,57 +492,18 @@ net_ids_no_config_test(_Config) ->
 
         pp_udp_sup:lookup_worker({PubKeyBin, NetID})
     end,
-
-    application:set_env(packet_purchaser, net_ids, #{
-        ?NET_ID_ACTILITY => #{address => "1.1.1.1", port => 1111}
-        %% ?ORANGE => #{address => "2.2.2.2", port => 2222},
-        %% ?COMCAST => #{address => "3.3.3.3", port => 3333}
-    }),
-
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"address">> => <<"1.1.1.1">>,
+            <<"port">> => 1111
+        }
+    ]),
     ?assertMatch({ok, _}, SendPacketFun(?DEVADDR_ACTILITY, ?NET_ID_ACTILITY)),
     ?assertMatch({error, not_found}, SendPacketFun(?DEVADDR_ORANGE, ?NET_ID_ORANGE)),
     ?assertMatch({error, not_found}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
 
-    ok.
-
-net_ids_env_packet_test(_Config) ->
-    SendPacketFun = fun(DevAddr, NetID) ->
-        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
-        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
-
-        Packet = frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{dont_encode => true}),
-        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
-
-        {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        {
-            state,
-            _Chain,
-            _Loc,
-            PubKeyBin,
-            _Socket,
-            Address,
-            Port,
-            _PushData,
-            _ScPid,
-            _PullData,
-            _PullDataTimer
-        } = sys:get_state(Pid),
-        {Address, Port}
-    end,
-
-    application:set_env(packet_purchaser, net_ids, [
-        ?NET_ID_ACTILITY,
-        ?NET_ID_ORANGE,
-        ?NET_ID_COMCAST
-    ]),
-    application:set_env(packet_purchaser, pp_udp_worker, [
-        {address, "1.1.1.1"},
-        {port, 1337}
-    ]),
-
-    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?DEVADDR_ACTILITY, ?NET_ID_ACTILITY)),
-    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?DEVADDR_ORANGE, ?NET_ID_ORANGE)),
-    ?assertMatch({"1.1.1.1", 1337}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
     ok.
 
 single_hotspot_multi_net_id_test(_Config) ->
@@ -567,13 +531,26 @@ single_hotspot_multi_net_id_test(_Config) ->
         } = sys:get_state(Pid),
         {Address, Port}
     end,
-
-    application:set_env(packet_purchaser, net_ids, #{
-        ?NET_ID_ACTILITY => #{address => "1.1.1.1", port => 1111},
-        ?NET_ID_ORANGE => #{address => "2.2.2.2", port => 2222},
-        ?NET_ID_COMCAST => #{address => "3.3.3.3", port => 3333}
-    }),
-
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"address">> => <<"1.1.1.1">>,
+            <<"port">> => 1111
+        },
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_ORANGE,
+            <<"address">> => <<"2.2.2.2">>,
+            <<"port">> => 2222
+        },
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_COMCAST,
+            <<"address">> => <<"3.3.3.3">>,
+            <<"port">> => 3333
+        }
+    ]),
     ?assertMatch({"1.1.1.1", 1111}, SendPacketFun(?DEVADDR_ACTILITY, ?NET_ID_ACTILITY)),
     ?assertMatch({"2.2.2.2", 2222}, SendPacketFun(?DEVADDR_ORANGE, ?NET_ID_ORANGE)),
     ?assertMatch({"3.3.3.3", 3333}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
@@ -617,9 +594,15 @@ multi_buy_worst_case_stress_test(_Config) ->
             lists:seq(1, NumActors + 1)
         ),
 
-        application:set_env(packet_purchaser, net_ids, #{
-            ?NET_ID_COMCAST => #{address => "1.1.1.1", port => 1111, multi_buy => MultiBuy}
-        }),
+        ok = pp_config:load_config([
+            #{
+                <<"name">> => "test",
+                <<"net_id">> => ?NET_ID_COMCAST,
+                <<"address">> => <<"1.1.1.1">>,
+                <<"port">> => 1111,
+                <<"multi_buy">> => MultiBuy
+            }
+        ]),
 
         Start = erlang:system_time(millisecond),
         lists:foreach(

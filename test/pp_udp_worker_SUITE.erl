@@ -61,8 +61,19 @@ all() ->
 %%--------------------------------------------------------------------
 %% TEST CASE SETUP
 %%--------------------------------------------------------------------
-init_per_testcase(TestCase, Config) ->
-    test_utils:init_per_testcase(TestCase, Config).
+init_per_testcase(TestCase, Config0) ->
+    Config1 = test_utils:init_per_testcase(TestCase, Config0),
+    {ok, NetID} = lorawan_devaddr:net_id(16#deadbeef),
+
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => <<"udp_worker_test">>,
+            <<"net_id">> => NetID,
+            <<"address">> => <<>>,
+            <<"port">> => 1337
+        }
+    ]),
+    Config1.
 
 %%--------------------------------------------------------------------
 %% TEST CASE TEARDOWN
