@@ -186,7 +186,7 @@ handle(Req, _Args) ->
 handle('GET', [<<"metrics">>], _Req) ->
     {ok, [], prometheus_text_format:format()};
 handle(_Verb, _Path, _Req) ->
-    {ok, [], "Hello world"}.
+    ignore.
 
 handle_event(_Event, _Data, _Args) ->
     ok.
