@@ -9,7 +9,7 @@
 -include("semtech_udp.hrl").
 
 -export([
-    push_data/3,
+    push_data/3, push_data/4,
     push_ack/1,
     pull_data/2,
     pull_ack/1,
@@ -33,8 +33,21 @@
     binary(),
     map()
 ) -> binary().
-push_data(Token, MAC, Map) ->
-    BinJSX = jsx:encode(#{rxpk => [Map]}, [{float_formatter, fun round_to_fourth_decimal/1}]),
+push_data(Token, MAC, RXPK) ->
+    BinJSX = jsx:encode(#{rxpk => [RXPK]}, [{float_formatter, fun round_to_fourth_decimal/1}]),
+    <<?PROTOCOL_2:8/integer-unsigned, Token/binary, ?PUSH_DATA:8/integer-unsigned, MAC:8/binary,
+        BinJSX/binary>>.
+
+-spec push_data(
+    binary(),
+    binary(),
+    map(),
+    map()
+) -> binary().
+push_data(Token, MAC, RXPK, Stat) ->
+    BinJSX = jsx:encode(#{rxpk => [RXPK], stat => Stat}, [
+        {float_formatter, fun round_to_fourth_decimal/1}
+    ]),
     <<?PROTOCOL_2:8/integer-unsigned, Token/binary, ?PUSH_DATA:8/integer-unsigned, MAC:8/binary,
         BinJSX/binary>>.
 
@@ -181,7 +194,7 @@ push_data_test() ->
     MAC0 = crypto:strong_rand_bytes(8),
     Tmst = erlang:system_time(millisecond),
     Payload = <<"payload">>,
-    Map = #{
+    RXPK = #{
         time => iso8601:format(
             calendar:system_time_to_universal_time(Tmst, millisecond)
         ),
@@ -195,9 +208,9 @@ push_data_test() ->
         size => erlang:byte_size(Payload),
         data => base64:encode(Payload)
     },
-    PushData = push_data(Token0, MAC0, Map),
+    PushData0 = push_data(Token0, MAC0, RXPK),
     <<?PROTOCOL_2:8/integer-unsigned, Token1:2/binary, Id:8/integer-unsigned, MAC1:8/binary,
-        BinJSX/binary>> = PushData,
+        BinJSX0/binary>> = PushData0,
     ?assertEqual(Token1, Token0),
     ?assertEqual(?PUSH_DATA, Id),
     ?assertEqual(MAC0, MAC1),
@@ -220,7 +233,48 @@ push_data_test() ->
                 }
             ]
         },
-        jsx:decode(BinJSX)
+        jsx:decode(BinJSX0)
+    ),
+    STAT = #{
+        regi => 'US_915',
+        inde => 123456,
+        lati => -121,
+        long => 37,
+        pubk => "pubkey_b58"
+    },
+    PushData1 = push_data(Token0, MAC0, RXPK, STAT),
+    <<?PROTOCOL_2:8/integer-unsigned, Token1:2/binary, Id:8/integer-unsigned, MAC1:8/binary,
+        BinJSX1/binary>> = PushData1,
+    ?assertEqual(Token1, Token0),
+    ?assertEqual(?PUSH_DATA, Id),
+    ?assertEqual(MAC0, MAC1),
+    ?assertEqual(
+        #{
+            <<"rxpk">> => [
+                #{
+                    <<"time">> => iso8601:format(
+                        calendar:system_time_to_universal_time(Tmst, millisecond)
+                    ),
+                    <<"tmst">> => Tmst,
+                    <<"freq">> => 915.2,
+                    <<"rfch">> => 0,
+                    <<"modu">> => <<"LORA">>,
+                    <<"datr">> => <<"datr">>,
+                    <<"rssi">> => -80.0,
+                    <<"lsnr">> => -10,
+                    <<"size">> => erlang:byte_size(Payload),
+                    <<"data">> => base64:encode(Payload)
+                }
+            ],
+            <<"stat">> => #{
+                <<"regi">> => <<"US_915">>,
+                <<"inde">> => 123456,
+                <<"lati">> => -121,
+                <<"long">> => 37,
+                <<"pubk">> => "pubkey_b58"
+            }
+        },
+        jsx:decode(BinJSX1)
     ),
     ok.
 
