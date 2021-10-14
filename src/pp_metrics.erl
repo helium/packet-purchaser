@@ -7,20 +7,20 @@
 
 -define(ETS, pp_metrics_ets).
 
--define(METRIC_OFFER_COUNT, packet_purchaser_offer_count).
--define(METRIC_PACKET_COUNT, packet_purchaser_packet_count).
--define(METRIC_GWMP_COUNT, packet_purchaser_gwmp_counter).
--define(METRIC_DC_BALANCE, packet_purchaser_dc_balance).
--define(METRIC_CHAIN_BLOCKS, packet_purchaser_blockchain_blocks).
+-define(METRICS_OFFER_COUNT, packet_purchaser_offer_count).
+-define(METRICS_PACKET_COUNT, packet_purchaser_packet_count).
+-define(METRICS_GWMP_COUNT, packet_purchaser_gwmp_counter).
+-define(METRICS_DC_BALANCE, packet_purchaser_dc_balance).
+-define(METRICS_CHAIN_BLOCKS, packet_purchaser_blockchain_blocks).
 
--define(METRIC_SC_OPENED_COUNT, packet_purchaser_state_channel_opened_count).
--define(METRIC_SC_OVERSPENT_COUNT, packet_purchaser_state_channel_overspent_count).
--define(METRIC_SC_ACTIVE_COUNT, packet_purchaser_state_channel_active_count).
--define(METRIC_SC_ACTIVE_BALANCE, packet_purchaser_state_channel_active_balance).
--define(METRIC_SC_ACTIVE_ACTORS, packet_purchaser_state_channel_active_actors).
+-define(METRICS_SC_OPENED_COUNT, packet_purchaser_state_channel_opened_count).
+-define(METRICS_SC_OVERSPENT_COUNT, packet_purchaser_state_channel_overspent_count).
+-define(METRICS_SC_ACTIVE_COUNT, packet_purchaser_state_channel_active_count).
+-define(METRICS_SC_ACTIVE_BALANCE, packet_purchaser_state_channel_active_balance).
+-define(METRICS_SC_ACTIVE_ACTORS, packet_purchaser_state_channel_active_actors).
 
--define(METRICS_TICK_INTERVAL, timer:seconds(10)).
--define(METRICS_TICK, '__pp_metrics_tick').
+-define(METRICS_WORKER_TICK_INTERVAL, timer:seconds(10)).
+-define(METRICS_WORKER_TICK, '__pp_metrics_tick').
 
 %% gen_server API
 -export([start_link/0]).
@@ -79,7 +79,7 @@ start_link() ->
 handle_offer(PubKeyBin, NetID, OfferType, Action, PayloadSize) ->
     {ok, AName} = animal_name(PubKeyBin),
     DC = calculate_dc_amount(PayloadSize),
-    prometheus_counter:inc(?METRIC_OFFER_COUNT, [AName, NetID, OfferType, Action, DC]).
+    prometheus_counter:inc(?METRICS_OFFER_COUNT, [AName, NetID, OfferType, Action, DC]).
 
 -spec handle_packet(
     PubKeyBin :: libp2p_crypto:pubkey_bin(),
@@ -88,35 +88,35 @@ handle_offer(PubKeyBin, NetID, OfferType, Action, PayloadSize) ->
 ) -> ok.
 handle_packet(PubKeyBin, NetID, PacketType) ->
     {ok, AName} = animal_name(PubKeyBin),
-    prometheus_counter:inc(?METRIC_PACKET_COUNT, [AName, NetID, PacketType]).
+    prometheus_counter:inc(?METRICS_PACKET_COUNT, [AName, NetID, PacketType]).
 
 -spec push_ack(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
 push_ack(PubKeyBin, NetID) ->
     {ok, AName} = animal_name(PubKeyBin),
-    prometheus_counter:inc(?METRIC_GWMP_COUNT, [AName, NetID, push_ack, hit]).
+    prometheus_counter:inc(?METRICS_GWMP_COUNT, [AName, NetID, push_ack, hit]).
 
 -spec push_ack_missed(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
 push_ack_missed(PubKeyBin, NetID) ->
     {ok, AName} = animal_name(PubKeyBin),
-    prometheus_counter:inc(?METRIC_GWMP_COUNT, [AName, NetID, push_ack, miss]).
+    prometheus_counter:inc(?METRICS_GWMP_COUNT, [AName, NetID, push_ack, miss]).
 
 -spec pull_ack(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
 pull_ack(PubKeyBin, NetID) ->
     {ok, AName} = animal_name(PubKeyBin),
-    prometheus_counter:inc(?METRIC_GWMP_COUNT, [AName, NetID, pull_ack, hit]).
+    prometheus_counter:inc(?METRICS_GWMP_COUNT, [AName, NetID, pull_ack, hit]).
 
 -spec pull_ack_missed(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
 pull_ack_missed(PubKeyBin, NetID) ->
     {ok, AName} = animal_name(PubKeyBin),
-    prometheus_counter:inc(?METRIC_GWMP_COUNT, [AName, NetID, pull_ack, miss]).
+    prometheus_counter:inc(?METRICS_GWMP_COUNT, [AName, NetID, pull_ack, miss]).
 
 -spec dcs(Balance :: non_neg_integer()) -> ok.
 dcs(Balance) ->
-    prometheus_gauge:set(?METRIC_DC_BALANCE, Balance).
+    prometheus_gauge:set(?METRICS_DC_BALANCE, Balance).
 
 -spec blocks(RelativeHeight :: integer()) -> ok.
 blocks(RelativeHeight) ->
-    prometheus_gauge:set(?METRIC_CHAIN_BLOCKS, RelativeHeight).
+    prometheus_gauge:set(?METRICS_CHAIN_BLOCKS, RelativeHeight).
 
 -spec state_channels(
     OpenedCount :: non_neg_integer(),
@@ -126,11 +126,11 @@ blocks(RelativeHeight) ->
     TotalActors :: non_neg_integer()
 ) -> ok.
 state_channels(OpenedCount, OverspentCount, ActiveCount, TotalDCLeft, TotalActors) ->
-    prometheus_gauge:set(?METRIC_SC_OPENED_COUNT, OpenedCount),
-    prometheus_gauge:set(?METRIC_SC_OVERSPENT_COUNT, OverspentCount),
-    prometheus_gauge:set(?METRIC_SC_ACTIVE_COUNT, ActiveCount),
-    prometheus_gauge:set(?METRIC_SC_ACTIVE_BALANCE, TotalDCLeft),
-    prometheus_gauge:set(?METRIC_SC_ACTIVE_ACTORS, TotalActors).
+    prometheus_gauge:set(?METRICS_SC_OPENED_COUNT, OpenedCount),
+    prometheus_gauge:set(?METRICS_SC_OVERSPENT_COUNT, OverspentCount),
+    prometheus_gauge:set(?METRICS_SC_ACTIVE_COUNT, ActiveCount),
+    prometheus_gauge:set(?METRICS_SC_ACTIVE_BALANCE, TotalDCLeft),
+    prometheus_gauge:set(?METRICS_SC_ACTIVE_ACTORS, TotalActors).
 
 %% -------------------------------------------------------------------
 %% gen_server Callbacks
@@ -159,7 +159,7 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(?METRICS_TICK, #state{pubkey_bin = PubKeyBin} = State) ->
+handle_info(?METRICS_WORKER_TICK, #state{pubkey_bin = PubKeyBin} = State) ->
     lager:info("running metrics"),
     erlang:spawn(fun() ->
         ok = record_dc_balance(PubKeyBin),
@@ -205,14 +205,14 @@ declare_metrics() ->
     %% type = frame type :: join | packet
     %% status = bought :: accepted | rejected
     prometheus_counter:declare([
-        {name, ?METRIC_OFFER_COUNT},
+        {name, ?METRICS_OFFER_COUNT},
         {help, "Offer count for NetID"},
         {labels, [animal_name, net_id, type, status, dc]}
     ]),
 
     %% type = frame type :: join | packet
     prometheus_counter:declare([
-        {name, ?METRIC_PACKET_COUNT},
+        {name, ?METRICS_PACKET_COUNT},
         {help, "Packet count for NetID"},
         {labels, [animal_name, net_id, type]}
     ]),
@@ -220,30 +220,30 @@ declare_metrics() ->
     %% type = gwmp packet type :: push_ack | pull_ack
     %% status = received :: hit | miss
     prometheus_counter:declare([
-        {name, ?METRIC_GWMP_COUNT},
+        {name, ?METRICS_GWMP_COUNT},
         {help, "Semtech UDP acks for Gateway and NetID"},
         {labels, [animal_name, net_id, type, status]}
     ]),
 
     %% State channels
     prometheus_gauge:declare([
-        {name, ?METRIC_SC_OPENED_COUNT},
+        {name, ?METRICS_SC_OPENED_COUNT},
         {help, "Opened State Channels count"}
     ]),
     prometheus_gauge:declare([
-        {name, ?METRIC_SC_OVERSPENT_COUNT},
+        {name, ?METRICS_SC_OVERSPENT_COUNT},
         {help, "Overspent State Channels count"}
     ]),
     prometheus_gauge:declare([
-        {name, ?METRIC_SC_ACTIVE_COUNT},
+        {name, ?METRICS_SC_ACTIVE_COUNT},
         {help, "Active State Channels count"}
     ]),
     prometheus_gauge:declare([
-        {name, ?METRIC_SC_ACTIVE_BALANCE},
+        {name, ?METRICS_SC_ACTIVE_BALANCE},
         {help, "Active State Channels balance"}
     ]),
     prometheus_gauge:declare([
-        {name, ?METRIC_SC_ACTIVE_ACTORS},
+        {name, ?METRICS_SC_ACTIVE_ACTORS},
         {help, "Active State Channels actors"}
     ]),
 
@@ -290,7 +290,7 @@ get_chain() ->
 
 -spec schedule_next_tick() -> reference().
 schedule_next_tick() ->
-    erlang:send_after(?METRICS_TICK_INTERVAL, self(), ?METRICS_TICK).
+    erlang:send_after(?METRICS_WORKER_TICK_INTERVAL, self(), ?METRICS_WORKER_TICK).
 
 record_dc_balance(PubKeyBin) ->
     Ledger = get_ledger(),
