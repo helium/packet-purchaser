@@ -139,7 +139,6 @@ state_channels(OpenedCount, OverspentCount, ActiveCount, TotalDCLeft, TotalActor
 init(Args) ->
     ElliOpts = [
         {callback, ?MODULE},
-        {callback_args, #{forward => self()}},
         {port, proplists:get_value(port, Args, 3000)}
     ],
     {ok, _Pid} = elli:start_link(ElliOpts),
