@@ -20,6 +20,8 @@
         kvc,
         iso8601,
         xxhash,
+        elli,
+        prometheus,
         hackney,
         clique
     ]},

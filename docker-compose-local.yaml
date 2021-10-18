@@ -12,3 +12,21 @@ services:
     volumes:
       - /var/data:/var/data
       - ./routing_config.json:/var/data/routing_config.json
+  prometheus:
+    image: prom/prometheus
+    container_name: helium_prometheus
+    network_mode: host
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yml
+  node_exporter:
+    image: quay.io/prometheus/node-exporter:latest
+    container_name: helium_node_exporter
+    command:
+      - '--path.rootfs=/host'
+    network_mode: host
+    pid: host
+    restart: unless-stopped
+    volumes:
+      - '/:/host:ro,rslave'

@@ -47,7 +47,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 {ok, #{net_id := NetID} = WorkerArgs} = pp_config:lookup_devaddr(DevAddr),
                 lager:debug("packet: [devaddr: ~p] [netid: ~p]", [DevAddr, NetID]),
                 {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs),
-                ok = pp_metrics:handle_packet(PubKeyBin, NetID),
+                ok = pp_metrics:handle_packet(PubKeyBin, NetID, packet),
                 pp_udp_worker:push_data(WorkerPid, SCPacket, PacketTime, Pid)
             catch
                 error:{badmatch, {error, routing_not_found}} ->
@@ -64,6 +64,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 {ok, #{net_id := NetID} = WorkerArgs} = pp_config:lookup_eui(EUI),
                 lager:debug("join: [eui: ~p] [netid: ~p]", [EUI, NetID]),
                 {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs),
+                ok = pp_metrics:handle_packet(PubKeyBin, NetID, join),
                 pp_udp_worker:push_data(WorkerPid, SCPacket, PacketTime, Pid)
             catch
                 error:{badmatch, {error, unmapped_eui}} ->
@@ -124,18 +125,19 @@ handle_offer_resp(Routing, Offer, Resp) ->
                 end
         end,
 
-    ok = pp_metrics:handle_offer(PubKeyBin, NetID),
-
     Action =
         case Resp of
-            ok -> buying;
-            {error, _} -> ignoring
+            ok -> accepted;
+            {error, _} -> rejected
         end,
     OfferType =
         case Routing of
             {eui, _} -> join;
             {devaddr, _} -> packet
         end,
+
+    PayloadSize = blockchain_state_channel_offer_v1:payload_size(Offer),
+    ok = pp_metrics:handle_offer(PubKeyBin, NetID, OfferType, Action, PayloadSize),
 
     lager:debug("offer: ~s ~s [net_id: ~p] [routing: ~p] [resp: ~p]", [
         Action,
