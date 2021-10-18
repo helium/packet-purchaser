@@ -179,9 +179,8 @@ init_ets() ->
     ?EUI_ETS = ets:new(?EUI_ETS, [
         public,
         named_table,
-        set,
-        {read_concurrency, true},
-        {keypos, #eui.net_id}
+        bag,
+        {read_concurrency, true}
     ]),
     ?DEVADDR_ETS = ets:new(?DEVADDR_ETS, [
         public,
