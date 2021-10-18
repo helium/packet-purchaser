@@ -218,6 +218,16 @@ declare_metrics() ->
         {labels, [net_id, type, status]}
     ]),
 
+    %% Blockchain metrics
+    prometheus_gauge:declare([
+        {name, ?METRICS_DC_BALANCE},
+        {help, "Account DC Balance"}
+    ]),
+    prometheus_gauge:declare([
+        {name, ?METRICS_CHAIN_BLOCKS},
+        {help, "Packet Purchaser's blockchain blocks"}
+    ]),
+
     %% State channels
     prometheus_gauge:declare([
         {name, ?METRICS_SC_OPENED_COUNT},
