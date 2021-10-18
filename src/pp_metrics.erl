@@ -252,16 +252,6 @@ declare_metrics() ->
 
     ok.
 
--spec animal_name(PubKeyBin :: libp2p_crypto:pubkey_bin()) -> {ok, string()}.
-animal_name(PubKeyBin) ->
-    e2qc:cache(
-        animal_name_cache,
-        PubKeyBin,
-        fun() ->
-            erl_angry_purple_tiger:animal_name(libp2p_crypto:bin_to_b58(PubKeyBin))
-        end
-    ).
-
 -spec calculate_dc_amount(PayloadSize :: non_neg_integer()) ->
     failed_to_calculate_dc | non_neg_integer().
 calculate_dc_amount(PayloadSize) ->

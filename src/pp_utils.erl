@@ -5,6 +5,7 @@
 -export([
     get_oui/0,
     pubkeybin_to_mac/1,
+    animal_name/1,
     get_metrics_filename/0,
     get_lns_metrics_filename/0,
     hex_to_binary/1
@@ -25,6 +26,16 @@ get_oui() ->
 -spec pubkeybin_to_mac(binary()) -> binary().
 pubkeybin_to_mac(PubKeyBin) ->
     <<(xxhash:hash64(PubKeyBin)):64/unsigned-integer>>.
+
+-spec animal_name(PubKeyBin :: libp2p_crypto:pubkey_bin()) -> {ok, string()}.
+animal_name(PubKeyBin) ->
+    e2qc:cache(
+        animal_name_cache,
+        PubKeyBin,
+        fun() ->
+            erl_angry_purple_tiger:animal_name(libp2p_crypto:bin_to_b58(PubKeyBin))
+        end
+    ).
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
