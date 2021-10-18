@@ -76,39 +76,33 @@ start_link() ->
     Action :: accepted | rejected,
     PayloadSize :: non_neg_integer()
 ) -> ok.
-handle_offer(PubKeyBin, NetID, OfferType, Action, PayloadSize) ->
-    {ok, AName} = animal_name(PubKeyBin),
+handle_offer(_PubKeyBin, NetID, OfferType, Action, PayloadSize) ->
     DC = calculate_dc_amount(PayloadSize),
-    prometheus_counter:inc(?METRICS_OFFER_COUNT, [AName, NetID, OfferType, Action, DC]).
+    prometheus_counter:inc(?METRICS_OFFER_COUNT, [NetID, OfferType, Action, DC]).
 
 -spec handle_packet(
     PubKeyBin :: libp2p_crypto:pubkey_bin(),
     NetID :: non_neg_integer(),
     PacketType :: join | packet
 ) -> ok.
-handle_packet(PubKeyBin, NetID, PacketType) ->
-    {ok, AName} = animal_name(PubKeyBin),
-    prometheus_counter:inc(?METRICS_PACKET_COUNT, [AName, NetID, PacketType]).
+handle_packet(_PubKeyBin, NetID, PacketType) ->
+    prometheus_counter:inc(?METRICS_PACKET_COUNT, [NetID, PacketType]).
 
 -spec push_ack(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
-push_ack(PubKeyBin, NetID) ->
-    {ok, AName} = animal_name(PubKeyBin),
-    prometheus_counter:inc(?METRICS_GWMP_COUNT, [AName, NetID, push_ack, hit]).
+push_ack(_PubKeyBin, NetID) ->
+    prometheus_counter:inc(?METRICS_GWMP_COUNT, [NetID, push_ack, hit]).
 
 -spec push_ack_missed(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
-push_ack_missed(PubKeyBin, NetID) ->
-    {ok, AName} = animal_name(PubKeyBin),
-    prometheus_counter:inc(?METRICS_GWMP_COUNT, [AName, NetID, push_ack, miss]).
+push_ack_missed(_PubKeyBin, NetID) ->
+    prometheus_counter:inc(?METRICS_GWMP_COUNT, [NetID, push_ack, miss]).
 
 -spec pull_ack(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
-pull_ack(PubKeyBin, NetID) ->
-    {ok, AName} = animal_name(PubKeyBin),
-    prometheus_counter:inc(?METRICS_GWMP_COUNT, [AName, NetID, pull_ack, hit]).
+pull_ack(_PubKeyBin, NetID) ->
+    prometheus_counter:inc(?METRICS_GWMP_COUNT, [NetID, pull_ack, hit]).
 
 -spec pull_ack_missed(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
-pull_ack_missed(PubKeyBin, NetID) ->
-    {ok, AName} = animal_name(PubKeyBin),
-    prometheus_counter:inc(?METRICS_GWMP_COUNT, [AName, NetID, pull_ack, miss]).
+pull_ack_missed(_PubKeyBin, NetID) ->
+    prometheus_counter:inc(?METRICS_GWMP_COUNT, [NetID, pull_ack, miss]).
 
 -spec dcs(Balance :: non_neg_integer()) -> ok.
 dcs(Balance) ->
@@ -206,14 +200,14 @@ declare_metrics() ->
     prometheus_counter:declare([
         {name, ?METRICS_OFFER_COUNT},
         {help, "Offer count for NetID"},
-        {labels, [animal_name, net_id, type, status, dc]}
+        {labels, [net_id, type, status, dc]}
     ]),
 
     %% type = frame type :: join | packet
     prometheus_counter:declare([
         {name, ?METRICS_PACKET_COUNT},
         {help, "Packet count for NetID"},
-        {labels, [animal_name, net_id, type]}
+        {labels, [net_id, type]}
     ]),
 
     %% type = gwmp packet type :: push_ack | pull_ack
@@ -221,7 +215,7 @@ declare_metrics() ->
     prometheus_counter:declare([
         {name, ?METRICS_GWMP_COUNT},
         {help, "Semtech UDP acks for Gateway and NetID"},
-        {labels, [animal_name, net_id, type, status]}
+        {labels, [net_id, type, status]}
     ]),
 
     %% State channels
