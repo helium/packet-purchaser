@@ -118,10 +118,10 @@ handle_offer_resp(Routing, Offer, Resp) ->
                     {error, Reason} -> {ok, Reason};
                     {ok, #{net_id := NetID0}} -> {ok, NetID0}
                 end;
-            {devaddr, _} = DevAddr ->
-                case pp_config:lookup_devaddr(DevAddr) of
+            {devaddr, DevAddr} ->
+                case lorawan_devaddr:net_id(DevAddr) of
                     {error, Reason} -> {ok, Reason};
-                    {ok, #{net_id := NetID0}} -> {ok, NetID0}
+                    {ok, NetID0} -> {ok, NetID0}
                 end
         end,
 
