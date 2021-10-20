@@ -76,9 +76,8 @@ start_link() ->
     Action :: accepted | rejected,
     PayloadSize :: non_neg_integer()
 ) -> ok.
-handle_offer(_PubKeyBin, NetID, OfferType, Action, PayloadSize) ->
-    DC = calculate_dc_amount(PayloadSize),
-    prometheus_counter:inc(?METRICS_OFFER_COUNT, [NetID, OfferType, Action, DC]).
+handle_offer(_PubKeyBin, NetID, OfferType, Action, _PayloadSize) ->
+    prometheus_counter:inc(?METRICS_OFFER_COUNT, [NetID, OfferType, Action]).
 
 -spec handle_packet(
     PubKeyBin :: libp2p_crypto:pubkey_bin(),
@@ -200,7 +199,7 @@ declare_metrics() ->
     prometheus_counter:declare([
         {name, ?METRICS_OFFER_COUNT},
         {help, "Offer count for NetID"},
-        {labels, [net_id, type, status, dc]}
+        {labels, [net_id, type, status]}
     ]),
 
     %% type = frame type :: join | packet
@@ -251,17 +250,6 @@ declare_metrics() ->
     ]),
 
     ok.
-
--spec calculate_dc_amount(PayloadSize :: non_neg_integer()) ->
-    failed_to_calculate_dc | non_neg_integer().
-calculate_dc_amount(PayloadSize) ->
-    Ledger = get_ledger(),
-    case blockchain_utils:calculate_dc_amount(Ledger, PayloadSize) of
-        {error, Reason} ->
-            Reason;
-        DCAmount ->
-            DCAmount
-    end.
 
 -spec get_ledger() -> blockchain_ledger_v1:ledger().
 get_ledger() ->
