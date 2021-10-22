@@ -8,12 +8,11 @@ services:
     network_mode: host
     volumes:
       - /var/data:/var/data
+      - ./routing_config.json:/var/data/routing_config.json
   prometheus:
     image: prom/prometheus
     container_name: helium_prometheus
     network_mode: host
-    ports:
-      - "9090:9090"
     volumes:
       - ./prometheus.yaml:/etc/prometheus/prometheus.yml
   node_exporter:
@@ -21,6 +20,9 @@ services:
     container_name: helium_node_exporter
     command:
       - '--path.rootfs=/host'
+      - "--collector.disable-defaults"
+      - "--collector.filesystem"
+      - "--collector.netstat"
     network_mode: host
     pid: host
     restart: unless-stopped
