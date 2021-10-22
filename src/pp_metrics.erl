@@ -319,7 +319,7 @@ record_state_channels() ->
     ActiveCount = erlang:length(ActiveSCs),
 
     {TotalDCLeft, TotalActors} = lists:foldl(
-        fun(ActiveSC, {DCs, Actors}) ->
+        fun({ActiveSC, _, _}, {DCs, Actors}) ->
             Summaries = blockchain_state_channel_v1:summaries(ActiveSC),
             TotalDC = blockchain_state_channel_v1:total_dcs(ActiveSC),
             DCLeft = blockchain_state_channel_v1:amount(ActiveSC) - TotalDC,
