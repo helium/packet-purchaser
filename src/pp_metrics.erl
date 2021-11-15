@@ -37,7 +37,9 @@
     %% Stats
     dcs/1,
     blocks/1,
-    state_channels/5
+    state_channels/5,
+    %% Websocket
+    ws_state/1
 ]).
 
 %% gen_server callbacks
@@ -124,6 +126,11 @@ state_channels(OpenedCount, OverspentCount, ActiveCount, TotalDCLeft, TotalActor
     prometheus_gauge:set(?METRICS_SC_ACTIVE_COUNT, ActiveCount),
     prometheus_gauge:set(?METRICS_SC_ACTIVE_BALANCE, TotalDCLeft),
     prometheus_gauge:set(?METRICS_SC_ACTIVE_ACTORS, TotalActors).
+
+-spec ws_state(boolean()) -> ok.
+ws_state(_State) ->
+    %% TODO: prometheus_boolean:set(?METRICS_WS_STATE, State).
+    ok.
 
 %% -------------------------------------------------------------------
 %% gen_server Callbacks

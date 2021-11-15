@@ -5,11 +5,16 @@
 
 -include("packet_purchaser.hrl").
 
+-define(CONSOLE_IP_PORT, <<"127.0.0.1:3001">>).
+-define(CONSOLE_WS_URL, <<"ws://", ?CONSOLE_IP_PORT/binary, "/websocket">>).
+
 -export([
     init_per_testcase/2,
     end_per_testcase/2,
     match_map/2,
-    wait_until/1, wait_until/3
+    wait_until/1, wait_until/3,
+    ws_rcv/0,
+    ws_init/0
 ]).
 
 -spec init_per_testcase(atom(), list()) -> list().
@@ -18,6 +23,10 @@ init_per_testcase(TestCase, Config) ->
     ok = application:set_env(blockchain, base_dir, BaseDir ++ "/blockchain_data"),
     ok = application:set_env(lager, log_root, BaseDir ++ "/log"),
     ok = application:set_env(lager, crash_log, "crash.log"),
+    ok = application:set_env(packet_purchaser, pp_console_api, [
+        {ws_endpoint, ?CONSOLE_WS_URL},
+        {secret, <<>>}
+    ]),
     FormatStr = [
         "[",
         date,
@@ -59,6 +68,16 @@ init_per_testcase(TestCase, Config) ->
             ok
     end,
 
+    ElliOpts = [
+        {callback, console_callback},
+        {callback_args, #{
+            forward => self()
+        }},
+        {port, 3001}
+    ],
+    {ok, ElliPid} = elli:start_link(ElliOpts),
+    %% TODO: is this necessary? application:ensure_all_started(gun),
+
     {ok, FakeLNSPid} = pp_lns:start_link(#{port => 1700, forward => self()}),
     {ok, _} = application:ensure_all_started(?APP),
 
@@ -89,7 +108,8 @@ init_per_testcase(TestCase, Config) ->
         {lns, FakeLNSPid},
         {gateway, {PubKeyBin, WorkerPid}},
         {consensus_member, ConsensusMembers},
-        {reset_env_fun, ResetEnvFun}
+        {reset_env_fun, ResetEnvFun},
+        {elli, ElliPid}
         | Config
     ].
 
@@ -159,6 +179,23 @@ wait_until(Fun, Retry, Delay) when Retry > 0 ->
         _ ->
             timer:sleep(Delay),
             wait_until(Fun, Retry - 1, Delay)
+    end.
+
+-spec ws_init() -> {ok, pid()}.
+ws_init() ->
+    receive
+        {websocket_init, Pid} ->
+            {ok, Pid}
+    after 2500 -> ct:fail(websocket_init_timeout)
+    end.
+
+-spec ws_rcv() -> {ok, any()}.
+ws_rcv() ->
+    receive
+        {websocket_packet, Payload} ->
+            %% {ok, #{payload := Payload}} = pp_console_websocket_client:decode_msg(Msg),
+            {ok, Payload}
+    after 2500 -> ct:fail(websocket_msg_timeout)
     end.
 
 %% ------------------------------------------------------------------
