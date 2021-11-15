@@ -13,6 +13,10 @@
             {api_key, "${PP_CHIRPSTACK_API_KEY}"},
             {app_eui, "${PP_CHIRPSTACK_APP_EUI}"}
         ]},
+        {pp_console_api, [
+            {ws_endpoint, <<"${PP_CONSOLE_WS_ENDPOINT}">>},
+            {secret, <<"${PP_CONSOLE_SECRET}">>}
+        ]},
         {sc_open_dc_amount, "${PP_SC_OPEN_DC_AMOUNT}"},
         {sc_expiration_interval, "${PP_SC_EXPIRATION_INTERVAL}"},
         {sc_expiration_buffer, "${PP_SC_EXPIRATION_BUFFER}"},

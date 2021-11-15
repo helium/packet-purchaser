@@ -21,6 +21,7 @@
         iso8601,
         xxhash,
         elli,
+        websocket_client,
         prometheus,
         hackney,
         clique
@@ -28,7 +29,6 @@
     {included_applications, [blockchain]},
     {env, []},
     {modules, []},
-
     {licenses, ["Apache 2.0"]},
     {links, []}
 ]}.
