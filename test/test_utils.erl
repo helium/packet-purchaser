@@ -74,7 +74,8 @@ init_per_testcase(TestCase, Config) ->
         {callback_args, #{
             forward => self()
         }},
-        {port, 3001}
+        {port, 3001},
+        {min_acceptors, 1}
     ],
     {ok, ElliPid} = elli:start_link(ElliOpts),
     %% TODO: is this necessary? application:ensure_all_started(gun),
