@@ -1,6 +1,10 @@
 -module(pp_udp_socket).
 
--export([open/2, close/1]).
+-export([
+    open/2,
+    close/1,
+    get_address/1
+]).
 
 -export([send/2]).
 
@@ -15,7 +19,7 @@
 -type socket_port() :: inet:port_number().
 -type socket_info() :: {socket_address(), socket_port()}.
 
--export_type([socket/0]).
+-export_type([socket/0, socket_address/0, socket_port/0]).
 
 -spec open(socket_info(), socket_info()) -> {ok, socket()}.
 open(Primary, Tee) ->
@@ -34,3 +38,7 @@ do_send(Socket, {Address, Port}, Data) -> gen_udp:send(Socket, Address, Port, Da
 
 close(#socket{socket = Socket}) ->
     gen_udp:close(Socket).
+
+-spec get_address(socket()) -> socket_info().
+get_address(#socket{primary = Primary}) ->
+    Primary.

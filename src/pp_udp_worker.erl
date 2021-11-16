@@ -40,8 +40,6 @@
     pubkeybin :: libp2p_crypto:pubkey_bin(),
     net_id :: non_neg_integer(),
     socket :: pp_udp_socket:socket(),
-    address :: inet:socket_address() | inet:hostname(),
-    port :: inet:port_number(),
     push_data = #{} :: #{binary() => {binary(), reference()}},
     sc_pid :: undefined | pid(),
     pull_data :: {reference(), binary()} | undefined,
@@ -139,8 +137,7 @@ handle_info(get_hotspot_location, #state{pubkeybin = PubKeyBin} = State) ->
 handle_info(
     {udp, Socket, _Address, Port, Data},
     #state{
-        socket = {socket, Socket, _, _},
-        port = Port
+        socket = {socket, Socket, _, _}
     } = State
 ) ->
     lager:debug("got udp packet ~p from ~p:~p", [Data, _Address, Port]),
@@ -388,19 +385,29 @@ send_pull_data(
 send_push_data(
     Token,
     Data,
-    #state{socket = Socket, address = Address, port = Port}
+    #state{socket = Socket}
 ) ->
     Reply = pp_udp_socket:send(Socket, Data),
     TimerRef = erlang:send_after(?PUSH_DATA_TIMER, self(), {?PUSH_DATA_TICK, Token}),
-    lager:debug("sent ~p/~p to ~p:~p replied: ~p", [Token, Data, Address, Port, Reply]),
+    lager:debug("sent ~p/~p to ~p replied: ~p", [
+        Token,
+        Data,
+        pp_udp_socket:get_address(Socket),
+        Reply
+    ]),
     {Reply, TimerRef}.
 
 -spec send_tx_ack(binary(), #state{}) -> ok | {error, any()}.
 send_tx_ack(
     Token,
-    #state{pubkeybin = PubKeyBin, socket = Socket, address = Address, port = Port}
+    #state{pubkeybin = PubKeyBin, socket = Socket}
 ) ->
     Data = semtech_udp:tx_ack(Token, pp_utils:pubkeybin_to_mac(PubKeyBin)),
     Reply = pp_udp_socket:send(Socket, Data),
-    lager:debug("sent ~p/~p to ~p:~p replied: ~p", [Token, Data, Address, Port, Reply]),
+    lager:debug("sent ~p/~p to ~p replied: ~p", [
+        Token,
+        Data,
+        pp_udp_socket:get_address(Socket),
+        Reply
+    ]),
     Reply.

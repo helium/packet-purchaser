@@ -184,21 +184,8 @@ join_net_id_packet_test(_Config) ->
     pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
     {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin1, NetID}),
 
-    {
-        state,
-        _Chain,
-        _Loc,
-        PubKeyBin1,
-        _NetID,
-        _Socket,
-        Address,
-        Port,
-        _PushData,
-        _ScPid,
-        _PullData,
-        _PullDataTimer
-    } = sys:get_state(Pid),
-    ?assertEqual({"3.3.3.3", 3333}, {Address, Port}),
+    AddressPort = get_udp_worker_address_port(Pid),
+    ?assertEqual({"3.3.3.3", 3333}, AddressPort),
 
     %% ------------------------------------------------------------
     %% Send packet with unmapped EUI from a different gateway
@@ -443,21 +430,7 @@ net_ids_map_packet_test(_Config) ->
         pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
 
         {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        {
-            state,
-            _Chain,
-            _Loc,
-            PubKeyBin,
-            _NetID,
-            _Socket,
-            Address,
-            Port,
-            _PushData,
-            _ScPid,
-            _PullData,
-            _PullDataTimer
-        } = sys:get_state(Pid),
-        {Address, Port}
+        get_udp_worker_address_port(Pid)
     end,
     ok = pp_config:load_config([
         #{
@@ -522,21 +495,7 @@ single_hotspot_multi_net_id_test(_Config) ->
         pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
 
         {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        {
-            state,
-            _Chain,
-            _Loc,
-            PubKeyBin,
-            _NetID,
-            _Socket,
-            Address,
-            Port,
-            _PushData,
-            _ScPid,
-            _PullData,
-            _PullDataTimer
-        } = sys:get_state(Pid),
-        {Address, Port}
+        get_udp_worker_address_port(Pid)
     end,
     ok = pp_config:load_config([
         #{
@@ -703,3 +662,17 @@ send_same_offer_with_actors([A | Rest], MakeOfferFun, DeadPid) ->
     ),
     send_same_offer_with_actors(Rest, MakeOfferFun, DeadPid).
 
+get_udp_worker_address_port(Pid) ->
+    {
+        state,
+        _Chain,
+        _Loc,
+        _PubKeyBin1,
+        _NetID,
+        Socket,
+        _PushData,
+        _ScPid,
+        _PullData,
+        _PullDataTimer
+    } = sys:get_state(Pid),
+    pp_udp_socket:get_address(Socket).
