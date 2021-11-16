@@ -3,6 +3,7 @@
 -export([
     open/2,
     close/1,
+    update_address/2,
     get_address/1
 ]).
 
@@ -38,6 +39,10 @@ do_send(Socket, {Address, Port}, Data) -> gen_udp:send(Socket, Address, Port, Da
 
 close(#socket{socket = Socket}) ->
     gen_udp:close(Socket).
+
+-spec update_address(socket(), socket_info()) -> socket().
+update_address(#socket{} = Socket, SocketInfo) ->
+    {ok, Socket#socket{primary = SocketInfo}}.
 
 -spec get_address(socket()) -> socket_info().
 get_address(#socket{primary = Primary}) ->

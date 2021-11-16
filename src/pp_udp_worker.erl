@@ -10,7 +10,8 @@
 %% ------------------------------------------------------------------
 -export([
     start_link/1,
-    push_data/4
+    push_data/4,
+    update_address/3
 ]).
 
 %% ------------------------------------------------------------------
@@ -58,6 +59,13 @@ start_link(Args) ->
 push_data(WorkerPid, SCPacket, PacketTime, HandlerPid) ->
     gen_server:call(WorkerPid, {push_data, SCPacket, PacketTime, HandlerPid}).
 
+-spec update_address(
+    WorkerPid :: pid(),
+    Address :: pp_udp_socket:socket_address(),
+    Port :: pp_udp_socket:socket_port()
+) -> ok.
+update_address(WorkerPid, Address, Port) ->
+    gen_server:call(WorkerPid, {update_address, Address, Port}).
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
@@ -85,12 +93,12 @@ init(Args) ->
             schedule_pull_data(PullDataTimer)
     end,
 
+    ok = pp_config:insert_udp_worker(NetID, self()),
+
     State = #state{
         pubkeybin = PubKeyBin,
         net_id = NetID,
         socket = Socket,
-        address = Address,
-        port = Port,
         pull_data_timer = PullDataTimer
     },
     case blockchain_worker:blockchain() of
@@ -104,6 +112,17 @@ init(Args) ->
             {ok, State#state{blockchain = Chain, location = Loc}}
     end.
 
+handle_call(
+    {update_address, Address, Port},
+    _From,
+    #state{socket = Socket0} = State
+) ->
+    lager:debug("Updating address and port [old: ~p] [new: ~p]", [
+        pp_udp_socket:get_address(Socket0),
+        {Address, Port}
+    ]),
+    {ok, Socket1} = pp_udp_socket:update_address(Socket0, {Address, Port}),
+    {reply, ok, State#state{socket = Socket1}};
 handle_call(
     {push_data, SCPacket, PacketTime, HandlerPid},
     _From,
@@ -183,6 +202,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 terminate(_Reason, #state{socket = Socket}) ->
     lager:info("going down ~p", [_Reason]),
+    ok = pp_config:delete_udp_worker(self()),
     ok = pp_udp_socket:close(Socket),
     ok.
 
