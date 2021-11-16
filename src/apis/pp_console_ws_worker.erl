@@ -67,7 +67,6 @@ handle_cast({send_packet, Data}, #state{ws = WSPid} = State) ->
 
     Payload = pp_console_websocket_client:encode_msg(Ref, Topic, Event, Data),
 
-    ct:print("Sending test payload: ~p~n~p", [Payload, {WSPid, erlang:is_process_alive(WSPid)}]),
     websocket_client:cast(WSPid, {text, Payload}),
     {noreply, State};
 handle_cast(_Msg, State) ->

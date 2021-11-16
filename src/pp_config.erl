@@ -19,7 +19,8 @@
     write_config_to_ets/1,
     reset_config/0,
     transform_config/1,
-    load_config/1
+    load_config/1,
+    get_config/0
 ]).
 
 %% gen_server callbacks
@@ -38,9 +39,11 @@
 -define(EUI_ETS, pp_config_join_ets).
 -define(DEVADDR_ETS, pp_config_routing_ets).
 
+-type config() :: #{joins := list(eui), routing := list(devaddr)}.
+
 -record(state, {
     filename :: testing | string(),
-    config :: map()
+    config :: config()
 }).
 
 -record(eui, {
@@ -147,8 +150,16 @@ load_config(ConfigList) ->
     Config = ?MODULE:transform_config(ConfigList),
     ok = ?MODULE:write_config_to_ets(Config).
 
+-spec ws_update_config(list(map())) -> ok.
 ws_update_config(ConfigList) ->
-    gen_server:call(?MODULE, {update_config, ConfigList}).
+    ?MODULE:load_config(ConfigList).
+
+-spec get_config() -> {ok, config()}.
+get_config() ->
+    {ok, #{
+        joins => ets:tab2list(?EUI_ETS),
+        routing => ets:tab2list(?DEVADDR_ETS)
+    }}.
 
 %% -------------------------------------------------------------------
 %% gen_server Callbacks
@@ -156,24 +167,14 @@ ws_update_config(ConfigList) ->
 
 init([testing]) ->
     ok = ?MODULE:init_ets(),
-    {ok, #state{filename = testing, config = #{}}};
+    {ok, #state{filename = testing}};
 init([Filename]) ->
     ok = ?MODULE:init_ets(),
     Config0 = ?MODULE:read_config(Filename),
     Config1 = ?MODULE:transform_config(Config0),
     ok = ?MODULE:write_config_to_ets(Config1),
+    {ok, #state{filename = Filename}}.
 
-    {ok, #state{
-        filename = Filename,
-        config = Config1
-    }}.
-
-
-handle_call({update_config, ConfigList}, _From, State) ->
-    ok = ?MODULE:reset_config(),
-    Config = ?MODULE:transform_config(ConfigList),
-    ok = ?MODULE:write_config_to_ets(Config),
-    {reply, ok, State#state{config=Config}};
 handle_call(_Request, _From, State) ->
     {reply, ignored, State}.
 

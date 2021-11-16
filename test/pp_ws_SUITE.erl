@@ -9,7 +9,7 @@
 -export([
     ws_init_test/1,
     ws_receive_packet_test/1,
-    ws_console_send_org_add_test/1
+    ws_console_update_config_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -28,7 +28,7 @@ all() ->
     [
         ws_init_test,
         ws_receive_packet_test,
-        ws_console_send_org_add_test
+        ws_console_update_config_test
     ].
 
 %%--------------------------------------------------------------------
@@ -65,7 +65,7 @@ ws_receive_packet_test(_Config) ->
 
     ok.
 
-ws_console_send_org_add_test(_Config) ->
+ws_console_update_config_test(_Config) ->
     {ok, WSPid} = test_utils:ws_init(),
     OneMapped = [
         #{
@@ -75,9 +75,53 @@ ws_console_send_org_add_test(_Config) ->
             <<"port">> => 1337
         }
     ],
-    WSPid ! {reset_config, OneMapped},
-    timer:sleep(1000),
-    {state, Filename, Config} = sys:get_state(whereis(pp_config)),
-    ct:print("config:~n~p~n~p~nws_worker: ~p", [Filename, Config, whereis(pp_console_ws_worker)]),
+    TwoMapped = [
+        #{
+            <<"name">> => "one",
+            <<"net_id">> => 1,
+            <<"address">> => <<>>,
+            <<"port">> => 1337
+        },
+        #{
+            <<"name">> => "two",
+            <<"net_id">> => 2,
+            <<"address">> => <<>>,
+            <<"port">> => 1337
+        }
+    ],
+    TwoReMapped = [
+        #{
+            <<"name">> => "one",
+            <<"net_id">> => 1,
+            <<"address">> => <<>>,
+            <<"port">> => 1337
+        },
+        #{
+            <<"name">> => "two",
+            <<"net_id">> => 2,
+            <<"address">> => <<>>,
+            <<"port">> => 1338
+        }
+    ],
+    console_callback:update_config(WSPid, OneMapped),
+    timer:sleep(500),
+    ?assertEqual(
+        {ok, pp_config:transform_config(OneMapped)},
+        pp_config:get_config()
+    ),
+
+    console_callback:update_config(WSPid, TwoMapped),
+    timer:sleep(500),
+    ?assertEqual(
+        {ok, pp_config:transform_config(TwoMapped)},
+        pp_config:get_config()
+    ),
+
+    console_callback:update_config(WSPid, TwoReMapped),
+    timer:sleep(500),
+    ?assertEqual(
+        {ok, pp_config:transform_config(TwoReMapped)},
+        pp_config:get_config()
+    ),
 
     ok.

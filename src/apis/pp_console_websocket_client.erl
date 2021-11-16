@@ -57,7 +57,6 @@ encode_msg(Ref, Topic, Event, Payload, JRef) ->
 
 -spec decode_msg(binary()) -> {ok, map()} | {error, any()}.
 decode_msg(Msg) ->
-    ct:print("Decoding MSG: ~n~p", [Msg]),
     try jsx:decode(Msg, [return_maps]) of
         [JRef, Ref, Topic, Event, Payload | _] ->
             {ok, #{
