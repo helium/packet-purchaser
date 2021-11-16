@@ -78,7 +78,7 @@ handle_info(
     {'EXIT', WSPid0, _Reason},
     #state{ws = WSPid0, ws_endpoint = WSEndpoint} = State
 ) ->
-    lager:error("websocket connetion went down: ~p, restarting", [_Reason]),
+    lager:error("websocket connection went down: ~p, restarting", [_Reason]),
     WSPid1 = start_ws(WSEndpoint),
     {noreply, State#state{ws = WSPid1}};
 handle_info(ws_joined, #state{} = State) ->
