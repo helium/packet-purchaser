@@ -1,4 +1,15 @@
--module(pp_console_websocket_client).
+%%%-------------------------------------------------------------------
+%% @doc
+%% == Packet Purchaser Console WS Worker ==
+%%
+%% - Encoding/Decoding messages to/from Roaming Console
+%% - Websocket health
+%% - Joining topics
+%% - Forwarding WS messages to the ws_worker
+%%
+%% @end
+%%%-------------------------------------------------------------------
+-module(pp_console_ws_handler).
 
 -behaviour(websocket_client).
 

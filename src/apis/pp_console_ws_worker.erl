@@ -1,6 +1,11 @@
 %%%-------------------------------------------------------------------
 %% @doc
-%% == Router Console WS Worker ==
+%% == Packet Purchaser Console WS Worker ==
+%%
+%% - Restarts websocket connection if it goes down
+%% - Handles Roaming Console messages forwarded from ws_handler
+%% - Sending messages to Roaming Console
+%%
 %% @end
 %%%-------------------------------------------------------------------
 -module(pp_console_ws_worker).
@@ -65,9 +70,9 @@ handle_cast({send_packet, Data}, #state{ws = WSPid} = State) ->
     Topic = <<"roaming">>,
     Event = <<"packet">>,
 
-    Payload = pp_console_websocket_client:encode_msg(Ref, Topic, Event, Data),
-
+    Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, Data),
     websocket_client:cast(WSPid, {text, Payload}),
+
     {noreply, State};
 handle_cast(_Msg, State) ->
     lager:warning("rcvd unknown cast msg: ~p", [_Msg]),
@@ -112,7 +117,7 @@ terminate(_Reason, _State) ->
 -spec start_ws(WSEndpoint :: binary()) -> pid().
 start_ws(WSEndpoint) ->
     Url = binary_to_list(WSEndpoint),
-    {ok, Pid} = pp_console_websocket_client:start_link(#{
+    {ok, Pid} = pp_console_ws_handler:start_link(#{
         url => Url,
         forward => self()
     }),
