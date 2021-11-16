@@ -84,6 +84,18 @@ handle_info(
 handle_info(ws_joined, #state{} = State) ->
     lager:info("joined, sending router address to console", []),
     {noreply, State};
+handle_info(
+    {
+        ws_message,
+        <<"org:all">>,
+        <<"org:all:update">>,
+        Payload
+    },
+    State
+) ->
+    lager:info("updating config to ~p", [Payload]),
+    ok = pp_config:ws_update_config(Payload),
+    {noreply, State};
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p, ~p", [_Msg, State]),
     {noreply, State}.

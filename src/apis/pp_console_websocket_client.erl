@@ -94,7 +94,12 @@ ondisconnect(_Error, State) ->
     {reconnect, timer:seconds(60), State}.
 
 websocket_handle({text, Msg}, _Req, State) ->
-    handle_message(Msg, State);
+    case ?MODULE:decode_msg(Msg) of
+        {ok, Decoded} ->
+            handle_message(Decoded, State);
+        {error, _Reason} ->
+            lager:error("failed to decode message: ~p ~p", [Msg, _Req])
+    end;
 websocket_handle(_Msg, _Req, State) ->
     lager:warning("rcvd unknown websocket_handle msg: ~p, ~p", [_Msg, _Req]),
     {ok, State}.

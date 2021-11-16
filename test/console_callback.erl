@@ -55,6 +55,14 @@ websocket_handle(_Req, _Frame, State) ->
     ct:print("websocket_handle ~p", [_Frame]),
     {ok, State}.
 
+websocket_info(_Req, {reset_config, Map}, State) ->
+    Data = pp_console_websocket_client:encode_msg(
+        <<"0">>,
+        <<"org:all">>,
+        <<"org:all:update">>,
+        Map
+    ),
+    {reply, {text, Data}, State};
 websocket_info(_Req, _Msg, State) ->
     ct:print("websocket_info ~p", [_Msg]),
     {ok, State}.

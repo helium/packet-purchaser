@@ -32,6 +32,9 @@
     code_change/3
 ]).
 
+%% Websocket API
+-export([ws_update_config/1]).
+
 -define(EUI_ETS, pp_config_join_ets).
 -define(DEVADDR_ETS, pp_config_routing_ets).
 
@@ -144,6 +147,9 @@ load_config(ConfigList) ->
     Config = ?MODULE:transform_config(ConfigList),
     ok = ?MODULE:write_config_to_ets(Config).
 
+ws_update_config(ConfigList) ->
+    gen_server:call(?MODULE, {update_config, ConfigList}).
+
 %% -------------------------------------------------------------------
 %% gen_server Callbacks
 %% -------------------------------------------------------------------
@@ -162,6 +168,12 @@ init([Filename]) ->
         config = Config1
     }}.
 
+
+handle_call({update_config, ConfigList}, _From, State) ->
+    ok = ?MODULE:reset_config(),
+    Config = ?MODULE:transform_config(ConfigList),
+    ok = ?MODULE:write_config_to_ets(Config),
+    {reply, ok, State#state{config=Config}};
 handle_call(_Request, _From, State) ->
     {reply, ignored, State}.
 

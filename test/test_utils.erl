@@ -14,7 +14,8 @@
     match_map/2,
     wait_until/1, wait_until/3,
     ws_rcv/0,
-    ws_init/0
+    ws_init/0,
+    ws_roaming_rcv/0
 ]).
 
 -spec init_per_testcase(atom(), list()) -> list().
@@ -196,6 +197,14 @@ ws_rcv() ->
             %% {ok, #{payload := Payload}} = pp_console_websocket_client:decode_msg(Msg),
             {ok, Payload}
     after 2500 -> ct:fail(websocket_msg_timeout)
+    end.
+
+-spec ws_roaming_rcv() -> {ok, binary(), binary(), any()}.
+ws_roaming_rcv() ->
+    receive
+        {websocket_msg, Topic, Event, Payload} ->
+            {ok, Topic, Event, Payload}
+    after 2500 -> ct:fail(websocket_roaming_msg_timeout)
     end.
 
 %% ------------------------------------------------------------------
