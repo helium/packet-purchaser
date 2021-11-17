@@ -40,7 +40,7 @@ do_send(Socket, {Address, Port}, Data) -> gen_udp:send(Socket, Address, Port, Da
 close(#socket{socket = Socket}) ->
     gen_udp:close(Socket).
 
--spec update_address(socket(), socket_info()) -> socket().
+-spec update_address(socket(), socket_info()) -> {ok, socket()}.
 update_address(#socket{} = Socket, SocketInfo) ->
     {ok, Socket#socket{primary = SocketInfo}}.
 
