@@ -158,15 +158,15 @@ load_config(ConfigList) ->
     #{routing := CurrRouting} = Config,
 
     ok = lists:foreach(
-        fun(#devaddr{net_id = NetID, address = Address0, port = Port} = Entry) ->
+        fun(#devaddr{net_id = NetID, address = Address0, port = Port} = CurrEntry) ->
             case lists:keyfind(NetID, #devaddr.net_id, PrevRouting) of
-                Entry ->
-                    %% Unchanged
-                    ok;
+                %% Added
                 false ->
-                    %% Added
                     ok;
-                _PrevEntry ->
+                CurrEntry ->
+                %% Unchanged
+                    ok;
+                _ExistingEntry ->
                     %% Updated
                     Address1 = erlang:binary_to_list(Address0),
                     ok = update_udp_workers(NetID, Address1, Port)
@@ -203,13 +203,13 @@ delete_udp_worker(Pid) ->
 
 -spec lookup_udp_workers_for_net_id(NetID :: integer()) -> list(pid()).
 lookup_udp_workers_for_net_id(NetID) ->
-    ets:lookup(?UDP_WORKER_ETS, NetID).
+    [P || {_, P} <- ets:lookup(?UDP_WORKER_ETS, NetID)].
 
 -spec update_udp_workers(NetID :: integer(), Address :: string(), Port :: integer()) -> ok.
 update_udp_workers(NetID, Address, Port) ->
     [
         pp_udp_worker:update_address(WorkerPid, Address, Port)
-        || {_, WorkerPid} <- lookup_udp_workers_for_net_id(NetID)
+        || WorkerPid <- lookup_udp_workers_for_net_id(NetID)
     ],
     ok.
 
