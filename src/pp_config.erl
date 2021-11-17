@@ -43,11 +43,8 @@
 -define(DEVADDR_ETS, pp_config_routing_ets).
 -define(UDP_WORKER_ETS, pp_config_udp_worker_ets).
 
--type config() :: #{joins := list(eui), routing := list(devaddr)}.
-
 -record(state, {
-    filename :: testing | string(),
-    config :: config()
+    filename :: testing | string()
 }).
 
 -record(eui, {
@@ -69,6 +66,8 @@
     multi_buy :: unlimited | non_neg_integer(),
     disable_pull_data :: boolean()
 }).
+
+-type config() :: #{joins := [#eui{}], routing := [#devaddr{}]}.
 
 %% -------------------------------------------------------------------
 %% API Functions
