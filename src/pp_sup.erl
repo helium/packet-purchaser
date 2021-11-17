@@ -67,8 +67,6 @@ init([]) ->
         {base_dir, BaseDir},
         {update_dir, application:get_env(blockchain, update_dir, undefined)}
     ],
-    IntegrationModule = pp_integration:module(),
-    IntegrationArgs = maps:from_list(application:get_env(?APP, IntegrationModule, [])),
 
     {ok, ConfigFilename} = application:get_env(packet_purchaser, pp_routing_config_filename),
 
@@ -78,7 +76,6 @@ init([]) ->
         ?WORKER(pp_sc_worker, [#{}]),
         %% ?WORKER(pp_xor_filter_worker, [#{}]),
         ?SUP(pp_udp_sup, []),
-        ?WORKER(IntegrationModule, [IntegrationArgs]),
         ?SUP(pp_console_sup, []),
         ?WORKER(pp_metrics, []),
         ?WORKER(pp_multi_buy, [])
