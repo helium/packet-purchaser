@@ -19,7 +19,8 @@
 %% ------------------------------------------------------------------
 -export([
     start_link/1,
-    send/1, send/3
+    send/1,
+    handle_packet/4
 ]).
 
 %% ------------------------------------------------------------------
@@ -47,23 +48,27 @@
 start_link(Args) ->
     gen_server:start_link({local, ?SERVER}, ?SERVER, Args, []).
 
--spec send(
+-spec handle_packet(
     NetID :: non_neg_integer(),
-    Packet :: blockchain_state_channel_packet_v1:packet(),
+    Packet :: blockchain_helium_packet_v1:packet(),
+    PacketTime :: non_neg_integer(),
     Type :: packet | join
 ) -> ok.
-send(NetID, _Packet, Type) ->
-    %% PayloadSize = erlang:byte_size(Packet#packet_pb.payload),
-    %% Used = calculate_dc_amount(PayloadSize),
+handle_packet(NetID, Packet, PacketTime, Type) ->
+    PHash = blockchain_helium_packet_v1:packet_hash(Packet),
+    PayloadSize = erlang:byte_size(blockchain_helium_packet_v1:payload(Packet)),
     Data = #{
-        timestamp => erlang:system_time(millisecond),
-        net_id => NetID,
-        type => Type
-        %% ,dc => #{
+        %% ,dc_used => #{
         %%     balance => todo,
         %%     nonce => todo,
         %%     used => Used
         %% }
+        dc_used => #{},
+        packet_size => PayloadSize,
+        organization_id => NetID,
+        reported_at_epoch => PacketTime,
+        packet_hash => PHash,
+        type => Type
     },
     ?MODULE:send(Data).
 

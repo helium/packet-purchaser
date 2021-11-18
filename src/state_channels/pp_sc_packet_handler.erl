@@ -50,7 +50,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 lager:debug("packet: [devaddr: ~p] [netid: ~p]", [DevAddr, NetID]),
                 {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs),
                 ok = pp_metrics:handle_packet(PubKeyBin, NetID, packet),
-                ok = pp_console_ws_worker:send(NetID, Packet, packet),
+                ok = pp_console_ws_worker:handle_packet(NetID, Packet, PacketTime, packet),
                 pp_udp_worker:push_data(WorkerPid, SCPacket, PacketTime, Pid)
             catch
                 error:{badmatch, {error, routing_not_found}} ->
@@ -70,7 +70,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 lager:debug("join: [eui: ~p] [netid: ~p]", [EUI, NetID]),
                 {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs),
                 ok = pp_metrics:handle_packet(PubKeyBin, NetID, join),
-                ok = pp_console_ws_worker:send(NetID, Packet, join),
+                ok = pp_console_ws_worker:handle_packet(NetID, Packet, PacketTime, join),
                 pp_udp_worker:push_data(WorkerPid, SCPacket, PacketTime, Pid)
             catch
                 error:{badmatch, {error, unmapped_eui}} ->
