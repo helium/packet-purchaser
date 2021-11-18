@@ -12,12 +12,14 @@
 
 -behavior(gen_server).
 
+-include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
+
 %% ------------------------------------------------------------------
 %% API Function Exports
 %% ------------------------------------------------------------------
 -export([
     start_link/1,
-    send/1
+    send/1, send/2
 ]).
 
 %% ------------------------------------------------------------------
@@ -45,6 +47,23 @@
 start_link(Args) ->
     gen_server:start_link({local, ?SERVER}, ?SERVER, Args, []).
 
+-spec send(NetID :: non_neg_integer(), Packet :: #packet_pb{}) -> ok.
+send(NetID, _Packet) ->
+    %% PayloadSize = erlang:byte_size(Packet#packet_pb.payload),
+    %% Used = calculate_dc_amount(PayloadSize),
+    Data = #{
+        timestamp => erlang:system_time(millisecond),
+        net_id => NetID,
+        type => packet
+        %% ,dc => #{
+        %%     balance => todo,
+        %%     nonce => todo,
+        %%     used => Used
+        %% }
+    },
+    ?MODULE:send(Data).
+
+-spec send(Data :: any()) -> ok.
 send(Data) ->
     gen_server:cast(?MODULE, {send_packet, Data}).
 

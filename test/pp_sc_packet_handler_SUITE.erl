@@ -16,7 +16,8 @@
     multi_buy_join_test/1,
     multi_buy_packet_test/1,
     multi_buy_eviction_test/1,
-    multi_buy_worst_case_stress_test/1
+    multi_buy_worst_case_stress_test/1,
+    packet_websocket_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -64,7 +65,9 @@ all() ->
         multi_buy_join_test,
         multi_buy_packet_test,
         multi_buy_eviction_test,
-        multi_buy_worst_case_stress_test
+        %%
+        packet_websocket_test
+        %% multi_buy_worst_case_stress_test
     ].
 
 %%--------------------------------------------------------------------
@@ -416,6 +419,82 @@ net_ids_map_offer_test(_Config) ->
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_COMCAST)),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ORANGE)),
+
+    ok.
+
+packet_websocket_test(_Config) ->
+    %% make sure the websocket comes up
+    {ok, _WSPid} = test_utils:ws_init(),
+
+    SendPacketFun = fun(DevAddr, NetID) ->
+        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+        Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{
+            dont_encode => true
+        }),
+        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+
+        {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
+        get_udp_worker_address_port(Pid)
+    end,
+
+    %% ok = pp_console_dc_tracker:refill(?NET_ID_ACTILITY, 1, 100),
+    %% ok = pp_console_dc_tracker:refill(?NET_ID_ORANGE, 1, 100),
+    %% ok = pp_console_dc_tracker:refill(?NET_ID_COMCAST, 1, 100),
+
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"address">> => <<"1.1.1.1">>,
+            <<"port">> => 1111
+        },
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_ORANGE,
+            <<"address">> => <<"2.2.2.2">>,
+            <<"port">> => 2222
+        },
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_COMCAST,
+            <<"address">> => <<"3.3.3.3">>,
+            <<"port">> => 3333
+        }
+    ]),
+
+    ?assertMatch({"1.1.1.1", 1111}, SendPacketFun(?DEVADDR_ACTILITY, ?NET_ID_ACTILITY)),
+    ?assertMatch({"2.2.2.2", 2222}, SendPacketFun(?DEVADDR_ORANGE, ?NET_ID_ORANGE)),
+    ?assertMatch({"3.3.3.3", 3333}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
+
+    ?assertMatch(
+        {ok, #{
+            <<"net_id">> := ?NET_ID_ACTILITY,
+            <<"timestamp">> := Time0,
+            <<"type">> := <<"packet">>
+            %% ,<<"dc">> => #{<<"balance">> => 99, <<"nonce">> => 1, <<"used">> => 1}
+        }} when erlang:is_integer(Time0),
+        test_utils:ws_rcv()
+    ),
+    ?assertMatch(
+        {ok, #{
+            <<"net_id">> := ?NET_ID_ORANGE,
+            <<"timestamp">> := Time1,
+            <<"type">> := <<"packet">>
+            %% ,<<"dc">> => #{<<"balance">> => 99, <<"nonce">> => 1, <<"used">> => 1}
+        }} when erlang:is_integer(Time1),
+        test_utils:ws_rcv()
+    ),
+    ?assertMatch(
+        {ok, #{
+            <<"net_id">> := ?NET_ID_COMCAST,
+            <<"timestamp">> := Time2,
+            <<"type">> := <<"packet">>
+            %% ,<<"dc">> => #{<<"balance">> => 99, <<"nonce">> => 1, <<"used">> => 1}
+        }} when erlang:is_integer(Time2),
+        test_utils:ws_rcv()
+    ),
 
     ok.
 
