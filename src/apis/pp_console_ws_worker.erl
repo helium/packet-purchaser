@@ -19,7 +19,7 @@
 %% ------------------------------------------------------------------
 -export([
     start_link/1,
-    send/1, send/2
+    send/1, send/3
 ]).
 
 %% ------------------------------------------------------------------
@@ -47,14 +47,18 @@
 start_link(Args) ->
     gen_server:start_link({local, ?SERVER}, ?SERVER, Args, []).
 
--spec send(NetID :: non_neg_integer(), Packet :: #packet_pb{}) -> ok.
-send(NetID, _Packet) ->
+-spec send(
+    NetID :: non_neg_integer(),
+    Packet :: blockchain_state_channel_packet_v1:packet(),
+    Type :: packet | join
+) -> ok.
+send(NetID, _Packet, Type) ->
     %% PayloadSize = erlang:byte_size(Packet#packet_pb.payload),
     %% Used = calculate_dc_amount(PayloadSize),
     Data = #{
         timestamp => erlang:system_time(millisecond),
         net_id => NetID,
-        type => packet
+        type => Type
         %% ,dc => #{
         %%     balance => todo,
         %%     nonce => todo,

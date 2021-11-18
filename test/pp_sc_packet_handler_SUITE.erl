@@ -17,7 +17,8 @@
     multi_buy_packet_test/1,
     multi_buy_eviction_test/1,
     multi_buy_worst_case_stress_test/1,
-    packet_websocket_test/1
+    packet_websocket_test/1,
+    join_websocket_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -66,7 +67,8 @@ all() ->
         multi_buy_packet_test,
         multi_buy_eviction_test,
         %%
-        packet_websocket_test
+        packet_websocket_test,
+        join_websocket_test
         %% multi_buy_worst_case_stress_test
     ].
 
@@ -493,6 +495,71 @@ packet_websocket_test(_Config) ->
             <<"type">> := <<"packet">>
             %% ,<<"dc">> => #{<<"balance">> => 99, <<"nonce">> => 1, <<"used">> => 1}
         }} when erlang:is_integer(Time2),
+        test_utils:ws_rcv()
+    ),
+
+    ok.
+
+join_websocket_test(_Config) ->
+    DevAddr = ?DEVADDR_COMCAST,
+    NetID = ?NET_ID_COMCAST,
+    DevEUI1 = <<0, 0, 0, 0, 0, 0, 0, 1>>,
+    AppEUI1 = <<0, 0, 0, 2, 0, 0, 0, 1>>,
+
+    DevEUI2 = <<0, 0, 0, 0, 0, 0, 0, 2>>,
+    AppEUI2 = <<0, 0, 0, 2, 0, 0, 0, 2>>,
+
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_COMCAST,
+            <<"address">> => <<"3.3.3.3">>,
+            <<"port">> => 3333,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1}
+            ]
+        }
+    ]),
+
+    %% ------------------------------------------------------------
+    %% Send packet with Mapped EUI
+    #{public := PubKey1} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin1 = libp2p_crypto:pubkey_to_bin(PubKey1),
+
+    Routing = blockchain_helium_packet_v1:make_routing_info({eui, DevEUI1, AppEUI1}),
+    Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin1, DevAddr, 0, Routing, #{
+        dont_encode => true
+    }),
+
+    pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+    ?assertMatch(
+        {ok, #{
+            <<"net_id">> := NetID,
+            <<"timestamp">> := Time0,
+            <<"type">> := <<"join">>
+        }} when erlang:is_integer(Time0),
+        test_utils:ws_rcv()
+    ),
+
+    %% ------------------------------------------------------------
+    %% Send packet with unmapped EUI from a different gateway
+    #{public := PubKey2} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin2 = libp2p_crypto:pubkey_to_bin(PubKey2),
+    Routing2 = blockchain_helium_packet_v1:make_routing_info({eui, DevEUI2, AppEUI2}),
+
+    Packet2 = test_utils:frame_packet(
+        ?UNCONFIRMED_UP,
+        PubKeyBin2,
+        DevAddr,
+        0,
+        Routing2,
+        #{dont_encode => true}
+    ),
+
+    pp_sc_packet_handler:handle_packet(Packet2, erlang:system_time(millisecond), self()),
+    ?assertException(
+        exit,
+        {test_case_failed, websocket_msg_timeout},
         test_utils:ws_rcv()
     ),
 
