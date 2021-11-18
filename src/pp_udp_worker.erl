@@ -76,10 +76,14 @@ init(Args) ->
     PullDataTimer = maps:get(pull_data_timer, Args, ?PULL_DATA_TIMER),
     {ok, Socket} = pp_udp_socket:open({Address, Port}, maps:get(tee, Args, undefined)),
 
-    %% Pull data immediately so we can establish a connection for the first
-    %% pull_response.
-    self() ! ?PULL_DATA_TICK,
-    _ = schedule_pull_data(PullDataTimer),
+    DisablePullData = maps:get(disable_pull_data, Args),
+    if
+        DisablePullData =:= true ->
+            %% Pull data immediately so we can establish a connection for the first
+            %% pull_response.
+            self() ! ?PULL_DATA_TICK,
+            _ = schedule_pull_data(PullDataTimer)
+    end,
 
     State = #state{
         pubkeybin = PubKeyBin,

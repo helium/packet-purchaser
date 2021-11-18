@@ -44,7 +44,9 @@ handle_packet(SCPacket, PacketTime, Pid) ->
     case blockchain_helium_packet_v1:routing_info(Packet) of
         {devaddr, _} = DevAddr ->
             try
-                {ok, #{net_id := NetID} = WorkerArgs} = pp_config:lookup_devaddr(DevAddr),
+                {ok, #{net_id := NetID} = WorkerArgs} = pp_config:lookup_devaddr(
+                    DevAddr
+                ),
                 lager:debug("packet: [devaddr: ~p] [netid: ~p]", [DevAddr, NetID]),
                 {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs),
                 ok = pp_metrics:handle_packet(PubKeyBin, NetID, packet),
@@ -61,7 +63,9 @@ handle_packet(SCPacket, PacketTime, Pid) ->
             end;
         {eui, _, _} = EUI ->
             try
-                {ok, #{net_id := NetID} = WorkerArgs} = pp_config:lookup_eui(EUI),
+                {ok, #{net_id := NetID} = WorkerArgs} = pp_config:lookup_eui(
+                    EUI
+                ),
                 lager:debug("join: [eui: ~p] [netid: ~p]", [EUI, NetID]),
                 {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs),
                 ok = pp_metrics:handle_packet(PubKeyBin, NetID, join),

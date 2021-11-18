@@ -45,6 +45,7 @@
     address :: binary(),
     port :: non_neg_integer(),
     multi_buy :: unlimited | non_neg_integer(),
+    disable_pull_data :: undefined | boolean(),
     dev_eui :: '*' | non_neg_integer(),
     app_eui :: non_neg_integer()
 }).
@@ -54,7 +55,8 @@
     net_id :: non_neg_integer(),
     address :: binary(),
     port :: non_neg_integer(),
-    multi_buy :: unlimited | non_neg_integer()
+    multi_buy :: unlimited | non_neg_integer(),
+    disable_pull_data :: undefined | boolean()
 }).
 
 %% -------------------------------------------------------------------
@@ -96,12 +98,21 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
     case ets:select(?EUI_ETS, Spec) of
         [] ->
             {error, unmapped_eui};
-        [#eui{address = Address, port = Port, net_id = NetID, multi_buy = MultiBuy}] ->
+        [
+            #eui{
+                address = Address,
+                port = Port,
+                net_id = NetID,
+                multi_buy = MultiBuy,
+                disable_pull_data = DisablePullData
+            }
+        ] ->
             {ok, #{
                 net_id => NetID,
                 address => erlang:binary_to_list(Address),
                 port => Port,
-                multi_buy => MultiBuy
+                multi_buy => MultiBuy,
+                disable_pull_data => DisablePullData
             }}
     end.
 
@@ -113,12 +124,20 @@ lookup_devaddr({devaddr, DevAddr}) ->
             case ets:lookup(?DEVADDR_ETS, NetID) of
                 [] ->
                     {error, routing_not_found};
-                [#devaddr{address = Address, port = Port, multi_buy = MultiBuy}] ->
+                [
+                    #devaddr{
+                        address = Address,
+                        port = Port,
+                        multi_buy = MultiBuy,
+                        disable_pull_data = DisablePullData
+                    }
+                ] ->
                     {ok, #{
                         net_id => NetID,
                         address => erlang:binary_to_list(Address),
                         port => Port,
-                        multi_buy => MultiBuy
+                        multi_buy => MultiBuy,
+                        disable_pull_data => DisablePullData
                     }}
             end;
         Err ->
