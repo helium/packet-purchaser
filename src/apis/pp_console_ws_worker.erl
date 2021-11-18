@@ -115,12 +115,21 @@ handle_info(
     {noreply, State#state{ws = WSPid1}};
 handle_info(ws_joined, #state{} = State) ->
     lager:info("joined, sending router address to console", []),
+    PubKeyBin = blockchain_swarm:pubkey_bin(),
+    B58 = libp2p_crypto:bin_to_b58(PubKeyBin),
+    Payload = pp_console_ws_handler:encode_msg(
+        <<"0">>,
+        <<"organization:all">>,
+        <<"packet_purchaser:address">>,
+        #{address => B58}
+    ),
+    ok = ?MODULE:send(Payload),
     {noreply, State};
 handle_info(
     {
         ws_message,
-        <<"org:all">>,
-        <<"org:all:update">>,
+        <<"organization:all">>,
+        <<"organization:all:update">>,
         Payload
     },
     State
@@ -147,6 +156,7 @@ start_ws(WSEndpoint) ->
     Url = binary_to_list(WSEndpoint),
     {ok, Pid} = pp_console_ws_handler:start_link(#{
         url => Url,
+        auto_join => [<<"organization:all">>],
         forward => self()
     }),
     Pid.
