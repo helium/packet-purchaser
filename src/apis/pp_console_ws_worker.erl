@@ -35,11 +35,18 @@
     code_change/3
 ]).
 
+-export([
+    deactivate/0,
+    activate/0,
+    start_ws/0
+]).
+
 -define(SERVER, ?MODULE).
 
 -record(state, {
-    ws :: pid(),
-    ws_endpoint :: binary()
+    ws :: undefind | pid(),
+    ws_endpoint :: binary(),
+    is_active :: boolean()
 }).
 
 %% ------------------------------------------------------------------
@@ -47,6 +54,15 @@
 %% ------------------------------------------------------------------
 start_link(Args) ->
     gen_server:start_link({local, ?SERVER}, ?SERVER, Args, []).
+
+deactivate() ->
+    gen_server:call(?MODULE, deactivate).
+
+activate() ->
+    gen_server:call(?MODULE, activate).
+
+start_ws() ->
+    gen_server:call(?MODULE, start_ws).
 
 -spec handle_packet(
     NetID :: non_neg_integer(),
@@ -83,17 +99,33 @@ init(Args) ->
     erlang:process_flag(trap_exit, true),
     lager:info("~p init with ~p", [?SERVER, Args]),
     WSEndpoint = maps:get(ws_endpoint, Args),
-    WSPid = start_ws(WSEndpoint),
+    IsActive = maps:get(is_active, Args, false),
+    WSPid =
+        case IsActive of
+            true -> start_ws(WSEndpoint);
+            false -> undefined
+        end,
     {ok, #state{
         ws = WSPid,
-        ws_endpoint = WSEndpoint
+        ws_endpoint = WSEndpoint,
+        is_active = IsActive
     }}.
 
+handle_call(activate, _From, State) ->
+    lager:info("activating websocket worker"),
+    {reply, {ok, active}, State#state{is_active = true}};
+handle_call(deactivate, _From, State) ->
+    lager:info("deactivating websocket worker"),
+    {reply, {ok, inactive}, State#state{is_active = false}};
+handle_call(start_ws, _From, #state{ws_endpoint = WSEndpoint} = State) ->
+    lager:info("starting websocket connection"),
+    WSPid = start_ws(WSEndpoint),
+    {reply, {ok, WSPid}, State#state{ws = WSPid}};
 handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
     {reply, ok, State}.
 
-handle_cast({send_packet, Data}, #state{ws = WSPid} = State) ->
+handle_cast({send_packet, Data}, #state{is_active = true, ws = WSPid} = State) ->
     Ref = <<"TEST_REF">>,
     Topic = <<"roaming">>,
     Event = <<"packet">>,

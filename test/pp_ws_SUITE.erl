@@ -10,7 +10,8 @@
     ws_init_test/1,
     ws_receive_packet_test/1,
     ws_console_update_config_test/1,
-    ws_console_update_config_redirect_udp_worker_test/1
+    ws_console_update_config_redirect_udp_worker_test/1,
+    ws_active_inactive_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -37,7 +38,8 @@ all() ->
         ws_init_test,
         ws_receive_packet_test,
         ws_console_update_config_test,
-        ws_console_update_config_redirect_udp_worker_test
+        ws_console_update_config_redirect_udp_worker_test,
+        ws_active_inactive_test
     ].
 
 %%--------------------------------------------------------------------
@@ -71,6 +73,28 @@ ws_receive_packet_test(_Config) ->
 
     ok = pp_console_ws_worker:send(<<"packet_three">>),
     {ok, <<"packet_three">>} = test_utils:ws_rcv(),
+
+    ok.
+
+ws_active_inactive_test(_Config) ->
+    {ok, _} = test_utils:ws_init(),
+
+    ok = pp_console_ws_worker:send(<<"should_receive">>),
+    {ok, <<"should_receive">>} = test_utils:ws_rcv(),
+
+    {ok, inactive} = pp_console_ws_worker:deactivate(),
+
+    ok = pp_console_ws_worker:send(<<"should_not_receive">>),
+    ?assertException(
+        exit,
+        {test_case_failed, websocket_msg_timeout},
+        test_utils:ws_rcv()
+    ),
+
+    {ok, active} = pp_console_ws_worker:activate(),
+
+    ok = pp_console_ws_worker:send(<<"should_receive_again">>),
+    {ok, <<"should_receive_again">>} = test_utils:ws_rcv(),
 
     ok.
 
@@ -167,7 +191,9 @@ ws_console_update_config_redirect_udp_worker_test(_Config) ->
         #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
         PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
-        Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, ?DEVADDR, 0, #{dont_encode => true}),
+        Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, ?DEVADDR, 0, #{
+            dont_encode => true
+        }),
         pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self())
     end,
 

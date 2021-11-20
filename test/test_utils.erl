@@ -37,7 +37,8 @@ init_per_testcase(TestCase, Config) ->
     ok = application:set_env(lager, crash_log, "crash.log"),
     ok = application:set_env(packet_purchaser, pp_console_api, [
         {ws_endpoint, ?CONSOLE_WS_URL},
-        {secret, <<>>}
+        {secret, <<>>},
+        {is_active, true}
     ]),
     FormatStr = [
         "[",
