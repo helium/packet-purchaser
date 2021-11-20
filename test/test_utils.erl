@@ -197,11 +197,14 @@ wait_until(Fun, Retry, Delay) when Retry > 0 ->
 
 -spec ws_init() -> {ok, pid()}.
 ws_init() ->
-    receive
-        {websocket_init, Pid} ->
-            {ok, Pid}
-    after 2500 -> ct:fail(websocket_init_timeout)
-    end.
+    R =
+        receive
+            {websocket_init, Pid} ->
+                {ok, Pid}
+        after 2500 -> ct:fail(websocket_init_timeout)
+        end,
+    ws_rcv(),
+    R.
 
 -spec ws_rcv() -> {ok, any()}.
 ws_rcv() ->
