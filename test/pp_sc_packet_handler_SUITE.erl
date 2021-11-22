@@ -472,28 +472,34 @@ packet_websocket_test(_Config) ->
 
     ?assertMatch(
         {ok, #{
-            <<"net_id">> := ?NET_ID_ACTILITY,
-            <<"timestamp">> := Time0,
+            <<"dc_used">> := _,
+            <<"organization_id">> := ?NET_ID_ACTILITY,
+            <<"packet_hash">> := _,
+            <<"packet_size">> := _,
+            <<"reported_at_epoch">> := Time0,
             <<"type">> := <<"packet">>
-            %% ,<<"dc">> => #{<<"balance">> => 99, <<"nonce">> => 1, <<"used">> => 1}
         }} when erlang:is_integer(Time0),
         test_utils:ws_rcv()
     ),
     ?assertMatch(
         {ok, #{
-            <<"net_id">> := ?NET_ID_ORANGE,
-            <<"timestamp">> := Time1,
+            <<"dc_used">> := _,
+            <<"organization_id">> := ?NET_ID_ORANGE,
+            <<"packet_hash">> := _,
+            <<"packet_size">> := _,
+            <<"reported_at_epoch">> := Time1,
             <<"type">> := <<"packet">>
-            %% ,<<"dc">> => #{<<"balance">> => 99, <<"nonce">> => 1, <<"used">> => 1}
         }} when erlang:is_integer(Time1),
         test_utils:ws_rcv()
     ),
     ?assertMatch(
         {ok, #{
-            <<"net_id">> := ?NET_ID_COMCAST,
-            <<"timestamp">> := Time2,
+            <<"dc_used">> := _,
+            <<"organization_id">> := ?NET_ID_COMCAST,
+            <<"packet_hash">> := _,
+            <<"packet_size">> := _,
+            <<"reported_at_epoch">> := Time2,
             <<"type">> := <<"packet">>
-            %% ,<<"dc">> => #{<<"balance">> => 99, <<"nonce">> => 1, <<"used">> => 1}
         }} when erlang:is_integer(Time2),
         test_utils:ws_rcv()
     ),
@@ -531,11 +537,17 @@ join_websocket_test(_Config) ->
         dont_encode => true
     }),
 
+    %% make sure websocket has started and eat address message
+    {ok, _} = test_utils:ws_init(),
+
     pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
     ?assertMatch(
         {ok, #{
-            <<"net_id">> := NetID,
-            <<"timestamp">> := Time0,
+            <<"dc_used">> := _,
+            <<"organization_id">> := NetID,
+            <<"packet_hash">> := _,
+            <<"packet_size">> := _,
+            <<"reported_at_epoch">> := Time0,
             <<"type">> := <<"join">>
         }} when erlang:is_integer(Time0),
         test_utils:ws_rcv()
