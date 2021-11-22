@@ -22,7 +22,8 @@
 
 -spec update_config(pid(), list(map())) -> ok.
 update_config(WSPid, Config) ->
-    WSPid ! {?UPDATE_CONFIG, Config}, ok.
+    WSPid ! {?UPDATE_CONFIG, Config},
+    ok.
 
 init(Req, Args) ->
     case elli_request:get_header(<<"Upgrade">>, Req) of
@@ -66,8 +67,8 @@ websocket_handle(_Req, _Frame, State) ->
 websocket_info(_Req, {?UPDATE_CONFIG, Map}, State) ->
     Data = pp_console_ws_handler:encode_msg(
         <<"0">>,
-        <<"org:all">>,
-        <<"org:all:update">>,
+        <<"organization:all">>,
+        <<"organization:all:update">>,
         Map
     ),
     {reply, {text, Data}, State};
@@ -100,7 +101,11 @@ handle_message(#{ref := Ref, topic := <<"phoenix">>, event := <<"heartbeat">>}, 
         <<"status">> => <<"ok">>
     }),
     {reply, {text, Data}, State};
-handle_message(#{event := <<"packet">>, topic := <<"roaming">>, payload := Payload}, State) ->
+handle_message(
+    #{event := <<"packet">>, topic := <<"roaming">>, payload := Payload} = Message,
+    State
+) ->
+    lager:info("ws handling message: ~p", [Message]),
     Pid = maps:get(forward, State),
     Pid ! {websocket_packet, Payload},
     {ok, State};
