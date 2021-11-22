@@ -316,49 +316,23 @@ maybe_start_state_channel(#state{height = Height, in_flight = [], open_sc_limit 
     HaveHeadroom = LeftOverOpened > 0,
     UnderLimit = OpenedCount + OverspentCount + InFlightCount < Limit,
 
+    LogCounts = io_lib:format(
+        "[active: ~p] [overspent: ~p] [getting close: ~p] [opened: ~p] [in flight ~p] [max: ~p]",
+        [ActiveCount, OverspentCount, GettingCloseCount, OpenedCount, InFlightCount, Limit]
+    ),
     case {HaveHeadroom, UnderLimit} of
         {false, false} ->
             %% All open channels are active, nothing we can do about it until some close
-            lager:warning(
-                "[active: ~p] [overspent: ~p] [getting close: ~p] [opened: ~p] [in flight ~p] [max: ~p] limit reached, cant open more",
-                [
-                    ActiveCount,
-                    OverspentCount,
-                    GettingCloseCount,
-                    OpenedCount,
-                    InFlightCount,
-                    Limit
-                ]
-            ),
+            lager:warning("~p limit reached, cant open more", [LogCounts]),
             State;
         {false, true} ->
             %% All open channels are active, getting a little tight
-            lager:info(
-                "[active: ~p] [overspent: ~p] [getting close: ~p] [opened: ~p] [in flight ~p] [max: ~p] all active, opening more",
-                [
-                    ActiveCount,
-                    OverspentCount,
-                    GettingCloseCount,
-                    OpenedCount,
-                    InFlightCount,
-                    Limit
-                ]
-            ),
+            lager:info("~p all active, opening more", [LogCounts]),
             {ok, ID} = open_next_state_channel(OpenedCount, State),
             State#state{in_flight = [ID]};
         {true, _} ->
             %% if we have LeftOverOpened > 0, where we want to be
-            lager:info(
-                "[active: ~p] [overspent: ~p] [getting close: ~p] [opened: ~p] [in flight ~p] [max: ~p] standing by...",
-                [
-                    ActiveCount,
-                    OverspentCount,
-                    GettingCloseCount,
-                    OpenedCount,
-                    InFlightCount,
-                    Limit
-                ]
-            ),
+            lager:info("~p standing by...", [LogCounts]),
             State
     end;
 maybe_start_state_channel(
@@ -367,17 +341,13 @@ maybe_start_state_channel(
     {OpenedCount, _OverspentCount, _GettingCloseCount} = ?MODULE:counts(Height),
     ActiveCount = active_sc_count(),
     InFlightCount = erlang:length(InFlight),
-    lager:info(
-        "[active: ~p] [overspent: ~p] [getting close: ~p] [opened: ~p] [in flight ~p] [max: ~p] we got a txn in flight lets wait",
-        [
-            ActiveCount,
-            _OverspentCount,
-            _GettingCloseCount,
-            OpenedCount,
-            InFlightCount,
-            Limit
-        ]
+
+    LogCounts = io_lib:format(
+        "[active: ~p] [overspent: ~p] [getting close: ~p] [opened: ~p] [in flight ~p] [max: ~p]",
+        [ActiveCount, _OverspentCount, _GettingCloseCount, OpenedCount, InFlightCount, Limit]
     ),
+
+    lager:info("~p we got a txn in flight lets wait", [LogCounts]),
     State.
 
 -spec open_next_state_channel(NumExistingSCs :: non_neg_integer(), State :: state()) ->
