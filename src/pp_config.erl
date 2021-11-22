@@ -45,7 +45,7 @@
     address :: binary(),
     port :: non_neg_integer(),
     multi_buy :: unlimited | non_neg_integer(),
-    disable_pull_data :: undefined | boolean(),
+    disable_pull_data :: boolean(),
     dev_eui :: '*' | non_neg_integer(),
     app_eui :: non_neg_integer()
 }).
@@ -56,7 +56,7 @@
     address :: binary(),
     port :: non_neg_integer(),
     multi_buy :: unlimited | non_neg_integer(),
-    disable_pull_data :: undefined | boolean()
+    disable_pull_data :: boolean()
 }).
 
 %% -------------------------------------------------------------------
@@ -83,8 +83,8 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
     %% end).
     Spec = [
         {
-            %% #eui{name = '_', net_id = '_', address = '_', port = '_', multi_buy = '_', dev_eui = '$1', app_eui = '$2'},
-            {eui, '_', '_', '_', '_', '_', '$1', '$2'},
+            %% #eui{name = '_', net_id = '_', address = '_', port = '_', multi_buy = '_', disable_pull_data = '_', dev_eui = '$1', app_eui = '$2'},
+            {eui, '_', '_', '_', '_', '_', '_', '$1', '$2'},
             [
                 {
                     'andalso',
@@ -238,7 +238,7 @@ transform_config_entry(Entry) ->
     Name = maps:get(<<"name">>, Entry, <<"no_name">>),
     MultiBuy = maps:get(<<"multi_buy">>, Entry, unlimited),
     Joins = maps:get(<<"joins">>, Entry, []),
-    DisablePullData = maps:get(<<"disable_pull_data">>, Entry, undefined),
+    DisablePullData = maps:get(<<"disable_pull_data">>, Entry, false),
     JoinRecords = lists:map(
         fun(#{<<"dev_eui">> := DevEUI, <<"app_eui">> := AppEUI}) ->
             #eui{
