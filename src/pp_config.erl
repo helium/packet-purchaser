@@ -238,7 +238,7 @@ transform_config_entry(Entry) ->
     Name = maps:get(<<"name">>, Entry, <<"no_name">>),
     MultiBuy = maps:get(<<"multi_buy">>, Entry, unlimited),
     Joins = maps:get(<<"joins">>, Entry, []),
-
+    DisablePullData = maps:get(<<"disable_pull_data">>, Entry, undefined),
     JoinRecords = lists:map(
         fun(#{<<"dev_eui">> := DevEUI, <<"app_eui">> := AppEUI}) ->
             #eui{
@@ -247,6 +247,7 @@ transform_config_entry(Entry) ->
                 address = Address,
                 port = Port,
                 multi_buy = MultiBuy,
+                disable_pull_data = DisablePullData,
                 dev_eui = clean_config_value(DevEUI),
                 app_eui = clean_config_value(AppEUI)
             }
@@ -258,7 +259,8 @@ transform_config_entry(Entry) ->
         net_id = clean_config_value(NetID),
         address = Address,
         port = Port,
-        multi_buy = MultiBuy
+        multi_buy = MultiBuy,
+        disable_pull_data = DisablePullData
     },
     [{joins, JoinRecords}, {routing, Routing}].
 
