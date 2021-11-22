@@ -77,12 +77,14 @@ init(Args) ->
     {ok, Socket} = pp_udp_socket:open({Address, Port}, maps:get(tee, Args, undefined)),
 
     DisablePullData = maps:get(disable_pull_data, Args),
-    if
-        DisablePullData =:= true ->
+    case DisablePullData of
+        true ->
             %% Pull data immediately so we can establish a connection for the first
             %% pull_response.
             self() ! ?PULL_DATA_TICK,
-            _ = schedule_pull_data(PullDataTimer)
+            _ = schedule_pull_data(PullDataTimer);
+        false ->
+            ok
     end,
 
     State = #state{
