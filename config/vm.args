@@ -3,3 +3,6 @@
 
 ## Cookie for distributed erlang
 -setcookie packet_purchaser
+
+## Up the number of processes allowed
++P 524289
