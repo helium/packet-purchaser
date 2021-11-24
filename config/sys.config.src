@@ -14,8 +14,10 @@
             {app_eui, "${PP_CHIRPSTACK_APP_EUI}"}
         ]},
         {pp_console_api, [
+            {endpint, <<"${PP_CONSOLE_ENDPOINT}">>},
             {ws_endpoint, <<"${PP_CONSOLE_WS_ENDPOINT}">>},
-            {secret, <<"${PP_CONSOLE_SECRET}">>}
+            {secret, <<"${PP_CONSOLE_SECRET}">>},
+            {is_active, false}
         ]},
         {sc_open_dc_amount, "${PP_SC_OPEN_DC_AMOUNT}"},
         {sc_expiration_interval, "${PP_SC_EXPIRATION_INTERVAL}"},
