@@ -42,6 +42,8 @@
 ]).
 
 -define(SERVER, ?MODULE).
+-define(POOL, router_console_api_pool).
+-define(HEADER_JSON, {<<"Content-Type">>, <<"application/json">>}).
 
 -record(state, {
     ws :: undefind | pid(),
@@ -99,10 +101,13 @@ init(Args) ->
     erlang:process_flag(trap_exit, true),
     lager:info("~p init with ~p", [?SERVER, Args]),
     WSEndpoint = maps:get(ws_endpoint, Args),
+    Endpoint = <<"https://roaming-console.herokuapp.com">>,
+    Secret = maps:get(secret, Args),
+    Token = get_token(Endpoint, Secret),
     IsActive = maps:get(is_active, Args, false),
     WSPid =
         case IsActive of
-            true -> start_ws(WSEndpoint);
+            true -> start_ws(WSEndpoint, Token);
             false -> undefined
         end,
     {ok, #state{
@@ -118,8 +123,12 @@ handle_call(deactivate, _From, State) ->
     lager:info("deactivating websocket worker"),
     {reply, {ok, inactive}, State#state{is_active = false}};
 handle_call(start_ws, _From, #state{ws_endpoint = WSEndpoint} = State) ->
+    #{endpoint := Endpoint, secret := Secret} = maps:from_list(
+        application:get_env(packet_purchaser, pp_console_api, [])
+    ),
+    Token = get_token(Endpoint, Secret),
     lager:info("starting websocket connection"),
-    WSPid = start_ws(WSEndpoint),
+    WSPid = start_ws(WSEndpoint, Token),
     {reply, {ok, WSPid}, State#state{ws = WSPid}};
 handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
@@ -183,9 +192,28 @@ terminate(_Reason, _State) ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
--spec start_ws(WSEndpoint :: binary()) -> pid().
-start_ws(WSEndpoint) ->
-    Url = binary_to_list(WSEndpoint),
+-spec get_token(Endpoint :: binary(), Secret :: binary()) -> binary().
+get_token(Endpoint, Secret) ->
+    case
+        hackney:post(
+            <<Endpoint/binary, "/api/router/sessions">>,
+            [?HEADER_JSON],
+            jsx:encode(#{secret => Secret}),
+            [with_body, {pool, ?POOL}]
+        )
+    of
+        {ok, 201, _Headers, Body} ->
+            #{<<"jwt">> := Token} = jsx:decode(Body, [return_maps]),
+            Token;
+        _Other ->
+            lager:error("we failed to get a proper token ~p", [_Other]),
+
+            erlang:throw(get_token)
+    end.
+
+-spec start_ws(WSEndpoint :: binary(), Token :: binary()) -> pid().
+start_ws(WSEndpoint, Token) ->
+    Url = binary_to_list(<<WSEndpoint/binary, "?token=", Token/binary, "&vsn=2.0.0">>),
     {ok, Pid} = pp_console_ws_handler:start_link(#{
         url => Url,
         auto_join => [<<"organization:all">>],
