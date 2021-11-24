@@ -38,7 +38,9 @@
 -export([
     deactivate/0,
     activate/0,
-    start_ws/0
+    start_ws/0,
+    start_ws/2,
+    get_token/2
 ]).
 
 -define(SERVER, ?MODULE).
@@ -152,7 +154,11 @@ handle_info(
     #state{ws = WSPid0, ws_endpoint = WSEndpoint} = State
 ) ->
     lager:error("websocket connection went down: ~p, restarting", [_Reason]),
-    WSPid1 = start_ws(WSEndpoint),
+    #{endpoint := Endpoint, secret := Secret} = maps:from_list(
+        application:get_env(packet_purchaser, pp_console_api, [])
+    ),
+    Token = get_token(Endpoint, Secret),
+    WSPid1 = start_ws(WSEndpoint, Token),
     {noreply, State#state{ws = WSPid1}};
 handle_info(ws_joined, #state{} = State) ->
     lager:info("joined, sending router address to console", []),
