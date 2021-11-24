@@ -40,7 +40,8 @@
     activate/0,
     start_ws/0,
     start_ws/2,
-    get_token/2
+    get_token/2,
+    send_test/0
 ]).
 
 -define(SERVER, ?MODULE).
@@ -67,6 +68,17 @@ activate() ->
 
 start_ws() ->
     gen_server:call(?MODULE, start_ws).
+
+send_test() ->
+    Data = #{
+        dc_used => #{balance => 0, nonce => 0, used => 0},
+        organization_id => <<"e7b1829b-e009-4b8f-aea2-b1367635674c">>,
+        packet_hash => <<"S5DJGXp4CRNl31/jajHj74eLFKAJcNXJAs/ulmbdtCI=">>,
+        packet_size => 106,
+        reported_at_epoch => 1637794127509,
+        type => packet
+    },
+    ?MODULE:send(Data).
 
 -spec handle_packet(
     NetID :: non_neg_integer(),
