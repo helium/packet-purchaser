@@ -41,7 +41,8 @@
     start_ws/0,
     start_ws/2,
     get_token/2,
-    send_test/0
+    send_test/0,
+    send_once/1
 ]).
 
 -define(SERVER, ?MODULE).
@@ -78,7 +79,7 @@ send_test() ->
         reported_at_epoch => 1637794127509,
         type => packet
     },
-    ?MODULE:send(Data).
+    ?MODULE:send_once(Data).
 
 -spec handle_packet(
     NetID :: non_neg_integer(),
@@ -109,6 +110,10 @@ handle_packet(_NetID, Packet, PacketTime, Type) ->
 -spec send(Data :: any()) -> ok.
 send(Data) ->
     gen_server:cast(?MODULE, {send_packet, Data}).
+
+-spec send_once(Data :: any()) -> ok.
+send_once(Data) ->
+    gen_server:cast(?MODULE, {send_packet_once, Data}).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -157,6 +162,16 @@ handle_cast({send_packet, Data}, #state{is_active = true, ws = WSPid} = State) -
     Event = <<"packet_purchaser:new_packet">>,
 
     Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, Data),
+    websocket_client:cast(WSPid, {text, Payload}),
+
+    {noreply, State};
+handle_cast({send_packet_once, Data}, #state{is_active = IsActive, ws = WSPid} = State) ->
+    Ref = <<"0">>,
+    Topic = <<"organization:all">>,
+    Event = <<"router:new_packet">>,
+
+    Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, Data),
+    lager:info("sending packet [is_active: ~p] [payload: ~p]", [IsActive, Payload]),
     websocket_client:cast(WSPid, {text, Payload}),
 
     {noreply, State};
