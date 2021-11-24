@@ -35,11 +35,13 @@ init_per_testcase(TestCase, Config) ->
     ok = application:set_env(blockchain, base_dir, BaseDir ++ "/blockchain_data"),
     ok = application:set_env(lager, log_root, BaseDir ++ "/log"),
     ok = application:set_env(lager, crash_log, "crash.log"),
-    ok = application:set_env(packet_purchaser, pp_console_api, [
+
+    ConsoleSettings = proplists:get_value(console_api, Config, [
         {ws_endpoint, ?CONSOLE_WS_URL},
         {secret, <<>>},
         {is_active, true}
     ]),
+    ok = application:set_env(packet_purchaser, pp_console_api, ConsoleSettings),
     FormatStr = [
         "[",
         date,
