@@ -135,7 +135,7 @@ handle_cast({send_packet, Data}, #state{is_active = true, ws = WSPid} = State) -
 
     {noreply, State};
 handle_cast(_Msg, State) ->
-    lager:warning("rcvd unknown cast msg: ~p", [_Msg]),
+    lager:debug("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
 
 handle_info(
