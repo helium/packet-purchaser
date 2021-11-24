@@ -103,8 +103,9 @@ init(Args) ->
     erlang:process_flag(trap_exit, true),
     lager:info("~p init with ~p", [?SERVER, Args]),
     WSEndpoint = maps:get(ws_endpoint, Args),
-    Endpoint = <<"https://roaming-console.herokuapp.com">>,
+    Endpoint = maps:get(endpoint, Args),
     Secret = maps:get(secret, Args),
+    lager:info("getting token for websocket from ~p", [Endpoint]),
     Token = get_token(Endpoint, Secret),
     IsActive = maps:get(is_active, Args, false),
     WSPid =
@@ -137,9 +138,9 @@ handle_call(_Msg, _From, State) ->
     {reply, ok, State}.
 
 handle_cast({send_packet, Data}, #state{is_active = true, ws = WSPid} = State) ->
-    Ref = <<"TEST_REF">>,
-    Topic = <<"roaming">>,
-    Event = <<"packet">>,
+    Ref = <<"0">>,
+    Topic = <<"organization:all">>,
+    Event = <<"packet_purchaser:new_packet">>,
 
     Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, Data),
     websocket_client:cast(WSPid, {text, Payload}),
@@ -161,7 +162,7 @@ handle_info(
     WSPid1 = start_ws(WSEndpoint, Token),
     {noreply, State#state{ws = WSPid1}};
 handle_info(ws_joined, #state{} = State) ->
-    lager:info("joined, sending router address to console", []),
+    lager:info("joined, sending packet_purchaser address to console"),
     PubKeyBin = blockchain_swarm:pubkey_bin(),
     B58 = libp2p_crypto:bin_to_b58(PubKeyBin),
     Payload = pp_console_ws_handler:encode_msg(
@@ -202,7 +203,7 @@ terminate(_Reason, _State) ->
 get_token(Endpoint, Secret) ->
     case
         hackney:post(
-            <<Endpoint/binary, "/api/router/sessions">>,
+            <<Endpoint/binary, "/api/packet_purchaser/sessions">>,
             [?HEADER_JSON],
             jsx:encode(#{secret => Secret}),
             [with_body, {pool, ?POOL}]
@@ -213,7 +214,6 @@ get_token(Endpoint, Secret) ->
             Token;
         _Other ->
             lager:error("we failed to get a proper token ~p", [_Other]),
-
             erlang:throw(get_token)
     end.
 

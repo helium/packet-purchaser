@@ -92,6 +92,9 @@ handle(websocket, [<<"websocket">>], Req, Args) ->
     %% Note that the second element is the reason and is abitrary but should be meaningful
     %% in regards to your server and sub-protocol.
     {<<"1000">>, <<"Closed">>};
+handle('POST', [<<"api">>, <<"packet_purchaser">>, <<"sessions">>], _Req, _Args) ->
+    Body = #{<<"jwt">> => <<"console_callback_token">>},
+    {201, [], jsx:encode(Body)};
 handle(_Method, _Path, _Req, _Args) ->
     lager:warning("got unknown~p req on ~p args=~p", [_Method, _Path, _Args]),
     {404, [], <<"Not Found">>}.
@@ -102,7 +105,11 @@ handle_message(#{ref := Ref, topic := <<"phoenix">>, event := <<"heartbeat">>}, 
     }),
     {reply, {text, Data}, State};
 handle_message(
-    #{event := <<"packet">>, topic := <<"roaming">>, payload := Payload} = Message,
+    #{
+        event := <<"packet_purchaser:new_packet">>,
+        topic := <<"organization:all">>,
+        payload := Payload
+    } = Message,
     State
 ) ->
     lager:info("ws handling message: ~p", [Message]),

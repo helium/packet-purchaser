@@ -14,7 +14,7 @@
             {app_eui, "${PP_CHIRPSTACK_APP_EUI}"}
         ]},
         {pp_console_api, [
-            {endpint, <<"${PP_CONSOLE_ENDPOINT}">>},
+            {endpoint, <<"${PP_CONSOLE_ENDPOINT}">>},
             {ws_endpoint, <<"${PP_CONSOLE_WS_ENDPOINT}">>},
             {secret, <<"${PP_CONSOLE_SECRET}">>},
             {is_active, false}

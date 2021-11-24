@@ -8,6 +8,7 @@
 -include("lorawan_vars.hrl").
 
 -define(CONSOLE_IP_PORT, <<"127.0.0.1:3001">>).
+-define(CONSOLE_URL, <<"http://", ?CONSOLE_IP_PORT/binary>>).
 -define(CONSOLE_WS_URL, <<"ws://", ?CONSOLE_IP_PORT/binary, "/websocket">>).
 -define(APPEUI, <<0, 0, 0, 2, 0, 0, 0, 1>>).
 -define(DEVEUI, <<0, 0, 0, 0, 0, 0, 0, 1>>).
@@ -37,6 +38,7 @@ init_per_testcase(TestCase, Config) ->
     ok = application:set_env(lager, crash_log, "crash.log"),
 
     ConsoleSettings = proplists:get_value(console_api, Config, [
+        {endpoint, ?CONSOLE_URL},
         {ws_endpoint, ?CONSOLE_WS_URL},
         {secret, <<>>},
         {is_active, true}
