@@ -89,7 +89,7 @@ handle_packet(_NetID, Packet, PacketTime, Type) ->
         %% organization_id => NetID,
         organization_id => <<"e7b1829b-e009-4b8f-aea2-b1367635674c">>,
         reported_at_epoch => PacketTime,
-        packet_hash => PHash,
+        packet_hash => base64:encode(PHash),
         type => Type
     },
     ?MODULE:send(Data).
