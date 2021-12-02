@@ -3,6 +3,7 @@
 -behaviour(gen_server).
 
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
+-include_lib("stdlib/include/ms_transform.hrl").
 
 %% gen_server API
 -export([
@@ -45,6 +46,7 @@
     address :: binary(),
     port :: non_neg_integer(),
     multi_buy :: unlimited | non_neg_integer(),
+    disable_pull_data :: boolean(),
     dev_eui :: '*' | non_neg_integer(),
     app_eui :: non_neg_integer()
 }).
@@ -54,7 +56,8 @@
     net_id :: non_neg_integer(),
     address :: binary(),
     port :: non_neg_integer(),
-    multi_buy :: unlimited | non_neg_integer()
+    multi_buy :: unlimited | non_neg_integer(),
+    disable_pull_data :: boolean()
 }).
 
 %% -------------------------------------------------------------------
@@ -74,34 +77,30 @@ lookup_eui({eui, #eui_pb{deveui = DevEUI, appeui = AppEUI}}) ->
 lookup_eui(#eui_pb{deveui = DevEUI, appeui = AppEUI}) ->
     lookup_eui({eui, DevEUI, AppEUI});
 lookup_eui({eui, DevEUI, AppEUI}) ->
-    %% ets:fun2ms(fun(#eui{app_eui = AppEUI, dev_eui = DevEUI} = EUI) when
-    %%     AppEUI == 1234 andalso (DevEUI == 2345 orelse DevEUI == '*')
-    %% ->
-    %%     EUI
-    %% end).
-    Spec = [
-        {
-            %% #eui{name = '_', net_id = '_', address = '_', port = '_', multi_buy = '_', dev_eui = '$1', app_eui = '$2'},
-            {eui, '_', '_', '_', '_', '_', '$1', '$2'},
-            [
-                {
-                    'andalso',
-                    {'==', '$2', AppEUI},
-                    {'orelse', {'==', '$1', DevEUI}, {'==', '$1', '*'}}
-                }
-            ],
-            ['$_']
-        }
-    ],
+    Spec = ets:fun2ms(fun(#eui{app_eui = InnerAppEUI, dev_eui = InnerDevEUI} = EUI) when
+        AppEUI == InnerAppEUI andalso
+            (DevEUI == InnerDevEUI orelse InnerDevEUI == '*')
+    ->
+        EUI
+    end),
     case ets:select(?EUI_ETS, Spec) of
         [] ->
             {error, unmapped_eui};
-        [#eui{address = Address, port = Port, net_id = NetID, multi_buy = MultiBuy}] ->
+        [
+            #eui{
+                address = Address,
+                port = Port,
+                net_id = NetID,
+                multi_buy = MultiBuy,
+                disable_pull_data = DisablePullData
+            }
+        ] ->
             {ok, #{
                 net_id => NetID,
                 address => erlang:binary_to_list(Address),
                 port => Port,
-                multi_buy => MultiBuy
+                multi_buy => MultiBuy,
+                disable_pull_data => DisablePullData
             }}
     end.
 
@@ -113,12 +112,20 @@ lookup_devaddr({devaddr, DevAddr}) ->
             case ets:lookup(?DEVADDR_ETS, NetID) of
                 [] ->
                     {error, routing_not_found};
-                [#devaddr{address = Address, port = Port, multi_buy = MultiBuy}] ->
+                [
+                    #devaddr{
+                        address = Address,
+                        port = Port,
+                        multi_buy = MultiBuy,
+                        disable_pull_data = DisablePullData
+                    }
+                ] ->
                     {ok, #{
                         net_id => NetID,
                         address => erlang:binary_to_list(Address),
                         port => Port,
-                        multi_buy => MultiBuy
+                        multi_buy => MultiBuy,
+                        disable_pull_data => DisablePullData
                     }}
             end;
         Err ->
@@ -219,7 +226,7 @@ transform_config_entry(Entry) ->
     Name = maps:get(<<"name">>, Entry, <<"no_name">>),
     MultiBuy = maps:get(<<"multi_buy">>, Entry, unlimited),
     Joins = maps:get(<<"joins">>, Entry, []),
-
+    DisablePullData = maps:get(<<"disable_pull_data">>, Entry, false),
     JoinRecords = lists:map(
         fun(#{<<"dev_eui">> := DevEUI, <<"app_eui">> := AppEUI}) ->
             #eui{
@@ -228,6 +235,7 @@ transform_config_entry(Entry) ->
                 address = Address,
                 port = Port,
                 multi_buy = MultiBuy,
+                disable_pull_data = DisablePullData,
                 dev_eui = clean_config_value(DevEUI),
                 app_eui = clean_config_value(AppEUI)
             }
@@ -239,7 +247,8 @@ transform_config_entry(Entry) ->
         net_id = clean_config_value(NetID),
         address = Address,
         port = Port,
-        multi_buy = MultiBuy
+        multi_buy = MultiBuy,
+        disable_pull_data = DisablePullData
     },
     [{joins, JoinRecords}, {routing, Routing}].
 

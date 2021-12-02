@@ -75,7 +75,8 @@ init_per_testcase(TestCase, Config) ->
         [{PPPrivKey, PPPubKey}]
     ),
 
-    {PubKeyBin, WorkerPid} = start_gateway(),
+    GatewayConfig = proplists:get_value(gateway_config, Config, #{}),
+    {PubKeyBin, WorkerPid} = start_gateway(GatewayConfig),
 
     DefaultEnv = application:get_all_env(?APP),
     ResetEnvFun = fun() ->
@@ -164,11 +165,11 @@ wait_until(Fun, Retry, Delay) when Retry > 0 ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
--spec start_gateway() -> {libp2p_crypto:pubkeybin(), pid()}.
-start_gateway() ->
+-spec start_gateway(map()) -> {libp2p_crypto:pubkeybin(), pid()}.
+start_gateway(GatewayConfig) ->
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
     %% NetID to ensure sending packets from pp_lns get routed to this worker
     {ok, NetID} = lorawan_devaddr:net_id(16#deadbeef),
-    {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, #{}),
+    {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, GatewayConfig),
     {PubKeyBin, WorkerPid}.

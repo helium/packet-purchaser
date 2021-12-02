@@ -16,7 +16,8 @@
     push_data/1,
     delay_push_data/1,
     missing_push_data_ack/1,
-    pull_data/1,
+    pull_data_active/1,
+    pull_data_inactive/1,
     failed_pull_data/1,
     pull_resp/1,
     multi_hotspots/1,
@@ -52,7 +53,8 @@ all() ->
         push_data,
         delay_push_data,
         missing_push_data_ack,
-        pull_data,
+        pull_data_active,
+        pull_data_inactive,
         failed_pull_data,
         pull_resp,
         multi_hotspots,
@@ -63,18 +65,26 @@ all() ->
 %% TEST CASE SETUP
 %%--------------------------------------------------------------------
 init_per_testcase(TestCase, Config0) ->
-    Config1 = test_utils:init_per_testcase(TestCase, Config0),
-    {ok, NetID} = lorawan_devaddr:net_id(16#deadbeef),
+    GatewayConfig =
+        case TestCase of
+            pull_data_active -> #{disable_pull_data => false};
+            pull_data_inactive -> #{disable_pull_data => true};
+            _ -> #{}
+        end,
+    Config1 = [{gateway_config, GatewayConfig} | Config0],
+    Config2 = test_utils:init_per_testcase(TestCase, Config1),
 
+    {ok, NetID} = lorawan_devaddr:net_id(16#deadbeef),
     ok = pp_config:load_config([
         #{
             <<"name">> => <<"udp_worker_test">>,
             <<"net_id">> => NetID,
-            <<"address">> => <<>>,
-            <<"port">> => 1337
+            <<"address">> => <<"127.0.0.1">>,
+            <<"port">> => 1337,
+            <<"disable_pull_data">> => true
         }
     ]),
-    Config1.
+    Config2.
 
 %%--------------------------------------------------------------------
 %% TEST CASE TEARDOWN
@@ -247,13 +257,25 @@ missing_push_data_ack(Config) ->
 
     ok.
 
-pull_data(Config) ->
+pull_data_active(Config) ->
     FakeLNSPid = proplists:get_value(lns, Config),
     {PubKeyBin, _WorkerPid} = proplists:get_value(gateway, Config),
 
     {ok, {Token, MAC}} = pp_lns:rcv(FakeLNSPid, ?PULL_DATA, timer:seconds(5)),
     ?assert(erlang:is_binary(Token)),
     ?assertEqual(pp_utils:pubkeybin_to_mac(PubKeyBin), MAC),
+    ok.
+
+pull_data_inactive(Config) ->
+    FakeLNSPid = proplists:get_value(lns, Config),
+    {_PubKeyBin, _WorkerPid} = proplists:get_value(gateway, Config),
+
+    ?assertException(
+        exit,
+        {test_case_failed, "pp_lns rcv timeout"},
+        pp_lns:rcv(FakeLNSPid, ?PULL_DATA, timer:seconds(5))
+    ),
+
     ok.
 
 failed_pull_data(Config) ->
