@@ -3,6 +3,7 @@
 -behaviour(gen_server).
 
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
+-include_lib("stdlib/include/ms_transform.hrl").
 
 %% gen_server API
 -export([
@@ -76,25 +77,12 @@ lookup_eui({eui, #eui_pb{deveui = DevEUI, appeui = AppEUI}}) ->
 lookup_eui(#eui_pb{deveui = DevEUI, appeui = AppEUI}) ->
     lookup_eui({eui, DevEUI, AppEUI});
 lookup_eui({eui, DevEUI, AppEUI}) ->
-    %% ets:fun2ms(fun(#eui{app_eui = AppEUI, dev_eui = DevEUI} = EUI) when
-    %%     AppEUI == 1234 andalso (DevEUI == 2345 orelse DevEUI == '*')
-    %% ->
-    %%     EUI
-    %% end).
-    Spec = [
-        {
-            %% #eui{name = '_', net_id = '_', address = '_', port = '_', multi_buy = '_', disable_pull_data = '_', dev_eui = '$1', app_eui = '$2'},
-            {eui, '_', '_', '_', '_', '_', '_', '$1', '$2'},
-            [
-                {
-                    'andalso',
-                    {'==', '$2', AppEUI},
-                    {'orelse', {'==', '$1', DevEUI}, {'==', '$1', '*'}}
-                }
-            ],
-            ['$_']
-        }
-    ],
+    Spec = ets:fun2ms(fun(#eui{app_eui = InnerAppEUI, dev_eui = InnerDevEUI} = EUI) when
+        AppEUI == InnerAppEUI andalso
+            (DevEUI == InnerDevEUI orelse InnerDevEUI == '*')
+    ->
+        EUI
+    end),
     case ets:select(?EUI_ETS, Spec) of
         [] ->
             {error, unmapped_eui};
