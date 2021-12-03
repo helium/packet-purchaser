@@ -22,6 +22,8 @@
     ws_rcv/0,
     ws_init/0,
     ws_roaming_rcv/0,
+    ws_test_rcv/0,
+    ws_prepare_test_msg/1,
     %%
     frame_packet/5, frame_packet/6,
     join_offer/5,
@@ -199,6 +201,22 @@ wait_until(Fun, Retry, Delay) when Retry > 0 ->
             wait_until(Fun, Retry - 1, Delay)
     end.
 
+-spec ws_prepare_test_msg(binary()) -> ok.
+ws_prepare_test_msg(Bin) ->
+    pp_console_ws_handler:encode_msg(<<"0">>, <<"test_utils">>, <<"test_message">>, Bin).
+
+-spec ws_test_rcv() -> {ok, any()}.
+ws_test_rcv() ->
+    receive
+        {websocket_msg, #{
+            topic := <<"test_utils">>,
+            event := <<"test_message">>,
+            payload := Payload
+        }} ->
+            {ok, Payload}
+    after 2500 -> ct:fail(websocket_test_message_timeout)
+    end.
+
 -spec ws_init() -> {ok, pid()}.
 ws_init() ->
     R =
@@ -207,7 +225,10 @@ ws_init() ->
                 {ok, Pid}
         after 2500 -> ct:fail(websocket_init_timeout)
         end,
-    ws_rcv(),
+    %% Eat phx_join message
+    _ = ws_roaming_rcv(),
+    %% Eat packet_purchaser address message
+    _ = ws_roaming_rcv(),
     R.
 
 -spec ws_rcv() -> {ok, any()}.
@@ -222,8 +243,8 @@ ws_rcv() ->
 -spec ws_roaming_rcv() -> {ok, binary(), binary(), any()}.
 ws_roaming_rcv() ->
     receive
-        {websocket_msg, Topic, Event, Payload} ->
-            {ok, Topic, Event, Payload}
+        {websocket_msg, Payload} ->
+            {ok, Payload}
     after 2500 -> ct:fail(websocket_roaming_msg_timeout)
     end.
 

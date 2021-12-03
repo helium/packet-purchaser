@@ -65,36 +65,36 @@ ws_init_test(_Config) ->
 ws_receive_packet_test(_Config) ->
     {ok, _} = test_utils:ws_init(),
 
-    ok = pp_console_ws_worker:send(<<"packet_one">>),
-    {ok, <<"packet_one">>} = test_utils:ws_rcv(),
+    ok = ws_send_bin(<<"packet_one">>),
+    {ok, <<"packet_one">>} = test_utils:ws_test_rcv(),
 
-    ok = pp_console_ws_worker:send(<<"packet_two">>),
-    {ok, <<"packet_two">>} = test_utils:ws_rcv(),
+    ok = ws_send_bin(<<"packet_two">>),
+    {ok, <<"packet_two">>} = test_utils:ws_test_rcv(),
 
-    ok = pp_console_ws_worker:send(<<"packet_three">>),
-    {ok, <<"packet_three">>} = test_utils:ws_rcv(),
+    ok = ws_send_bin(<<"packet_three">>),
+    {ok, <<"packet_three">>} = test_utils:ws_test_rcv(),
 
     ok.
 
 ws_active_inactive_test(_Config) ->
     {ok, _} = test_utils:ws_init(),
 
-    ok = pp_console_ws_worker:send(<<"should_receive">>),
-    {ok, <<"should_receive">>} = test_utils:ws_rcv(),
+    ok = ws_send_bin(<<"should_receive">>),
+    {ok, <<"should_receive">>} = test_utils:ws_test_rcv(),
 
     {ok, inactive} = pp_console_ws_worker:deactivate(),
 
-    ok = pp_console_ws_worker:send(<<"should_not_receive">>),
+    ok = ws_send_bin(<<"should_not_receive">>),
     ?assertException(
         exit,
-        {test_case_failed, websocket_msg_timeout},
-        test_utils:ws_rcv()
+        {test_case_failed, websocket_test_message_timeout},
+        test_utils:ws_test_rcv()
     ),
 
     {ok, active} = pp_console_ws_worker:activate(),
 
-    ok = pp_console_ws_worker:send(<<"should_receive_again">>),
-    {ok, <<"should_receive_again">>} = test_utils:ws_rcv(),
+    ok = ws_send_bin(<<"should_receive_again">>),
+    {ok, <<"should_receive_again">>} = test_utils:ws_test_rcv(),
 
     ok.
 
@@ -239,3 +239,9 @@ ws_console_update_config_redirect_udp_worker_test(_Config) ->
 
     ok.
 
+%% ------------------------------------------------------------------
+%% Helper Functions
+%% ------------------------------------------------------------------
+
+ws_send_bin(Bin) ->
+    pp_console_ws_worker:send(test_utils:ws_prepare_test_msg(Bin)).

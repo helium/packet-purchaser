@@ -34,7 +34,7 @@ init(Req, Args) ->
     end.
 
 websocket_init(Req, Opts) ->
-    lager:debug("websocket_init ~p~n~p", [Req, Opts]),
+    ct:print("websocket_init ~p~n~p", [Req, Opts]),
     maps:get(forward, Opts) ! {websocket_init, self()},
     {ok, [], Opts}.
 
@@ -68,7 +68,7 @@ websocket_info(_Req, {?UPDATE_CONFIG, Map}, State) ->
     Data = pp_console_ws_handler:encode_msg(
         <<"0">>,
         <<"organization:all">>,
-        <<"organization:all:update">>,
+        <<"organization:all:config:list">>,
         Map
     ),
     {reply, {text, Data}, State};
