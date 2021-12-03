@@ -11,7 +11,8 @@
     ws_receive_packet_test/1,
     ws_console_update_config_test/1,
     ws_console_update_config_redirect_udp_worker_test/1,
-    ws_active_inactive_test/1
+    ws_active_inactive_test/1,
+    ws_active_countdown_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -39,7 +40,8 @@ all() ->
         ws_receive_packet_test,
         ws_console_update_config_test,
         ws_console_update_config_redirect_udp_worker_test,
-        ws_active_inactive_test
+        ws_active_inactive_test,
+        ws_active_countdown_test
     ].
 
 %%--------------------------------------------------------------------
@@ -95,6 +97,27 @@ ws_active_inactive_test(_Config) ->
 
     ok = ws_send_bin(<<"should_receive_again">>),
     {ok, <<"should_receive_again">>} = test_utils:ws_test_rcv(),
+
+    ok.
+
+ws_active_countdown_test(_Config) ->
+    {ok, _} = test_utils:ws_init(),
+
+    %% Turn on ws for 2 messages
+    {ok, active} = pp_console_ws_worker:activate(2),
+
+    ok = ws_send_bin(<<"should_receive_1">>),
+    {ok, <<"should_receive_1">>} = test_utils:ws_test_rcv(),
+
+    ok = ws_send_bin(<<"should_receive_2">>),
+    {ok, <<"should_receive_2">>} = test_utils:ws_test_rcv(),
+
+    ok = ws_send_bin(<<"should_not_receive">>),
+    ?assertException(
+        exit,
+        {test_case_failed, websocket_test_message_timeout},
+        test_utils:ws_test_rcv()
+    ),
 
     ok.
 
