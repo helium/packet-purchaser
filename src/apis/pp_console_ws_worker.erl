@@ -20,9 +20,13 @@
 -export([
     start_link/1,
     send/1,
-    get_config/0,
-    get_org_balances/0,
     handle_packet/4
+]).
+
+-export([
+    send_address/0,
+    send_get_config/0,
+    send_get_org_balances/0
 ]).
 
 %% ------------------------------------------------------------------
@@ -123,8 +127,20 @@ handle_packet(_NetID, Packet, PacketTime, Type) ->
     Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, Data),
     ?MODULE:send(Payload).
 
--spec get_config() -> ok.
-get_config() ->
+-spec send_address() -> ok.
+send_address() ->
+    PubKeyBin = blockchain_swarm:pubkey_bin(),
+    B58 = libp2p_crypto:bin_to_b58(PubKeyBin),
+    RouterAddressPayload = pp_console_ws_handler:encode_msg(
+        <<"0">>,
+        ?ORGANIZATION,
+        ?WS_SEND_PP_ADDRESS,
+        #{address => B58}
+    ),
+    ok = ?MODULE:send(RouterAddressPayload).
+
+-spec send_get_config() -> ok.
+send_get_config() ->
     %% This will request ALL organizations configs.
     Ref = <<"0">>,
     Topic = ?ORGANIZATION,
@@ -132,8 +148,8 @@ get_config() ->
     Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, #{}),
     ?MODULE:send(Payload).
 
--spec get_org_balances() -> ok.
-get_org_balances() ->
+-spec send_get_org_balances() -> ok.
+send_get_org_balances() ->
     %% Get up to date balances for all orgs
     Ref = <<"0">>,
     Topic = ?ORGANIZATION,
@@ -216,15 +232,10 @@ handle_info(
     {noreply, State#state{ws = WSPid1}};
 handle_info(ws_joined, #state{} = State) ->
     lager:info("joined, sending packet_purchaser address to console"),
-    PubKeyBin = blockchain_swarm:pubkey_bin(),
-    B58 = libp2p_crypto:bin_to_b58(PubKeyBin),
-    Payload = pp_console_ws_handler:encode_msg(
-        <<"0">>,
-        ?ORGANIZATION,
-        ?WS_SEND_PP_ADDRESS,
-        #{address => B58}
-    ),
-    ok = ?MODULE:send(Payload),
+    ok = ?MODULE:send_address(),
+    ok = ?MODULE:send_get_config(),
+    %% TODO: dc tracker
+    %% ok = ?MODULE:send_get_org_balances(),
     {noreply, State};
 handle_info({ws_message, Topic, Event, Payload}, State) ->
     ok = handle_message(Topic, Event, Payload),
