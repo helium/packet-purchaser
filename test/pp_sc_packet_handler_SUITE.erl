@@ -84,13 +84,13 @@ all() ->
 %%--------------------------------------------------------------------
 init_per_testcase(join_websocket_inactive_test = TestCase, Config0) ->
     Config1 = [
-        {console_api, [{ws_endpoint, ?CONSOLE_WS_URL}, {secret, <<>>}, {active, false}]}
+        {console_api, [{is_active, false}]}
         | Config0
     ],
     test_utils:init_per_testcase(TestCase, Config1);
 init_per_testcase(packet_websocket_inactive_test = TestCase, Config0) ->
     Config1 = [
-        {console_api, [{ws_endpoint, ?CONSOLE_WS_URL}, {secret, <<>>}, {active, false}]}
+        {console_api, [{is_active, false}]}
         | Config0
     ],
     test_utils:init_per_testcase(TestCase, Config1);
@@ -492,34 +492,34 @@ packet_websocket_test(_Config) ->
     ?assertMatch(
         {ok, #{
             <<"dc_used">> := _,
-            <<"organization_id">> := ?NET_ID_ACTILITY,
+            <<"organization_id">> := Bin1,
             <<"packet_hash">> := _,
             <<"packet_size">> := _,
             <<"reported_at_epoch">> := Time0,
             <<"type">> := <<"packet">>
-        }} when erlang:is_integer(Time0),
+        }} when erlang:is_integer(Time0) andalso erlang:is_binary(Bin1),
         test_utils:ws_rcv()
     ),
     ?assertMatch(
         {ok, #{
             <<"dc_used">> := _,
-            <<"organization_id">> := ?NET_ID_ORANGE,
+            <<"organization_id">> := Bin2,
             <<"packet_hash">> := _,
             <<"packet_size">> := _,
             <<"reported_at_epoch">> := Time1,
             <<"type">> := <<"packet">>
-        }} when erlang:is_integer(Time1),
+        }} when erlang:is_integer(Time1) andalso erlang:is_binary(Bin2),
         test_utils:ws_rcv()
     ),
     ?assertMatch(
         {ok, #{
             <<"dc_used">> := _,
-            <<"organization_id">> := ?NET_ID_COMCAST,
+            <<"organization_id">> := Bin3,
             <<"packet_hash">> := _,
             <<"packet_size">> := _,
             <<"reported_at_epoch">> := Time2,
             <<"type">> := <<"packet">>
-        }} when erlang:is_integer(Time2),
+        }} when erlang:is_integer(Time2) andalso erlang:is_binary(Bin3),
         test_utils:ws_rcv()
     ),
 
@@ -575,7 +575,7 @@ packet_websocket_inactive_test(_Config) ->
 
 join_websocket_test(_Config) ->
     DevAddr = ?DEVADDR_COMCAST,
-    NetID = ?NET_ID_COMCAST,
+    %% NetID = ?NET_ID_COMCAST,
     DevEUI1 = <<0, 0, 0, 0, 0, 0, 0, 1>>,
     AppEUI1 = <<0, 0, 0, 2, 0, 0, 0, 1>>,
 
@@ -611,12 +611,12 @@ join_websocket_test(_Config) ->
     ?assertMatch(
         {ok, #{
             <<"dc_used">> := _,
-            <<"organization_id">> := NetID,
+            <<"organization_id">> := Bin1,
             <<"packet_hash">> := _,
             <<"packet_size">> := _,
             <<"reported_at_epoch">> := Time0,
             <<"type">> := <<"join">>
-        }} when erlang:is_integer(Time0),
+        }} when erlang:is_integer(Time0) andalso erlang:is_binary(Bin1),
         test_utils:ws_rcv()
     ),
 

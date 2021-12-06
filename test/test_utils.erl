@@ -39,13 +39,19 @@ init_per_testcase(TestCase, Config) ->
     ok = application:set_env(lager, log_root, BaseDir ++ "/log"),
     ok = application:set_env(lager, crash_log, "crash.log"),
 
-    ConsoleSettings = proplists:get_value(console_api, Config, [
+    DefaultConsoleSettings = [
         {endpoint, ?CONSOLE_URL},
         {ws_endpoint, ?CONSOLE_WS_URL},
         {secret, <<>>},
         {is_active, true}
-    ]),
-    ok = application:set_env(packet_purchaser, pp_console_api, ConsoleSettings),
+    ],
+    OverrideConsoleSettings = proplists:get_value(console_api, Config, []),
+    ok = application:set_env(
+        packet_purchaser,
+        pp_console_api,
+        DefaultConsoleSettings ++ OverrideConsoleSettings
+    ),
+
     FormatStr = [
         "[",
         date,
