@@ -21,7 +21,8 @@
     failed_pull_data/1,
     pull_resp/1,
     multi_hotspots/1,
-    tee_test/1
+    tee_test/1,
+    shutdown_test/1
 ]).
 
 -record(state, {
@@ -35,7 +36,8 @@
     push_data = #{} :: #{binary() => {binary(), reference()}},
     sc_pid :: undefined | pid(),
     pull_data :: {reference(), binary()} | undefined,
-    pull_data_timer :: non_neg_integer()
+    pull_data_timer :: non_neg_integer(),
+    shutdown_timer :: {Timeout :: non_neg_integer(), Timer :: reference()}
 }).
 
 %%--------------------------------------------------------------------
@@ -58,7 +60,8 @@ all() ->
         failed_pull_data,
         pull_resp,
         multi_hotspots,
-        tee_test
+        tee_test,
+        shutdown_test
     ].
 
 %%--------------------------------------------------------------------
@@ -139,6 +142,37 @@ push_data(Config) ->
         State = sys:get_state(WorkerPid),
         State#state.push_data == #{} andalso self() == State#state.sc_pid
     end),
+
+    ok.
+
+shutdown_test(_Config) ->
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+    DevAddr = <<(16#deadbeef):32/integer-unsigned>>,
+    {ok, NetID} = lorawan_devaddr:net_id(DevAddr),
+    DevEUI1 = <<0, 0, 0, 0, 0, 0, 0, 1>>,
+    AppEUI1 = <<0, 0, 0, 2, 0, 0, 0, 1>>,
+
+    Routing = blockchain_helium_packet_v1:make_routing_info({eui, DevEUI1, AppEUI1}),
+    Packet = pp_sc_packet_handler_SUITE:frame_packet(2#010, PubKeyBin, DevAddr, 0, Routing, #{
+        dont_encode => true
+    }),
+
+    %% Shutdown if worker is unused
+    {ok, WorkerPid1} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, #{shutdown_timer => 100}),
+    ?assert(erlang:is_process_alive(WorkerPid1)),
+    timer:sleep(120),
+    ?assertNot(erlang:is_process_alive(WorkerPid1)),
+
+    %% Shutdown is delayed by pushing data
+    {ok, WorkerPid2} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, #{shutdown_timer => 100}),
+    ?assert(erlang:is_process_alive(WorkerPid2)),
+    timer:sleep(50),
+    ok = pp_udp_worker:push_data(WorkerPid2, Packet, 123456789, self()),
+    timer:sleep(50),
+    ?assert(erlang:is_process_alive(WorkerPid2)),
+    timer:sleep(100),
+    ?assertNot(erlang:is_process_alive(WorkerPid2)),
 
     ok.
 

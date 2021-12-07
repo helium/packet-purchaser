@@ -19,6 +19,8 @@
     multi_buy_worst_case_stress_test/1
 ]).
 
+-export([frame_packet/6]).
+
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
@@ -198,7 +200,8 @@ join_net_id_packet_test(_Config) ->
         _PushData,
         _ScPid,
         _PullData,
-        _PullDataTimer
+        _PullDataTimer,
+        _ShutdownTimer
     } = sys:get_state(Pid),
     ?assertEqual({"3.3.3.3", 3333}, {Address, Port}),
 
@@ -455,7 +458,8 @@ net_ids_map_packet_test(_Config) ->
             _PushData,
             _ScPid,
             _PullData,
-            _PullDataTimer
+            _PullDataTimer,
+            _ShutdownTimer
         } = sys:get_state(Pid),
         {Address, Port}
     end,
@@ -530,7 +534,8 @@ single_hotspot_multi_net_id_test(_Config) ->
             _PushData,
             _ScPid,
             _PullData,
-            _PullDataTimer
+            _PullDataTimer,
+            _ShutdownTimer
         } = sys:get_state(Pid),
         {Address, Port}
     end,

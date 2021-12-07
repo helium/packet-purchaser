@@ -34,6 +34,9 @@
 -define(PULL_DATA_TIMEOUT_TICK, pull_data_timeout_tick).
 -define(PULL_DATA_TIMER, timer:seconds(10)).
 
+-define(SHUTDOWN_TICK, shutdown_tick).
+-define(SHUTDOWN_TIMER, timer:minutes(5)).
+
 -record(state, {
     blockchain :: blockchain:blockchain() | undefined,
     location :: {pos_integer(), float(), float()} | undefined,
@@ -45,7 +48,8 @@
     push_data = #{} :: #{binary() => {binary(), reference()}},
     sc_pid :: undefined | pid(),
     pull_data :: {reference(), binary()} | undefined,
-    pull_data_timer :: non_neg_integer()
+    pull_data_timer :: non_neg_integer(),
+    shutdown_timer :: {Timeout :: non_neg_integer(), Timer :: reference()}
 }).
 
 %% ------------------------------------------------------------------
@@ -73,10 +77,10 @@ init(Args) ->
     lager:md([{gateway_id, blockchain_utils:addr2name(PubKeyBin)}, {address, Address}]),
 
     Port = maps:get(port, Args),
-    PullDataTimer = maps:get(pull_data_timer, Args, ?PULL_DATA_TIMER),
     {ok, Socket} = pp_udp_socket:open({Address, Port}, maps:get(tee, Args, undefined)),
 
     DisablePullData = maps:get(disable_pull_data, Args, false),
+    PullDataTimer = maps:get(pull_data_timer, Args, ?PULL_DATA_TIMER),
     case DisablePullData of
         true ->
             ok;
@@ -87,13 +91,17 @@ init(Args) ->
             schedule_pull_data(PullDataTimer)
     end,
 
+    ShutdownTimeout = maps:get(shutdown_timer, Args, ?SHUTDOWN_TIMER),
+    ShutdownRef = schedule_shutdown(ShutdownTimeout),
+
     State = #state{
         pubkeybin = PubKeyBin,
         net_id = NetID,
         socket = Socket,
         address = Address,
         port = Port,
-        pull_data_timer = PullDataTimer
+        pull_data_timer = PullDataTimer,
+        shutdown_timer = {ShutdownTimeout, ShutdownRef}
     },
     case blockchain_worker:blockchain() of
         undefined ->
@@ -109,13 +117,16 @@ init(Args) ->
 handle_call(
     {push_data, SCPacket, PacketTime, HandlerPid},
     _From,
-    #state{push_data = PushData, location = Loc} = State
+    #state{push_data = PushData, location = Loc, shutdown_timer = {ShutdownTimeout, ShutdownRef}} =
+        State
 ) ->
+    _ = erlang:cancel_timer(ShutdownRef),
     {Token, Data} = handle_data(SCPacket, PacketTime, Loc),
     {Reply, TimerRef} = send_push_data(Token, Data, State),
     {reply, Reply, State#state{
         push_data = maps:put(Token, {Data, TimerRef}, PushData),
-        sc_pid = HandlerPid
+        sc_pid = HandlerPid,
+        shutdown_timer = {ShutdownTimeout, schedule_shutdown(ShutdownTimeout)}
     }};
 handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
@@ -177,6 +188,9 @@ handle_info(
     ok = pp_metrics:pull_ack_missed(PBK, NetID),
     _ = schedule_pull_data(PullDataTimer),
     {noreply, State};
+handle_info(?SHUTDOWN_TICK, #state{shutdown_timer = {ShutdownTimeout, _}} = State) ->
+    lager:info("shutting down, haven't sent data in ~p", [ShutdownTimeout]),
+    {stop, normal, State};
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p, ~p", [_Msg, State]),
     {noreply, State}.
@@ -363,6 +377,10 @@ handle_pull_resp(
 -spec schedule_pull_data(non_neg_integer()) -> reference().
 schedule_pull_data(PullDataTimer) ->
     _ = erlang:send_after(PullDataTimer, self(), ?PULL_DATA_TICK).
+
+-spec schedule_shutdown(non_neg_integer()) -> reference().
+schedule_shutdown(ShutdownTimer) ->
+    _ = erlang:send_after(ShutdownTimer, self(), ?SHUTDOWN_TICK).
 
 -spec send_pull_data(#state{}) -> {ok, {reference(), binary()}} | {error, any()}.
 send_pull_data(
