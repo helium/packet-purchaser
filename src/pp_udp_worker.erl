@@ -97,7 +97,6 @@ init(Args) ->
             schedule_pull_data(PullDataTimer)
     end,
 
-
     ok = pp_config:insert_udp_worker(NetID, self()),
 
     ShutdownTimeout = maps:get(shutdown_timer, Args, ?SHUTDOWN_TIMER),

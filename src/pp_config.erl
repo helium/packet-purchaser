@@ -164,7 +164,7 @@ load_config(ConfigList) ->
                 false ->
                     ok;
                 CurrEntry ->
-                %% Unchanged
+                    %% Unchanged
                     ok;
                 _ExistingEntry ->
                     %% Updated
