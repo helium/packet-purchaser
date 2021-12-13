@@ -101,20 +101,12 @@ start_ws() ->
     PacketTime :: non_neg_integer(),
     Type :: packet | join
 ) -> ok.
-handle_packet(_NetID, Packet, PacketTime, Type) ->
+handle_packet(NetID, Packet, PacketTime, Type) ->
     PHash = blockchain_helium_packet_v1:packet_hash(Packet),
     PayloadSize = erlang:byte_size(blockchain_helium_packet_v1:payload(Packet)),
     Data = #{
-        %% FIXME: temporary value
-        dc_used => #{
-            balance => 0,
-            nonce => 0,
-            used => 0
-        },
         packet_size => PayloadSize,
-        %% FIXME: temporary value
-        %% organization_id => NetID,
-        organization_id => <<"e7b1829b-e009-4b8f-aea2-b1367635674c">>,
+        organization_id => NetID,
         reported_at_epoch => PacketTime,
         packet_hash => base64:encode(PHash),
         type => Type

@@ -491,35 +491,32 @@ packet_websocket_test(_Config) ->
 
     ?assertMatch(
         {ok, #{
-            <<"dc_used">> := _,
-            <<"organization_id">> := Bin1,
+            <<"organization_id">> := ?NET_ID_ACTILITY,
             <<"packet_hash">> := _,
             <<"packet_size">> := _,
             <<"reported_at_epoch">> := Time0,
             <<"type">> := <<"packet">>
-        }} when erlang:is_integer(Time0) andalso erlang:is_binary(Bin1),
+        }} when erlang:is_integer(Time0),
         test_utils:ws_rcv()
     ),
     ?assertMatch(
         {ok, #{
-            <<"dc_used">> := _,
-            <<"organization_id">> := Bin2,
+            <<"organization_id">> := ?NET_ID_ORANGE,
             <<"packet_hash">> := _,
             <<"packet_size">> := _,
             <<"reported_at_epoch">> := Time1,
             <<"type">> := <<"packet">>
-        }} when erlang:is_integer(Time1) andalso erlang:is_binary(Bin2),
+        }} when erlang:is_integer(Time1),
         test_utils:ws_rcv()
     ),
     ?assertMatch(
         {ok, #{
-            <<"dc_used">> := _,
-            <<"organization_id">> := Bin3,
+            <<"organization_id">> := ?NET_ID_COMCAST,
             <<"packet_hash">> := _,
             <<"packet_size">> := _,
             <<"reported_at_epoch">> := Time2,
             <<"type">> := <<"packet">>
-        }} when erlang:is_integer(Time2) andalso erlang:is_binary(Bin3),
+        }} when erlang:is_integer(Time2),
         test_utils:ws_rcv()
     ),
 
@@ -575,7 +572,7 @@ packet_websocket_inactive_test(_Config) ->
 
 join_websocket_test(_Config) ->
     DevAddr = ?DEVADDR_COMCAST,
-    %% NetID = ?NET_ID_COMCAST,
+    NetID = ?NET_ID_COMCAST,
     DevEUI1 = <<0, 0, 0, 0, 0, 0, 0, 1>>,
     AppEUI1 = <<0, 0, 0, 2, 0, 0, 0, 1>>,
 
@@ -610,13 +607,12 @@ join_websocket_test(_Config) ->
     pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
     ?assertMatch(
         {ok, #{
-            <<"dc_used">> := _,
-            <<"organization_id">> := Bin1,
+            <<"organization_id">> := NetID,
             <<"packet_hash">> := _,
             <<"packet_size">> := _,
             <<"reported_at_epoch">> := Time0,
             <<"type">> := <<"join">>
-        }} when erlang:is_integer(Time0) andalso erlang:is_binary(Bin1),
+        }} when erlang:is_integer(Time0),
         test_utils:ws_rcv()
     ),
 
