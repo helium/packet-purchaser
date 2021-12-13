@@ -231,10 +231,9 @@ ws_init() ->
                 {ok, Pid}
         after 2500 -> ct:fail(websocket_init_timeout)
         end,
-    %% Eat phx_join message
-    _ = ws_roaming_rcv(),
-    %% Eat packet_purchaser address message
-    _ = ws_roaming_rcv(),
+    %% Eat phx_join message and packet_purchaser address message
+    {ok, #{event := <<"phx_join">>}} = ws_roaming_rcv(),
+    {ok, #{event := <<"packet_purchaser:address">>}} = ws_roaming_rcv(),
     R.
 
 -spec ws_rcv() -> {ok, any()}.
