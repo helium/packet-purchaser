@@ -74,7 +74,6 @@ init([]) ->
         ?SUP(blockchain_sup, [BlockchainOpts]),
         ?WORKER(pp_config, [ConfigFilename]),
         ?WORKER(pp_sc_worker, [#{}]),
-        %% ?WORKER(pp_xor_filter_worker, [#{}]),
         ?SUP(pp_udp_sup, []),
         ?SUP(pp_console_sup, []),
         ?WORKER(pp_metrics, []),
