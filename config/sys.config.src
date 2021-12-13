@@ -40,7 +40,8 @@
         {sc_packet_handler, pp_sc_packet_handler},
         {disable_gateway_cache, true},
         {gw_cache_retention_limit, 0},
-        {gw_context_cache_max_size, 0}
+        {gw_context_cache_max_size, 0},
+        {sc_sup_type, server}
     ]},
     {libp2p, [{max_tcp_connections, 50000}]},
     {prometheus, [
