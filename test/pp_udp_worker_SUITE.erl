@@ -152,7 +152,7 @@ shutdown_test(_Config) ->
     AppEUI1 = <<0, 0, 0, 2, 0, 0, 0, 1>>,
 
     Routing = blockchain_helium_packet_v1:make_routing_info({eui, DevEUI1, AppEUI1}),
-    Packet = pp_sc_packet_handler_SUITE:frame_packet(2#010, PubKeyBin, DevAddr, 0, Routing, #{
+    Packet = test_utils:frame_packet(2#010, PubKeyBin, DevAddr, 0, Routing, #{
         dont_encode => true
     }),
 

@@ -959,6 +959,7 @@ get_udp_worker_address_port(Pid) ->
         _PushData,
         _ScPid,
         _PullData,
-        _PullDataTimer
+        _PullDataTimer,
+        _ShutdownTimer
     } = sys:get_state(Pid),
     pp_udp_socket:get_address(Socket).
