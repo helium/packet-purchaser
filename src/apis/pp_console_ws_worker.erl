@@ -45,7 +45,7 @@
     deactivate/0,
     activate/0, activate/1,
     start_ws/0,
-    start_ws/2,
+    start_ws/3,
     get_token/2
 ]).
 
@@ -165,12 +165,8 @@ init(Args) ->
     IsActive = maps:get(is_active, Args, false),
     WSPid =
         case IsActive of
-            true ->
-                lager:info("getting token for websocket from ~p", [Endpoint]),
-                Token = get_token(Endpoint, Secret),
-                start_ws(WSEndpoint, Token);
-            false ->
-                undefined
+            true -> start_ws(Endpoint, WSEndpoint, Secret);
+            false -> undefined
         end,
     {ok, #state{
         ws = WSPid,
@@ -188,12 +184,11 @@ handle_call(deactivate, _From, State) ->
     lager:info("deactivating websocket worker"),
     {reply, {ok, inactive}, State#state{is_active = false}};
 handle_call(start_ws, _From, #state{ws_endpoint = WSEndpoint} = State) ->
+    lager:info("starting websocket connection"),
     #{endpoint := Endpoint, secret := Secret} = maps:from_list(
         application:get_env(packet_purchaser, pp_console_api, [])
     ),
-    Token = get_token(Endpoint, Secret),
-    lager:info("starting websocket connection"),
-    WSPid = start_ws(WSEndpoint, Token),
+    WSPid = start_ws(Endpoint, WSEndpoint, Secret),
     {reply, {ok, WSPid}, State#state{ws = WSPid}};
 handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
@@ -219,8 +214,7 @@ handle_info(
     #{endpoint := Endpoint, secret := Secret} = maps:from_list(
         application:get_env(packet_purchaser, pp_console_api, [])
     ),
-    Token = get_token(Endpoint, Secret),
-    WSPid1 = start_ws(WSEndpoint, Token),
+    WSPid1 = start_ws(Endpoint, WSEndpoint, Secret),
     {noreply, State#state{ws = WSPid1}};
 handle_info(ws_joined, #state{} = State) ->
     lager:info("joined, sending packet_purchaser address to console"),
@@ -259,7 +253,7 @@ handle_message(?ORGANIZATION, ?WS_RCV_REFILL_BALANCE, Payload) ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
--spec get_token(Endpoint :: binary(), Secret :: binary()) -> binary().
+-spec get_token(Endpoint :: binary(), Secret :: binary()) -> {ok, binary()} | {error, any()}.
 get_token(Endpoint, Secret) ->
     case
         hackney:post(
@@ -271,18 +265,30 @@ get_token(Endpoint, Secret) ->
     of
         {ok, 201, _Headers, Body} ->
             #{<<"jwt">> := Token} = jsx:decode(Body, [return_maps]),
-            Token;
+            {ok, Token};
         _Other ->
-            lager:error("we failed to get a proper token ~p", [_Other]),
-            erlang:throw(get_token)
+            {error, _Other}
     end.
 
--spec start_ws(WSEndpoint :: binary(), Token :: binary()) -> pid().
-start_ws(WSEndpoint, Token) ->
-    Url = binary_to_list(<<WSEndpoint/binary, "?token=", Token/binary, "&vsn=2.0.0">>),
-    {ok, Pid} = pp_console_ws_handler:start_link(#{
-        url => Url,
-        auto_join => [?ORGANIZATION],
-        forward => self()
-    }),
-    Pid.
+-spec start_ws(Endpoint :: binary(), WSEndpoint :: binary(), Secret :: binary()) ->
+    pid() | undefined.
+start_ws(Endpoint, WSEndpoint, Secret) ->
+    case get_token(Endpoint, Secret) of
+        {ok, Token} ->
+            Url = binary_to_list(<<WSEndpoint/binary, "?token=", Token/binary, "&vsn=2.0.0">>),
+            Args = #{
+                url => Url,
+                auto_join => [?ORGANIZATION],
+                forward => self()
+            },
+            case pp_console_ws_handler:start_link(Args) of
+                {ok, Pid} ->
+                    Pid;
+                Err ->
+                    lager:error("failed to open ws connection [reason: ~p]", [Err]),
+                    undefined
+            end;
+        Err ->
+            lager:error("failed to get token [reason: ~p]", [Err]),
+            undefined
+    end.
