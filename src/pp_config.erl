@@ -9,7 +9,10 @@
 -export([
     start_link/1,
     lookup_eui/1,
-    lookup_devaddr/1
+    lookup_devaddr/1,
+    %% UDP Cache
+    insert_udp_worker/2,
+    delete_udp_worker/1
 ]).
 
 %% helper API
@@ -19,7 +22,8 @@
     write_config_to_ets/1,
     reset_config/0,
     transform_config/1,
-    load_config/1
+    load_config/1,
+    get_config/0
 ]).
 
 %% gen_server callbacks
@@ -32,12 +36,15 @@
     code_change/3
 ]).
 
+%% Websocket API
+-export([ws_update_config/1]).
+
 -define(EUI_ETS, pp_config_join_ets).
 -define(DEVADDR_ETS, pp_config_routing_ets).
+-define(UDP_WORKER_ETS, pp_config_udp_worker_ets).
 
 -record(state, {
-    filename :: testing | string(),
-    config :: map()
+    filename :: testing | string()
 }).
 
 -record(eui, {
@@ -59,6 +66,8 @@
     multi_buy :: unlimited | non_neg_integer(),
     disable_pull_data :: boolean()
 }).
+
+-type config() :: #{joins := [#eui{}], routing := [#devaddr{}]}.
 
 %% -------------------------------------------------------------------
 %% API Functions
@@ -140,9 +149,69 @@ reset_config() ->
 
 -spec load_config(list(map())) -> ok.
 load_config(ConfigList) ->
+    {ok, PrevConfig} = ?MODULE:get_config(),
     ok = ?MODULE:reset_config(),
     Config = ?MODULE:transform_config(ConfigList),
-    ok = ?MODULE:write_config_to_ets(Config).
+    ok = ?MODULE:write_config_to_ets(Config),
+
+    #{routing := PrevRouting} = PrevConfig,
+    #{routing := CurrRouting} = Config,
+
+    ok = lists:foreach(
+        fun(#devaddr{net_id = NetID, address = Address0, port = Port} = CurrEntry) ->
+            case lists:keyfind(NetID, #devaddr.net_id, PrevRouting) of
+                %% Added
+                false ->
+                    ok;
+                CurrEntry ->
+                    %% Unchanged
+                    ok;
+                _ExistingEntry ->
+                    %% Updated
+                    Address1 = erlang:binary_to_list(Address0),
+                    ok = update_udp_workers(NetID, Address1, Port)
+            end
+        end,
+        CurrRouting
+    ),
+
+    ok.
+
+-spec ws_update_config(list(map())) -> ok.
+ws_update_config(ConfigList) ->
+    ?MODULE:load_config(ConfigList).
+
+-spec get_config() -> {ok, config()}.
+get_config() ->
+    {ok, #{
+        joins => ets:tab2list(?EUI_ETS),
+        routing => ets:tab2list(?DEVADDR_ETS)
+    }}.
+
+-spec insert_udp_worker(NetID :: integer(), UDPPid :: pid()) -> ok.
+insert_udp_worker(NetID, Pid) ->
+    true = ets:insert(?UDP_WORKER_ETS, {NetID, Pid}),
+    ok.
+
+-spec delete_udp_worker(Pid :: pid()) -> ok.
+delete_udp_worker(Pid) ->
+    %% ets:fun2ms(fun({_NetID, UDPPid}) when UDPPid == PID -> true end).
+    Spec = [{{'$1', '$2'}, [{'==', '$2', Pid}], [true]}],
+    %% There should only be 1 Pid for net_id
+    1 = ets:select_delete(?UDP_WORKER_ETS, Spec),
+    ok.
+
+-spec lookup_udp_workers_for_net_id(NetID :: integer()) -> list(pid()).
+lookup_udp_workers_for_net_id(NetID) ->
+    [P || {_, P} <- ets:lookup(?UDP_WORKER_ETS, NetID)].
+
+-spec update_udp_workers(NetID :: integer(), Address :: string(), Port :: integer()) -> ok.
+update_udp_workers(NetID, Address, Port) ->
+    [
+        pp_udp_worker:update_address(WorkerPid, Address, Port)
+        || WorkerPid <- lookup_udp_workers_for_net_id(NetID)
+    ],
+    ok.
 
 %% -------------------------------------------------------------------
 %% gen_server Callbacks
@@ -150,17 +219,13 @@ load_config(ConfigList) ->
 
 init([testing]) ->
     ok = ?MODULE:init_ets(),
-    {ok, #state{filename = testing, config = #{}}};
+    {ok, #state{filename = testing}};
 init([Filename]) ->
     ok = ?MODULE:init_ets(),
     Config0 = ?MODULE:read_config(Filename),
     Config1 = ?MODULE:transform_config(Config0),
     ok = ?MODULE:write_config_to_ets(Config1),
-
-    {ok, #state{
-        filename = Filename,
-        config = Config1
-    }}.
+    {ok, #state{filename = Filename}}.
 
 handle_call(_Request, _From, State) ->
     {reply, ignored, State}.
@@ -195,6 +260,13 @@ init_ets() ->
         set,
         {read_concurrency, true},
         {keypos, #devaddr.net_id}
+    ]),
+    ?UDP_WORKER_ETS = ets:new(?UDP_WORKER_ETS, [
+        public,
+        named_table,
+        bag,
+        {write_concurrency, true},
+        {read_concurrency, true}
     ]),
     ok.
 

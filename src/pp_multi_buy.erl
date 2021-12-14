@@ -37,7 +37,7 @@
     }
 ]).
 
--define(BF_ETS, router_device_routing_bf_ets).
+-define(BF_ETS, pp_device_routing_bf_ets).
 -define(BF_KEY, bloom_key).
 %% https://hur.st/bloomfilter/?n=10000&p=1.0E-6&m=&k=20
 -define(BF_UNIQ_CLIENTS_MAX, 10000).
