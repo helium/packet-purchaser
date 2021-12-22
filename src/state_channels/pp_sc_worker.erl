@@ -323,16 +323,16 @@ maybe_start_state_channel(#state{height = Height, in_flight = [], open_sc_limit 
     case {HaveHeadroom, UnderLimit} of
         {false, false} ->
             %% All open channels are active, nothing we can do about it until some close
-            lager:warning("~p limit reached, cant open more", [LogCounts]),
+            lager:warning("~s limit reached, cant open more", [LogCounts]),
             State;
         {false, true} ->
             %% All open channels are active, getting a little tight
-            lager:info("~p all active, opening more", [LogCounts]),
+            lager:info("~s all active, opening more", [LogCounts]),
             {ok, ID} = open_next_state_channel(OpenedCount, State),
             State#state{in_flight = [ID]};
         {true, _} ->
             %% if we have LeftOverOpened > 0, where we want to be
-            lager:info("~p standing by...", [LogCounts]),
+            lager:info("~s standing by...", [LogCounts]),
             State
     end;
 maybe_start_state_channel(
@@ -347,7 +347,7 @@ maybe_start_state_channel(
         [ActiveCount, _OverspentCount, _GettingCloseCount, OpenedCount, InFlightCount, Limit]
     ),
 
-    lager:info("~p we got a txn in flight lets wait", [LogCounts]),
+    lager:info("~s we got a txn in flight lets wait", [LogCounts]),
     State.
 
 -spec open_next_state_channel(NumExistingSCs :: non_neg_integer(), State :: state()) ->

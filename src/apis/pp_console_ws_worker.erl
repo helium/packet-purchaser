@@ -162,7 +162,12 @@ init(Args) ->
     WSEndpoint = maps:get(ws_endpoint, Args),
     Endpoint = maps:get(endpoint, Args),
     Secret = maps:get(secret, Args),
-    IsActive = maps:get(is_active, Args, false),
+    IsActive =
+        case maps:get(is_active, Args, false) of
+            "true" -> true;
+            true -> true;
+            _ -> false
+        end,
     WSPid =
         case IsActive of
             true -> start_ws(Endpoint, WSEndpoint, Secret);
