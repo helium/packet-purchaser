@@ -109,9 +109,9 @@ pull_ack_missed(_PubKeyBin, NetID) ->
 dcs(Balance) ->
     prometheus_gauge:set(?METRICS_DC_BALANCE, Balance).
 
--spec blocks(RelativeHeight :: integer()) -> ok.
-blocks(RelativeHeight) ->
-    prometheus_gauge:set(?METRICS_CHAIN_BLOCKS, RelativeHeight).
+-spec blocks(RelativeTime :: integer()) -> ok.
+blocks(RelativeTime) ->
+    prometheus_gauge:set(?METRICS_CHAIN_BLOCKS, RelativeTime).
 
 -spec state_channels(
     OpenedCount :: non_neg_integer(),
@@ -299,23 +299,14 @@ record_dc_balance(PubKeyBin) ->
 
 record_chain_blocks() ->
     Chain = get_chain(),
-    case blockchain:height(Chain) of
+    case blockchain:head_block(Chain) of
         {error, _} ->
             ok;
-        {ok, Height} ->
-            case hackney:get(<<"https://api.helium.io/v1/blocks/height">>, [], <<>>, [with_body]) of
-                {ok, 200, _, Body} ->
-                    CurHeight = kvc:path(
-                        [<<"data">>, <<"height">>],
-                        jsx:decode(Body, [return_maps])
-                    ),
-                    ok = ?MODULE:blocks(CurHeight - Height);
-                _ ->
-                    ok
-            end
-    end,
-
-    ok.
+        {ok, Block} ->
+            Now = erlang:system_time(seconds),
+            Time = blockchain_block:time(Block),
+            ok = ?MODULE:blocks(Now - Time)
+    end.
 
 record_state_channels() ->
     Chain = get_chain(),
