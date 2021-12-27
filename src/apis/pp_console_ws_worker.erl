@@ -12,8 +12,6 @@
 
 -behavior(gen_server).
 
--include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
-
 %% ------------------------------------------------------------------
 %% API Function Exports
 %% ------------------------------------------------------------------

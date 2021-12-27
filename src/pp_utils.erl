@@ -6,8 +6,6 @@
     get_oui/0,
     pubkeybin_to_mac/1,
     animal_name/1,
-    get_metrics_filename/0,
-    get_lns_metrics_filename/0,
     hex_to_binary/1
 ]).
 
@@ -40,14 +38,6 @@ animal_name(PubKeyBin) ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
-
--spec get_metrics_filename() -> string().
-get_metrics_filename() ->
-    application:get_env(?APP, pp_metrics_file, "/var/data/pp_metrics.dat").
-
--spec get_lns_metrics_filename() -> string().
-get_lns_metrics_filename() ->
-    application:get_env(?APP, pp_lns_metrics_file, "/var/data/pp_lns_metrics.dat").
 
 -spec hex_to_binary(binary()) -> binary().
 hex_to_binary(ID) ->
