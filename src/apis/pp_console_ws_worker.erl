@@ -102,7 +102,10 @@ start_ws() ->
 handle_packet(NetID, Packet, PacketTime, Type) ->
     PHash = blockchain_helium_packet_v1:packet_hash(Packet),
     PayloadSize = erlang:byte_size(blockchain_helium_packet_v1:payload(Packet)),
+    Used = pp_utils:calculate_dc_amount(PayloadSize),
+
     Data = #{
+        dc_used => Used,
         packet_size => PayloadSize,
         organization_id => NetID,
         reported_at_epoch => PacketTime,

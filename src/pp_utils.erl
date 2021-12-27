@@ -6,6 +6,7 @@
     get_oui/0,
     pubkeybin_to_mac/1,
     animal_name/1,
+    calculate_dc_amount/1,
     hex_to_binary/1
 ]).
 
@@ -32,6 +33,17 @@ animal_name(PubKeyBin) ->
         PubKeyBin,
         fun() ->
             erl_angry_purple_tiger:animal_name(libp2p_crypto:bin_to_b58(PubKeyBin))
+        end
+    ).
+
+-spec calculate_dc_amount(non_neg_integer()) -> non_neg_integer().
+calculate_dc_amount(PayloadSize) ->
+    e2qc:cache(
+        calculate_dc_amount_cache,
+        PayloadSize,
+        fun() ->
+            Ledger = blockchain:ledger(),
+            blockchain_utils:calculate_dc_amount(Ledger, PayloadSize)
         end
     ).
 
