@@ -491,7 +491,7 @@ packet_websocket_test(_Config) ->
 
     ?assertMatch(
         {ok, #{
-            <<"organization_id">> := ?NET_ID_ACTILITY,
+            <<"net_id">> := ?NET_ID_ACTILITY,
             <<"packet_hash">> := _,
             <<"packet_size">> := _,
             <<"reported_at_epoch">> := Time0,
@@ -501,7 +501,7 @@ packet_websocket_test(_Config) ->
     ),
     ?assertMatch(
         {ok, #{
-            <<"organization_id">> := ?NET_ID_ORANGE,
+            <<"net_id">> := ?NET_ID_ORANGE,
             <<"packet_hash">> := _,
             <<"packet_size">> := _,
             <<"reported_at_epoch">> := Time1,
@@ -511,7 +511,7 @@ packet_websocket_test(_Config) ->
     ),
     ?assertMatch(
         {ok, #{
-            <<"organization_id">> := ?NET_ID_COMCAST,
+            <<"net_id">> := ?NET_ID_COMCAST,
             <<"packet_hash">> := _,
             <<"packet_size">> := _,
             <<"reported_at_epoch">> := Time2,
@@ -607,7 +607,7 @@ join_websocket_test(_Config) ->
     pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
     ?assertMatch(
         {ok, #{
-            <<"organization_id">> := NetID,
+            <<"net_id">> := NetID,
             <<"packet_hash">> := _,
             <<"packet_size">> := _,
             <<"reported_at_epoch">> := Time0,

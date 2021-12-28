@@ -107,7 +107,7 @@ handle_packet(NetID, Packet, PacketTime, Type) ->
     Data = #{
         dc_used => Used,
         packet_size => PayloadSize,
-        organization_id => NetID,
+        net_id => NetID,
         reported_at_epoch => PacketTime,
         packet_hash => base64:encode(PHash),
         type => Type
