@@ -35,8 +35,8 @@
         {gw_context_cache_max_size, 0}
     ]},
     {libp2p, [
-      {network, mainnet},
-      {max_tcp_connections, 50000}
+        {network, mainnet},
+        {max_tcp_connections, 50000}
     ]},
     {prometheus, [
         {collectors, [
