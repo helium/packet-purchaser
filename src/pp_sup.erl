@@ -57,6 +57,7 @@ init([]) ->
     lager:info("init ~p", [?SERVER]),
 
     BaseDir = application:get_env(blockchain, base_dir, "data"),
+    ok = libp2p_crypto:set_network(application:get_env(libp2p, network, mainnet)),
     Key = load_key(BaseDir),
     SeedNodes = get_seed_nodes(),
     BlockchainOpts = [
