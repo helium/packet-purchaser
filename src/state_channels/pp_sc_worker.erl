@@ -30,7 +30,8 @@
     start_link/1,
     is_active/0,
     force_open/0,
-    counts/1
+    counts/1,
+    sc_hook_close_submit/2
 ]).
 
 %% ------------------------------------------------------------------
@@ -122,6 +123,17 @@ counts(Height) ->
         {0, 0, 0},
         maps:values(blockchain_state_channels_server:get_all())
     ).
+
+-spec sc_hook_close_submit(
+    Status :: any(),
+    SignedTxn :: blockchain_txn_state_channel_close_v1:txn_state_channel_close()
+) -> ok.
+sc_hook_close_submit(ok, _SignedTxn) ->
+    ok = pp_metrics:state_channel_close(ok),
+    lager:info("sc close txn accepted");
+sc_hook_close_submit(Error, SignedTxn) ->
+    ok = pp_metrics:state_channel_close(error),
+    lager:error("sc close txn failed [err: ~p] [txn: ~p]", [Error, SignedTxn]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
