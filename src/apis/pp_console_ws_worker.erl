@@ -12,8 +12,6 @@
 
 -behavior(gen_server).
 
--include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
-
 %% ------------------------------------------------------------------
 %% API Function Exports
 %% ------------------------------------------------------------------
@@ -104,9 +102,12 @@ start_ws() ->
 handle_packet(NetID, Packet, PacketTime, Type) ->
     PHash = blockchain_helium_packet_v1:packet_hash(Packet),
     PayloadSize = erlang:byte_size(blockchain_helium_packet_v1:payload(Packet)),
+    Used = pp_utils:calculate_dc_amount(PayloadSize),
+
     Data = #{
+        dc_used => Used,
         packet_size => PayloadSize,
-        organization_id => NetID,
+        net_id => NetID,
         reported_at_epoch => PacketTime,
         packet_hash => base64:encode(PHash),
         type => Type

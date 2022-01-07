@@ -41,7 +41,8 @@
         {disable_gateway_cache, true},
         {gw_cache_retention_limit, 0},
         {gw_context_cache_max_size, 0},
-        {sc_sup_type, server}
+        {sc_sup_type, server},
+        {sc_hook_close_submit, pp_sc_worker}
     ]},
     {libp2p, [
         {network, mainnet},

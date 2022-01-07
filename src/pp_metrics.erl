@@ -18,6 +18,7 @@
 -define(METRICS_SC_ACTIVE_COUNT, packet_purchaser_state_channel_active_count).
 -define(METRICS_SC_ACTIVE_BALANCE, packet_purchaser_state_channel_active_balance).
 -define(METRICS_SC_ACTIVE_ACTORS, packet_purchaser_state_channel_active_actors).
+-define(METRICS_SC_CLOSE_SUBMIT, packet_purchaser_state_channel_close_submit_count).
 
 -define(METRICS_WORKER_TICK_INTERVAL, timer:seconds(10)).
 -define(METRICS_WORKER_TICK, '__pp_metrics_tick').
@@ -38,6 +39,7 @@
     dcs/1,
     blocks/1,
     state_channels/5,
+    state_channel_close/1,
     %% Websocket
     ws_state/1
 ]).
@@ -126,6 +128,10 @@ state_channels(OpenedCount, OverspentCount, ActiveCount, TotalDCLeft, TotalActor
     prometheus_gauge:set(?METRICS_SC_ACTIVE_COUNT, ActiveCount),
     prometheus_gauge:set(?METRICS_SC_ACTIVE_BALANCE, TotalDCLeft),
     prometheus_gauge:set(?METRICS_SC_ACTIVE_ACTORS, TotalActors).
+
+-spec state_channel_close(Status :: ok | error) -> ok.
+state_channel_close(Status) ->
+    prometheus_counter:inc(?METRICS_SC_CLOSE_SUBMIT, [Status]).
 
 -spec ws_state(boolean()) -> ok.
 ws_state(_State) ->
@@ -254,6 +260,11 @@ declare_metrics() ->
     prometheus_gauge:declare([
         {name, ?METRICS_SC_ACTIVE_ACTORS},
         {help, "Active State Channels actors"}
+    ]),
+    prometheus_counter:declare([
+        {name, ?METRICS_SC_CLOSE_SUBMIT},
+        {help, "State Channel Close Txn status"},
+        {labels, [status]}
     ]),
 
     ok.
