@@ -7,7 +7,8 @@
     pubkeybin_to_mac/1,
     animal_name/1,
     calculate_dc_amount/1,
-    hex_to_binary/1
+    hex_to_binary/1,
+    get_env_int/2
 ]).
 
 -spec get_oui() -> undefined | non_neg_integer().
@@ -46,6 +47,14 @@ calculate_dc_amount(PayloadSize) ->
             blockchain_utils:calculate_dc_amount(Ledger, PayloadSize)
         end
     ).
+
+-spec get_env_int(atom(), integer()) -> integer().
+get_env_int(Key, Default) ->
+    case application:get_env(router, Key, Default) of
+        [] -> Default;
+        Str when is_list(Str) -> erlang:list_to_integer(Str);
+        I -> I
+    end.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
