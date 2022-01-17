@@ -439,27 +439,15 @@ get_nonce(PubkeyBin, Ledger) ->
 
 -spec get_sc_amount() -> pos_integer().
 get_sc_amount() ->
-    case application:get_env(?APP, sc_open_dc_amount, ?SC_AMOUNT) of
-        [] -> ?SC_AMOUNT;
-        Str when is_list(Str) -> erlang:list_to_integer(Str);
-        Amount -> Amount
-    end.
+    pp_utils:get_env_int(sc_open_dc_amount, ?SC_AMOUNT).
 
 -spec get_sc_expiration_interval() -> pos_integer().
 get_sc_expiration_interval() ->
-    case application:get_env(?APP, sc_expiration_interval, ?SC_EXPIRATION) of
-        [] -> ?SC_EXPIRATION;
-        Str when is_list(Str) -> erlang:list_to_integer(Str);
-        I -> I
-    end.
+    pp_utils:get_env_int(sc_expiration_interval, ?SC_EXPIRATION).
 
 -spec get_sc_buffer() -> pos_integer().
 get_sc_buffer() ->
-    case application:get_env(?APP, sc_expiration_buffer, ?SC_BUFFER) of
-        [] -> ?SC_BUFFER;
-        Str when is_list(Str) -> erlang:list_to_integer(Str);
-        I -> I
-    end.
+    pp_utils:get_env_int(sc_expiration_buffer, ?SC_BUFFER).
 
 -spec handle_sc_result(
     ok | {error, rejected | invalid},
