@@ -14,6 +14,8 @@
     pull_data/2,
     pull_ack/1,
     pull_resp/2,
+    pull_resp_to_mac/3,
+    pull_resp_to_mac_data/1,
     tx_ack/2, tx_ack/3,
     token/0,
     token/1,
@@ -104,6 +106,17 @@ pull_resp(Token, Map) ->
     BinJSX = jsx:encode(#{txpk => Map}, [{float_formatter, fun round_to_fourth_decimal/1}]),
     <<?PROTOCOL_2:8/integer-unsigned, Token/binary, ?PULL_RESP:8/integer-unsigned, BinJSX/binary>>.
 
+-spec pull_resp_to_mac(Token :: binary(), TargetMAC :: binary(), Data :: map()) -> binary().
+pull_resp_to_mac(Token, TargetMAC, Data) ->
+    BinJSX = jsx:encode(#{txpk => Data}, [{float_formatter, fun round_to_fourth_decimal/1}]),
+    <<
+        ?PROTOCOL_2:8/integer-unsigned,
+        Token/binary,
+        ?PULL_RESP:8/integer-unsigned,
+        TargetMAC:8/binary,
+        BinJSX/binary
+    >>.
+
 %%%-------------------------------------------------------------------
 %% @doc
 %% That packet type is used by the gateway to send a feedback to the server
@@ -177,6 +190,13 @@ json_data(
         BinJSX/binary>>
 ) ->
     jsx:decode(BinJSX).
+
+-spec pull_resp_to_mac_data(binary()) -> {ok, binary(), binary(), map()}.
+pull_resp_to_mac_data(
+    <<?PROTOCOL_2:8/integer-unsigned, Token:2/binary, ?PULL_RESP:8/integer-unsigned, MAC:8/binary,
+        BinJSX/binary>>
+) ->
+    {ok, Token, MAC, jsx:decode(BinJSX)}.
 
 %%====================================================================
 %% Internal functions

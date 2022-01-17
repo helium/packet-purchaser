@@ -134,12 +134,21 @@ handle_call(
 handle_call(
     {push_data, SCPacket, PacketTime, HandlerPid},
     _From,
-    #state{push_data = PushData, location = Loc, shutdown_timer = {ShutdownTimeout, ShutdownRef}} =
+    #state{
+        pubkeybin = PubKeyBin,
+        push_data = PushData,
+        location = Loc,
+        shutdown_timer = {ShutdownTimeout, ShutdownRef}
+    } =
         State
 ) ->
     _ = erlang:cancel_timer(ShutdownRef),
     {Token, Data} = handle_data(SCPacket, PacketTime, Loc),
     {Reply, TimerRef} = send_push_data(Token, Data, State),
+    ok = pp_pull_resp:insert_sc_pid(
+        pp_utils:pubkeybin_to_mac(PubKeyBin),
+        HandlerPid
+    ),
     {reply, Reply, State#state{
         push_data = maps:put(Token, {Data, TimerRef}, PushData),
         sc_pid = HandlerPid,
@@ -214,10 +223,11 @@ handle_info(_Msg, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-terminate(_Reason, #state{socket = Socket}) ->
+terminate(_Reason, #state{pubkeybin = PubKeyBin, socket = Socket}) ->
     lager:info("going down ~p", [_Reason]),
     ok = pp_config:delete_udp_worker(self()),
     ok = pp_udp_socket:close(Socket),
+    ok = pp_pull_resp:delete_sc_pid(pp_utils:pubkeybin_to_mac(PubKeyBin)),
     ok.
 
 %% ------------------------------------------------------------------

@@ -20,6 +20,7 @@
     pull_data_inactive/1,
     failed_pull_data/1,
     pull_resp/1,
+    pull_resp_single_port/1,
     multi_hotspots/1,
     tee_test/1,
     shutdown_test/1
@@ -57,6 +58,7 @@ all() ->
         pull_data_inactive,
         failed_pull_data,
         pull_resp,
+        pull_resp_single_port,
         multi_hotspots,
         tee_test,
         shutdown_test
@@ -349,6 +351,50 @@ pull_resp(Config) ->
     Map = #{<<"txpk_ack">> => #{<<"error">> => <<"NONE">>}},
 
     ?assertEqual({ok, {Token, MAC, Map}}, pp_lns:rcv(FakeLNSPid, ?TX_ACK)),
+
+    receive
+        {send_response, SCResp} ->
+            Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
+            ?assertEqual(DownlinkPayload, blockchain_helium_packet_v1:payload(Downlink)),
+            ?assertEqual(DownlinkTimestamp, blockchain_helium_packet_v1:timestamp(Downlink)),
+            ?assertEqual(DownlinkFreq, blockchain_helium_packet_v1:frequency(Downlink)),
+            ?assertEqual(27, blockchain_helium_packet_v1:signal_strength(Downlink)),
+            ?assertEqual(
+                erlang:binary_to_list(DownlinkDatr),
+                blockchain_helium_packet_v1:datarate(Downlink)
+            )
+    after 3000 -> ct:fail("sc resp timeout")
+    end,
+
+    ok.
+
+pull_resp_single_port(Config) ->
+    Pid = whereis(pp_pull_resp),
+    Port = pp_pull_resp:get_port(Pid),
+
+    FakeLNSPid = proplists:get_value(lns, Config),
+    {PubKeyBin, _WorkerPid} = proplists:get_value(gateway, Config),
+
+    _Opts = pp_lns:send_packet(PubKeyBin, #{}),
+
+    MAC = pp_utils:pubkeybin_to_mac(PubKeyBin),
+
+    Token = semtech_udp:token(),
+    DownlinkPayload = <<"downlink_payload">>,
+    DownlinkTimestamp = erlang:system_time(millisecond),
+    DownlinkFreq = 915.0,
+    DownlinkDatr = <<"SF11BW125">>,
+    ok = pp_lns:pull_resp_to_mac(FakeLNSPid, MAC, "127.0.0.1", Port, Token, #{
+        data => DownlinkPayload,
+        tmst => DownlinkTimestamp,
+        freq => DownlinkFreq,
+        datr => DownlinkDatr,
+        powe => 27
+    }),
+
+    Map = #{<<"txpk_ack">> => #{<<"error">> => <<"NONE">>}},
+
+    ?assertEqual({ok, {Token, MAC, Map}}, pp_lns:rcv(FakeLNSPid, ?TX_ACK, timer:seconds(5))),
 
     receive
         {send_response, SCResp} ->

@@ -12,6 +12,7 @@
     delay_next_udp/2,
     delay_next_udp_forever/1,
     pull_resp/5,
+    pull_resp_to_mac/6,
     rcv/2, rcv/3,
     not_rcv/3,
     send_packet/2
@@ -53,6 +54,9 @@ delay_next_udp(Pid, Delay) ->
 
 pull_resp(Pid, IP, Port, Token, Map) ->
     gen_server:cast(Pid, {pull_resp, IP, Port, Token, Map}).
+
+pull_resp_to_mac(Pid, MAC, IP, Port, Token, Map) ->
+    gen_server:cast(Pid, {pull_resp_to_mac, MAC, IP, Port, Token, Map}).
 
 rcv(Pid, Type) ->
     rcv(Pid, Type, timer:seconds(1)).
@@ -126,6 +130,10 @@ handle_cast({delay_next_udp, Delay}, State) ->
 handle_cast({pull_resp, IP, Port, Token, Map}, #state{socket = Socket} = State) ->
     lager:info("pull_resp ~p", [{IP, Port, Token, Map}]),
     _ = gen_udp:send(Socket, IP, Port, semtech_udp:pull_resp(Token, Map)),
+    {noreply, State};
+handle_cast({pull_resp_to_mac, MAC, IP, Port, Token, Map}, #state{socket = Socket} = State) ->
+    lager:info("pull_resp to mac ~p", [{MAC, IP, Port, Token, Map}]),
+    _ = gen_udp:send(Socket, IP, Port, semtech_udp:pull_resp_to_mac(Token, MAC, Map)),
     {noreply, State};
 handle_cast(_Msg, State) ->
     lager:warning("rcvd unknown cast msg: ~p", [_Msg]),

@@ -71,6 +71,8 @@ init([]) ->
 
     {ok, ConfigFilename} = application:get_env(packet_purchaser, pp_routing_config_filename),
 
+    PullRespPort = pp_utils:get_env_int(pull_resp_port, 1703),
+
     ChildSpecs = [
         ?SUP(blockchain_sup, [BlockchainOpts]),
         ?WORKER(pp_config, [ConfigFilename]),
@@ -78,7 +80,8 @@ init([]) ->
         ?SUP(pp_udp_sup, []),
         ?SUP(pp_console_sup, []),
         ?WORKER(pp_metrics, []),
-        ?WORKER(pp_multi_buy, [])
+        ?WORKER(pp_multi_buy, []),
+        ?WORKER(pp_pull_resp, [#{port => PullRespPort}])
     ],
     {ok, {?FLAGS, ChildSpecs}}.
 
