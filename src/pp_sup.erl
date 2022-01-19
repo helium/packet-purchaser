@@ -72,6 +72,7 @@ init([]) ->
     {ok, ConfigFilename} = application:get_env(packet_purchaser, pp_routing_config_filename),
 
     PullRespPort = pp_utils:get_env_int(pull_resp_port, 1703),
+    ok = pp_pull_resp:init_ets(),
 
     ChildSpecs = [
         ?SUP(blockchain_sup, [BlockchainOpts]),

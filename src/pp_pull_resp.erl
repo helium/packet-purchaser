@@ -11,7 +11,8 @@
     start_link/1,
     get_port/1,
     insert_sc_pid/2,
-    delete_sc_pid/1
+    delete_sc_pid/1,
+    init_ets/0
 ]).
 
 %% ------------------------------------------------------------------
@@ -67,6 +68,11 @@ get_sc_pid_for_mac(MAC) ->
             {error, not_found}
     end.
 
+-spec init_ets() -> ok.
+init_ets() ->
+    ?ETS = ets:new(?ETS, [public, named_table, set]),
+    ok.
+
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
@@ -75,8 +81,6 @@ init(Args) ->
     lager:info("~p init with ~p", [?SERVER, Args]),
     Port = maps:get(port, Args),
     {ok, Socket} = gen_udp:open(Port, [binary, {active, true}]),
-
-    ?ETS = ets:new(?ETS, [public, named_table, set]),
 
     ct:print("started singleton ~p on ~p", [Socket, Port]),
     {ok, #state{socket = Socket, port = Port}}.
