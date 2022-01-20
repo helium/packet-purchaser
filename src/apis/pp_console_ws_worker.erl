@@ -254,6 +254,25 @@ handle_message(?ORGANIZATION, ?WS_RCV_DC_BALANCE_LIST, Payload) ->
     ok;
 handle_message(?ORGANIZATION, ?WS_RCV_REFILL_BALANCE, Payload) ->
     lager:info("refill DC balance: ~p", [Payload]),
+    ok;
+handle_message(Topic, Msg, Payload) ->
+    case {Topic, Msg} of
+        {?ORGANIZATION, <<"phx_reply">>} ->
+            lager:debug(
+                "organization websocket message [event: phx_reply] [payload: ~p]",
+                [Payload]
+            );
+        {?ORGANIZATION, _} ->
+            lager:warning(
+                "rcvd unknown organization websocket message [event: ~p] [payload: ~p]",
+                [Msg, Payload]
+            );
+        {_, _} ->
+            lager:warning(
+                "rcvd unknown topic message [topic: ~p] [event: ~p] [payload: ~p]",
+                [Topic, Msg, Payload]
+            )
+    end,
     ok.
 
 %% ------------------------------------------------------------------
