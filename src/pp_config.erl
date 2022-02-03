@@ -12,7 +12,10 @@
     lookup_devaddr/1,
     %% UDP Cache
     insert_udp_worker/2,
-    delete_udp_worker/1
+    delete_udp_worker/1,
+    %% Purchasing
+    start_buying/1,
+    stop_buying/1
 ]).
 
 %% helper API
@@ -55,7 +58,8 @@
     multi_buy :: unlimited | non_neg_integer(),
     disable_pull_data :: boolean(),
     dev_eui :: '*' | non_neg_integer(),
-    app_eui :: non_neg_integer()
+    app_eui :: non_neg_integer(),
+    buying_active :: boolean()
 }).
 
 -record(devaddr, {
@@ -64,7 +68,8 @@
     address :: binary(),
     port :: non_neg_integer(),
     multi_buy :: unlimited | non_neg_integer(),
-    disable_pull_data :: boolean()
+    disable_pull_data :: boolean(),
+    buying_active :: boolean()
 }).
 
 -type config() :: #{joins := [#eui{}], routing := [#devaddr{}]}.
@@ -76,7 +81,9 @@
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [Args], []).
 
--spec lookup_eui(EUI) -> {ok, map()} | {error, unmapped_eui} when
+-spec lookup_eui(EUI) ->
+    {ok, map()} | {error, unmapped_eui} | {error, buying_inactive, NetID :: integer()}
+when
     EUI ::
         {eui, #eui_pb{}}
         | #eui_pb{}
@@ -95,6 +102,8 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
     case ets:select(?EUI_ETS, Spec) of
         [] ->
             {error, unmapped_eui};
+        [#eui{buying_active = false, net_id = NetID}] ->
+            {error, buying_inactive, NetID};
         [
             #eui{
                 address = Address,
@@ -121,6 +130,8 @@ lookup_devaddr({devaddr, DevAddr}) ->
             case ets:lookup(?DEVADDR_ETS, NetID) of
                 [] ->
                     {error, routing_not_found};
+                [#devaddr{buying_active = false, net_id = NetID}] ->
+                    {error, buying_inactive, NetID};
                 [
                     #devaddr{
                         address = Address,
@@ -213,6 +224,22 @@ update_udp_workers(NetID, Address, Port) ->
     ],
     ok.
 
+-spec start_buying(NetIDs :: [integer()]) -> ok | {error, any()}.
+start_buying([]) ->
+    ok;
+start_buying([NetID | NetIDS]) ->
+    ok = update_buying_devaddr(NetID, true),
+    ok = update_buying_eui(NetID, true),
+    ?MODULE:start_buying(NetIDS).
+
+-spec stop_buying(NetIDs :: [integer()]) -> ok | {error, any()}.
+stop_buying([]) ->
+    ok;
+stop_buying([NetID | NetIDS]) ->
+    ok = update_buying_devaddr(NetID, false),
+    ok = update_buying_eui(NetID, false),
+    ?MODULE:stop_buying(NetIDS).
+
 %% -------------------------------------------------------------------
 %% gen_server Callbacks
 %% -------------------------------------------------------------------
@@ -268,6 +295,41 @@ init_ets() ->
         {write_concurrency, true},
         {read_concurrency, true}
     ]),
+    ok.
+
+-spec update_buying_devaddr(NetID :: integer(), BuyingActive :: boolean()) -> ok.
+update_buying_devaddr(NetID, BuyingActive) ->
+    DevaddrMS = ets:fun2ms(fun(#devaddr{net_id = Key} = Val) when Key == NetID ->
+        Val#devaddr{buying_active = BuyingActive}
+    end),
+    case ets:select_replace(?DEVADDR_ETS, DevaddrMS) of
+        1 ->
+            ok;
+        N ->
+            lager:warning(
+                "updating devaddr ets [net_id: ~p] [count: ~p] [buying_active_new_val: ~p] should be 1",
+                [NetID, N, BuyingActive]
+            )
+    end,
+    ok.
+
+-spec update_buying_eui(NetID :: integer(), BuyingActive :: boolean()) -> ok.
+update_buying_eui(NetID, BuyingActive) ->
+    %% There are potentially many EUIs per NetID. `ets:select_replace/2'
+    %% requires you keep the key intact, in a bag table the whole record is
+    %% considered as part of the key. So the current solution is to grab
+    %% everything we know of, delete it all, update the items for the NetID in
+    %% question and reinsert everything.
+    AllEuis = ets:tab2list(?EUI_ETS),
+    true = ets:delete_all_objects(?EUI_ETS),
+    NewEUIs = lists:map(
+        fun
+            (#eui{net_id = Key} = Val) when Key == NetID -> Val#eui{buying_active = BuyingActive};
+            (Val) -> Val
+        end,
+        AllEuis
+    ),
+    true = ets:insert(?EUI_ETS, NewEUIs),
     ok.
 
 -spec read_config(string()) -> list(map()).
