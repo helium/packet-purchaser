@@ -20,7 +20,9 @@
     packet_websocket_test/1,
     packet_websocket_inactive_test/1,
     join_websocket_test/1,
-    join_websocket_inactive_test/1
+    join_websocket_inactive_test/1,
+    stop_start_purchasing_net_id_packet_test/1,
+    stop_start_purchasing_net_id_join_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -75,8 +77,10 @@ all() ->
         packet_websocket_test,
         packet_websocket_inactive_test,
         join_websocket_test,
-        join_websocket_inactive_test
+        join_websocket_inactive_test,
         %% multi_buy_worst_case_stress_test
+        stop_start_purchasing_net_id_packet_test,
+        stop_start_purchasing_net_id_join_test
     ].
 
 %%--------------------------------------------------------------------
@@ -637,6 +641,125 @@ join_websocket_test(_Config) ->
         {test_case_failed, websocket_msg_timeout},
         test_utils:ws_rcv()
     ),
+
+    ok.
+
+stop_start_purchasing_net_id_packet_test(_Config) ->
+    MakePacketOffer = fun(DevAddr) ->
+        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+        test_utils:packet_offer(PubKeyBin, DevAddr)
+    end,
+
+    Config = [
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_COMCAST,
+            <<"address">> => <<"3.3.3.3">>,
+            <<"port">> => 3333
+        },
+        #{
+            <<"name">> => "test_stable",
+            <<"net_id">> => ?NET_ID_ORANGE,
+            <<"address">> => <<"4.4.4.4">>,
+            <<"port">> => 4444
+        }
+    ],
+    ok = pp_config:load_config(Config),
+    Offer1 = MakePacketOffer(?DEVADDR_COMCAST),
+    Offer2 = MakePacketOffer(?DEVADDR_ORANGE),
+
+    %% -------------------------------------------------------------------
+    %% Default we should buy all packets in config
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer1, self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer2, self())),
+
+    %% -------------------------------------------------------------------
+    %% Stop buying
+    ok = pp_config:stop_buying([?NET_ID_COMCAST]),
+    ?assertMatch(
+        {error, buying_inactive, ?NET_ID_COMCAST},
+        pp_sc_packet_handler:handle_offer(Offer1, self())
+    ),
+    %% Offer from different NetID should still be purchased
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer2, self())),
+
+    %% -------------------------------------------------------------------
+    %% Start buying again
+    ok = pp_config:start_buying([?NET_ID_COMCAST]),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer1, self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer2, self())),
+
+    ok.
+
+stop_start_purchasing_net_id_join_test(_Config) ->
+    MakeJoinOffer = fun(DevEUI, AppEUI) ->
+        DevNonce = crypto:strong_rand_bytes(2),
+        AppKey = <<245, 16, 127, 141, 191, 84, 201, 16, 111, 172, 36, 152, 70, 228, 52, 95>>,
+
+        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+        test_utils:join_offer(PubKeyBin, AppKey, DevNonce, DevEUI, AppEUI)
+    end,
+
+    DevEUI1 = <<0, 0, 0, 0, 0, 0, 0, 1>>,
+    AppEUI1 = <<0, 0, 0, 2, 0, 0, 0, 1>>,
+    DevEUI2 = <<0, 0, 0, 0, 0, 0, 0, 2>>,
+    AppEUI2 = <<0, 0, 0, 2, 0, 0, 0, 2>>,
+    DevEUI3 = <<0, 0, 0, 0, 0, 0, 0, 3>>,
+    AppEUI3 = <<0, 0, 0, 2, 0, 0, 0, 3>>,
+    Config = [
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_COMCAST,
+            <<"address">> => <<"3.3.3.3">>,
+            <<"port">> => 3333,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1},
+                #{<<"dev_eui">> => DevEUI2, <<"app_eui">> => AppEUI2}
+            ]
+        },
+        #{
+            <<"name">> => "test_stable",
+            <<"net_id">> => ?NET_ID_ORANGE,
+            <<"address">> => <<"4.4.4.4">>,
+            <<"port">> => 4444,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI3, <<"app_eui">> => AppEUI3}
+            ]
+        }
+    ],
+    ok = pp_config:load_config(Config),
+    Dev1Offer = MakeJoinOffer(DevEUI1, AppEUI1),
+    Dev2Offer = MakeJoinOffer(DevEUI2, AppEUI2),
+    Dev3Offer = MakeJoinOffer(DevEUI3, AppEUI3),
+
+    %% -------------------------------------------------------------------
+    %% Default we should buy all Joins in configs
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Dev1Offer, self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Dev2Offer, self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Dev3Offer, self())),
+
+    %% -------------------------------------------------------------------
+    %% Stop buying
+    ok = pp_config:stop_buying([?NET_ID_COMCAST]),
+    ?assertMatch(
+        {error, buying_inactive, ?NET_ID_COMCAST},
+        pp_sc_packet_handler:handle_offer(Dev1Offer, self())
+    ),
+    ?assertMatch(
+        {error, buying_inactive, ?NET_ID_COMCAST},
+        pp_sc_packet_handler:handle_offer(Dev2Offer, self())
+    ),
+    %% Offer from different NetID should still be purchased
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Dev3Offer, self())),
+
+    %% -------------------------------------------------------------------
+    %% Start buying again
+    ok = pp_config:start_buying([?NET_ID_COMCAST]),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Dev1Offer, self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Dev2Offer, self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Dev3Offer, self())),
 
     ok.
 
