@@ -16,13 +16,29 @@
     websocket_handle_event/3
 ]).
 
--export([update_config/2]).
+-export([
+    update_config/2,
+    start_buying/2,
+    stop_buying/2
+]).
 
 -define(UPDATE_CONFIG, update_config).
+-define(START_BUYING, start_buying).
+-define(STOP_BUYING, stop_buying).
 
 -spec update_config(pid(), list(map())) -> ok.
 update_config(WSPid, Config) ->
     WSPid ! {?UPDATE_CONFIG, Config},
+    ok.
+
+-spec start_buying(pid(), list(integer())) -> ok.
+start_buying(WSPid, NetIDs) ->
+    WSPid ! {?START_BUYING, NetIDs},
+    ok.
+
+-spec stop_buying(pid(), list(integer())) -> ok.
+stop_buying(WSPid, NetIDs) ->
+    WSPid ! {?STOP_BUYING, NetIDs},
     ok.
 
 init(Req, Args) ->
@@ -70,6 +86,22 @@ websocket_info(_Req, {?UPDATE_CONFIG, Map}, State) ->
         <<"organization:all">>,
         <<"organization:all:config:list">>,
         Map
+    ),
+    {reply, {text, Data}, State};
+websocket_info(_Req, {?START_BUYING, NetIDs}, State) ->
+    Data = pp_console_ws_handler:encode_msg(
+        <<"0">>,
+        <<"net_id:all">>,
+        <<"net_id:all:keep_purchasing">>,
+        #{net_ids => NetIDs}
+    ),
+    {reply, {text, Data}, State};
+websocket_info(_Req, {?STOP_BUYING, NetIDs}, State) ->
+    Data = pp_console_ws_handler:encode_msg(
+        <<"0">>,
+        <<"net_id:all">>,
+        <<"net_id:all:stop_purchasing">>,
+        #{net_ids => NetIDs}
     ),
     {reply, {text, Data}, State};
 websocket_info(_Req, _Msg, State) ->
