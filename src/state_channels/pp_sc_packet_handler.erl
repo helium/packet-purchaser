@@ -53,6 +53,8 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 ok = pp_console_ws_worker:handle_packet(NetID, Packet, PacketTime, packet),
                 pp_udp_worker:push_data(WorkerPid, SCPacket, PacketTime, Pid)
             catch
+                error:{badmatch, {error, buying_inactive, ErrNetID}} ->
+                    lager:warning("packet: buying disabled for ~p in net_id ~p", [DevAddr, ErrNetID]);
                 error:{badmatch, {error, routing_not_found}} ->
                     lager:warning("packet: routing information not found for packet ~p", [DevAddr]);
                 error:{badmatch, {error, worker_not_started, _Reason} = Error} ->
@@ -73,6 +75,8 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 ok = pp_console_ws_worker:handle_packet(NetID, Packet, PacketTime, join),
                 pp_udp_worker:push_data(WorkerPid, SCPacket, PacketTime, Pid)
             catch
+                error:{badmatch, {error, buying_inactive, ErrNetID}} ->
+                    lager:warning("join: buying disabled for ~p in net_id ~p", [EUI, ErrNetID]);
                 error:{badmatch, {error, unmapped_eui}} ->
                     lager:warning("join: no mapping for EUI ~p", [EUI]);
                 error:{badmatch, {error, routing_not_found}} ->
