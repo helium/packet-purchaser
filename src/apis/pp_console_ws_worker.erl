@@ -260,9 +260,11 @@ handle_message(?ORGANIZATION_CHANNEL, ?WS_RCV_REFILL_BALANCE, Payload) ->
     ok;
 handle_message(?NET_ID_CHANNEL, ?WS_RCV_KEEP_PURCHASING_NET_ID, #{<<"net_ids">> := NetIDs}) ->
     lager:info("keep purchasing: ~p", [NetIDs]),
+    ok = pp_config:start_buying(NetIDs),
     ok;
 handle_message(?NET_ID_CHANNEL, ?WS_RCV_STOP_PURCHASING_NET_ID, #{<<"net_ids">> := NetIDs}) ->
     lager:info("stop purchasing: ~p", [NetIDs]),
+    ok = pp_config:stop_buying(NetIDs),
     ok;
 handle_message(Topic, Msg, Payload) ->
     case {Topic, Msg} of
