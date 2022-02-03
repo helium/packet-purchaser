@@ -59,7 +59,7 @@
     disable_pull_data :: boolean(),
     dev_eui :: '*' | non_neg_integer(),
     app_eui :: non_neg_integer(),
-    buying_active :: boolean()
+    buying_active = true :: boolean()
 }).
 
 -record(devaddr, {
@@ -69,7 +69,7 @@
     port :: non_neg_integer(),
     multi_buy :: unlimited | non_neg_integer(),
     disable_pull_data :: boolean(),
-    buying_active :: boolean()
+    buying_active = true :: boolean()
 }).
 
 -type config() :: #{joins := [#eui{}], routing := [#devaddr{}]}.
