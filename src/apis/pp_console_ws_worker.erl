@@ -51,8 +51,9 @@
 -define(POOL, router_console_api_pool).
 -define(HEADER_JSON, {<<"Content-Type">>, <<"application/json">>}).
 
-%% Channels
--define(ORGANIZATION, <<"organization:all">>).
+%% Topics
+-define(ORGANIZATION_TOPIC, <<"organization:all">>).
+-define(NET_ID_TOPIC, <<"net_id:all">>).
 
 %% Sending events
 -define(WS_SEND_GET_CONFIG, <<"packet_purchaser:get_config">>).
@@ -64,6 +65,8 @@
 -define(WS_RCV_CONFIG_LIST, <<"organization:all:config:list">>).
 -define(WS_RCV_REFILL_BALANCE, <<"organization:all:refill:dc_balance">>).
 -define(WS_RCV_DC_BALANCE_LIST, <<"organization:all:dc_balance:list">>).
+-define(WS_RCV_STOP_PURCHASING_NET_ID, <<"net_id:all:stop_purchasing">>).
+-define(WS_RCV_KEEP_PURCHASING_NET_ID, <<"net_id:all:keep_purchasing">>).
 
 -record(state, {
     ws :: undefind | pid(),
@@ -114,7 +117,7 @@ handle_packet(NetID, Packet, PacketTime, Type) ->
     },
 
     Ref = <<"0">>,
-    Topic = ?ORGANIZATION,
+    Topic = ?ORGANIZATION_TOPIC,
     Event = ?WS_SEND_NEW_PACKET,
 
     Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, Data),
@@ -126,7 +129,7 @@ send_address() ->
     B58 = libp2p_crypto:bin_to_b58(PubKeyBin),
     RouterAddressPayload = pp_console_ws_handler:encode_msg(
         <<"0">>,
-        ?ORGANIZATION,
+        ?ORGANIZATION_TOPIC,
         ?WS_SEND_PP_ADDRESS,
         #{address => B58}
     ),
@@ -136,7 +139,7 @@ send_address() ->
 send_get_config() ->
     %% This will request ALL organizations configs.
     Ref = <<"0">>,
-    Topic = ?ORGANIZATION,
+    Topic = ?ORGANIZATION_TOPIC,
     Event = ?WS_SEND_GET_CONFIG,
     Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, #{}),
     ?MODULE:send(Payload).
@@ -145,7 +148,7 @@ send_get_config() ->
 send_get_org_balances() ->
     %% Get up to date balances for all orgs
     Ref = <<"0">>,
-    Topic = ?ORGANIZATION,
+    Topic = ?ORGANIZATION_TOPIC,
     Event = ?WS_SEND_GET_ORG_BALANCES,
     Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, #{}),
     ?MODULE:send(Payload).
@@ -246,25 +249,43 @@ terminate(_Reason, _State) ->
 %% ------------------------------------------------------------------
 %% Receive Message handler functions
 %% ------------------------------------------------------------------
-handle_message(?ORGANIZATION, ?WS_RCV_CONFIG_LIST, Payload) ->
+handle_message(?ORGANIZATION_TOPIC, ?WS_RCV_CONFIG_LIST, Payload) ->
     lager:info("updating config: ~p", [Payload]),
     ok = pp_config:ws_update_config(Payload);
-handle_message(?ORGANIZATION, ?WS_RCV_DC_BALANCE_LIST, Payload) ->
+handle_message(?ORGANIZATION_TOPIC, ?WS_RCV_DC_BALANCE_LIST, Payload) ->
     lager:info("updating dc balances: ~p", [Payload]),
     ok;
-handle_message(?ORGANIZATION, ?WS_RCV_REFILL_BALANCE, Payload) ->
+handle_message(?ORGANIZATION_TOPIC, ?WS_RCV_REFILL_BALANCE, Payload) ->
     lager:info("refill DC balance: ~p", [Payload]),
+    ok;
+handle_message(?NET_ID_TOPIC, ?WS_RCV_KEEP_PURCHASING_NET_ID, #{<<"net_ids">> := NetIDs}) ->
+    lager:info("keep purchasing: ~p", [NetIDs]),
+    ok = pp_config:start_buying(NetIDs),
+    ok;
+handle_message(?NET_ID_TOPIC, ?WS_RCV_STOP_PURCHASING_NET_ID, #{<<"net_ids">> := NetIDs}) ->
+    lager:info("stop purchasing: ~p", [NetIDs]),
+    ok = pp_config:stop_buying(NetIDs),
     ok;
 handle_message(Topic, Msg, Payload) ->
     case {Topic, Msg} of
-        {?ORGANIZATION, <<"phx_reply">>} ->
+        {?ORGANIZATION_TOPIC, <<"phx_reply">>} ->
             lager:debug(
                 "organization websocket message [event: phx_reply] [payload: ~p]",
                 [Payload]
             );
-        {?ORGANIZATION, _} ->
+        {?ORGANIZATION_TOPIC, _} ->
             lager:warning(
                 "rcvd unknown organization websocket message [event: ~p] [payload: ~p]",
+                [Msg, Payload]
+            );
+        {?NET_ID_TOPIC, <<"phx_reply">>} ->
+            lager:debug(
+                "net_id websocket message [event: phx_reply] [payload: ~p]",
+                [Payload]
+            );
+        {?NET_ID_TOPIC, _} ->
+            lager:warning(
+                "rcvd unknown net_id websocket message [event: ~p] [payload: ~p]",
                 [Msg, Payload]
             );
         {_, _} ->
@@ -303,7 +324,7 @@ start_ws(Endpoint, WSEndpoint, Secret) ->
             Url = binary_to_list(<<WSEndpoint/binary, "?token=", Token/binary, "&vsn=2.0.0">>),
             Args = #{
                 url => Url,
-                auto_join => [?ORGANIZATION],
+                auto_join => [?ORGANIZATION_TOPIC, ?NET_ID_TOPIC],
                 forward => self()
             },
             case pp_console_ws_handler:start_link(Args) of

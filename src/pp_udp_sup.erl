@@ -41,7 +41,7 @@ start_link() ->
 -spec maybe_start_worker(
     WorkerKey :: {PubKeyBin :: binary(), NetID :: non_neg_integer()},
     Args :: map() | {error, any()}
-) -> {ok, pid()} | {error, any()}.
+) -> {ok, pid()} | {error, any()} | {error, worker_not_started, any()}.
 maybe_start_worker(_WorkerKey, {error, _} = Err) ->
     Err;
 maybe_start_worker(WorkerKey, Args) ->
@@ -83,7 +83,8 @@ init([]) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
--spec start_worker({binary(), non_neg_integer()}, map()) -> {ok, pid()} | {error, any()}.
+-spec start_worker({binary(), non_neg_integer()}, map()) ->
+    {ok, pid()} | {error, worker_not_started, any()}.
 start_worker({PubKeyBin, NetID} = WorkerKey, Args) ->
     AppArgs = get_app_args(),
     ChildArgs = maps:merge(#{pubkeybin => PubKeyBin, net_id => NetID}, maps:merge(AppArgs, Args)),

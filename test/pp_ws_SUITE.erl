@@ -12,7 +12,8 @@
     ws_console_update_config_test/1,
     ws_console_update_config_redirect_udp_worker_test/1,
     ws_active_inactive_test/1,
-    ws_active_countdown_test/1
+    ws_active_countdown_test/1,
+    ws_stop_start_purchasing_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -41,7 +42,8 @@ all() ->
         ws_console_update_config_test,
         ws_console_update_config_redirect_udp_worker_test,
         ws_active_inactive_test,
-        ws_active_countdown_test
+        ws_active_countdown_test,
+        ws_stop_start_purchasing_test
     ].
 
 %%--------------------------------------------------------------------
@@ -179,6 +181,57 @@ ws_console_update_config_test(_Config) ->
         {ok, pp_config:transform_config(TwoReMapped)},
         pp_config:get_config()
     ),
+
+    ok.
+
+ws_stop_start_purchasing_test(_Config) ->
+    MakeOfferFun = fun() ->
+        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+        test_utils:packet_offer(PubKeyBin, ?DEVADDR)
+    end,
+
+    {ok, WSPid} = test_utils:ws_init(),
+
+    Config = [
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID,
+            <<"address">> => <<"127.0.0.1">>,
+            <<"port">> => 1337
+        }
+    ],
+
+    _ = console_callback:update_config(WSPid, Config),
+    timer:sleep(150),
+    ok = test_utils:ignore_messages(),
+
+    ?assertEqual(ok, pp_sc_packet_handler:handle_offer(MakeOfferFun(), self())),
+    ?assertEqual(ok, pp_sc_packet_handler:handle_offer(MakeOfferFun(), self())),
+    ?assertEqual(ok, pp_sc_packet_handler:handle_offer(MakeOfferFun(), self())),
+
+    ok = console_callback:stop_buying(WSPid, [?NET_ID]),
+    timer:sleep(150),
+
+    ?assertEqual(
+        {error, buying_inactive, ?NET_ID},
+        pp_sc_packet_handler:handle_offer(MakeOfferFun(), self())
+    ),
+    ?assertEqual(
+        {error, buying_inactive, ?NET_ID},
+        pp_sc_packet_handler:handle_offer(MakeOfferFun(), self())
+    ),
+    ?assertEqual(
+        {error, buying_inactive, ?NET_ID},
+        pp_sc_packet_handler:handle_offer(MakeOfferFun(), self())
+    ),
+
+    ok = console_callback:start_buying(WSPid, [?NET_ID]),
+    timer:sleep(150),
+
+    ?assertEqual(ok, pp_sc_packet_handler:handle_offer(MakeOfferFun(), self())),
+    ?assertEqual(ok, pp_sc_packet_handler:handle_offer(MakeOfferFun(), self())),
+    ?assertEqual(ok, pp_sc_packet_handler:handle_offer(MakeOfferFun(), self())),
 
     ok.
 
