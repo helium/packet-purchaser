@@ -8,6 +8,7 @@
 %% gen_server API
 -export([
     start_link/1,
+    lookup/1,
     lookup_eui/1,
     lookup_devaddr/1,
     %% UDP Cache
@@ -74,6 +75,12 @@
 
 -type config() :: #{joins := [#eui{}], routing := [#devaddr{}]}.
 
+-type eui() ::
+    {eui, #eui_pb{}}
+    | #eui_pb{}
+    | {eui, DevEUI :: non_neg_integer(), AppEUI :: non_neg_integer()}.
+-type devaddr() :: {devaddr, DevAddr :: non_neg_integer()}.
+
 %% -------------------------------------------------------------------
 %% API Functions
 %% -------------------------------------------------------------------
@@ -81,13 +88,15 @@
 start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [Args], []).
 
--spec lookup_eui(EUI) ->
-    {ok, map()} | {error, unmapped_eui} | {error, buying_inactive, NetID :: integer()}
-when
-    EUI ::
-        {eui, #eui_pb{}}
-        | #eui_pb{}
-        | {eui, DevEUI :: non_neg_integer(), AppEUI :: non_neg_integer()}.
+-spec lookup(eui() | devaddr()) ->
+    {ok, map()}
+    | {error, buying_inactive, NetID :: integer()}
+    | {error, unmapped_eui | routing_not_found | invalid_net_id_type}.
+lookup({devaddr, _} = DevAddr) -> lookup_devaddr(DevAddr);
+lookup(EUI) -> lookup_eui(EUI).
+
+-spec lookup_eui(eui()) ->
+    {ok, map()} | {error, unmapped_eui} | {error, buying_inactive, NetID :: integer()}.
 lookup_eui({eui, #eui_pb{deveui = DevEUI, appeui = AppEUI}}) ->
     lookup_eui({eui, DevEUI, AppEUI});
 lookup_eui(#eui_pb{deveui = DevEUI, appeui = AppEUI}) ->

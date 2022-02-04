@@ -41,52 +41,44 @@ handle_offer(Offer, _HandlerPid) ->
 handle_packet(SCPacket, PacketTime, Pid) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
-    case blockchain_helium_packet_v1:routing_info(Packet) of
-        {devaddr, _} = DevAddr ->
-            try
-                {ok, #{net_id := NetID} = WorkerArgs} = pp_config:lookup_devaddr(
-                    DevAddr
-                ),
-                lager:debug("packet: [devaddr: ~p] [netid: ~p]", [DevAddr, NetID]),
-                {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs),
-                ok = pp_metrics:handle_packet(PubKeyBin, NetID, packet),
-                ok = pp_console_ws_worker:handle_packet(NetID, Packet, PacketTime, packet),
-                pp_udp_worker:push_data(WorkerPid, SCPacket, PacketTime, Pid)
-            catch
-                error:{badmatch, {error, buying_inactive, ErrNetID}} ->
-                    lager:warning("packet: buying disabled for ~p in net_id ~p", [DevAddr, ErrNetID]);
-                error:{badmatch, {error, routing_not_found}} ->
-                    lager:warning("packet: routing information not found for packet ~p", [DevAddr]);
-                error:{badmatch, {error, worker_not_started, _Reason} = Error} ->
-                    lager:error("failed to start udp connector for ~p: ~p", [
-                        blockchain_utils:addr2name(PubKeyBin),
-                        _Reason
-                    ]),
-                    Error
-            end;
-        {eui, _, _} = EUI ->
-            try
-                {ok, #{net_id := NetID} = WorkerArgs} = pp_config:lookup_eui(
-                    EUI
-                ),
-                lager:debug("join: [eui: ~p] [netid: ~p]", [EUI, NetID]),
-                {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs),
-                ok = pp_metrics:handle_packet(PubKeyBin, NetID, join),
-                ok = pp_console_ws_worker:handle_packet(NetID, Packet, PacketTime, join),
-                pp_udp_worker:push_data(WorkerPid, SCPacket, PacketTime, Pid)
-            catch
-                error:{badmatch, {error, buying_inactive, ErrNetID}} ->
-                    lager:warning("join: buying disabled for ~p in net_id ~p", [EUI, ErrNetID]);
-                error:{badmatch, {error, unmapped_eui}} ->
-                    lager:warning("join: no mapping for EUI ~p", [EUI]);
-                error:{badmatch, {error, routing_not_found}} ->
-                    lager:warning("join: routing information not found for join");
-                error:{badmatch, {error, worker_not_started, _Reason} = Error} ->
-                    lager:error("failed to start udp connector for ~p: ~p", [
-                        blockchain_utils:addr2name(PubKeyBin),
-                        _Reason
-                    ]),
-                    Error
+
+    {PacketType, RoutingInfo} =
+        case blockchain_helium_packet_v1:routing_info(Packet) of
+            {devaddr, _} = RI -> {packet, RI};
+            {eui, _, _} = RI -> {join, RI}
+        end,
+
+    case pp_config:lookup(RoutingInfo) of
+        {error, buying_inactive, NetID} ->
+            lager:warning(
+                "~s: buying disabled for ~p in net_id ~p",
+                [PacketType, RoutingInfo, NetID]
+            );
+        {error, routing_not_found} ->
+            lager:warning(
+                "~s: routing information not found [routing_info: ~p]",
+                [PacketType, RoutingInfo]
+            );
+        {error, unmapped_eui} ->
+            lager:warning(
+                "~s: no mapping for [routing_info: ~p]",
+                [PacketType, RoutingInfo]
+            );
+        {ok, #{net_id := NetID} = WorkerArgs} ->
+            case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs) of
+                {ok, WorkerPid} ->
+                    lager:debug(
+                        "~s: [routing_info: ~p] [net_id: ~p]",
+                        [PacketType, RoutingInfo, NetID]
+                    ),
+                    ok = pp_metrics:handle_packet(PubKeyBin, NetID, PacketType),
+                    ok = pp_console_ws_worker:handle_packet(NetID, Packet, PacketTime, PacketType),
+                    pp_udp_worker:push_data(WorkerPid, SCPacket, PacketTime, Pid);
+                {error, worker_not_started} ->
+                    lager:error(
+                        "failed to start udp connector for ~p: ~p",
+                        [blockchain_utils:addr2name(PubKeyBin)]
+                    )
             end
     end.
 
