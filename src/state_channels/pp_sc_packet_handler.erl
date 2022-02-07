@@ -53,17 +53,20 @@ handle_packet(SCPacket, PacketTime, Pid) ->
             lager:warning(
                 "~s: buying disabled for ~p in net_id ~p",
                 [PacketType, RoutingInfo, NetID]
-            );
-        {error, routing_not_found} ->
+            ),
+            {error, buying_inactive};
+        {error, routing_not_found} = Err ->
             lager:warning(
                 "~s: routing information not found [routing_info: ~p]",
                 [PacketType, RoutingInfo]
-            );
-        {error, unmapped_eui} ->
+            ),
+            Err;
+        {error, unmapped_eui} = Err ->
             lager:warning(
                 "~s: no mapping for [routing_info: ~p]",
                 [PacketType, RoutingInfo]
-            );
+            ),
+            Err;
         {ok, #{net_id := NetID} = WorkerArgs} ->
             case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs) of
                 {ok, WorkerPid} ->
@@ -74,11 +77,12 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                     ok = pp_metrics:handle_packet(PubKeyBin, NetID, PacketType),
                     ok = pp_console_ws_worker:handle_packet(NetID, Packet, PacketTime, PacketType),
                     pp_udp_worker:push_data(WorkerPid, SCPacket, PacketTime, Pid);
-                {error, worker_not_started} ->
+                {error, worker_not_started} = Err ->
                     lager:error(
                         "failed to start udp connector for ~p: ~p",
                         [blockchain_utils:addr2name(PubKeyBin)]
-                    )
+                    ),
+                    Err
             end
     end.
 
