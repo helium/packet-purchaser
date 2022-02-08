@@ -19,6 +19,7 @@
 -define(METRICS_SC_ACTIVE_BALANCE, packet_purchaser_state_channel_active_balance).
 -define(METRICS_SC_ACTIVE_ACTORS, packet_purchaser_state_channel_active_actors).
 -define(METRICS_SC_CLOSE_SUBMIT, packet_purchaser_state_channel_close_submit_count).
+-define(METRICS_SC_CLOSE_CONFLICT, packet_purchaser_state_channel_close_conflicts).
 
 -define(METRICS_VM_CPU, packet_purchaser_vm_cpu).
 -define(METRICS_VM_PROC_Q, packet_purchaser_vm_process_queue).
@@ -64,7 +65,10 @@
     handle_event/3
 ]).
 
--record(state, {pubkey_bin :: libp2p_crypto:pubkey_bin()}).
+-record(state, {
+    chain = undefined :: undefined | blockchain:blockchain(),
+    pubkey_bin :: libp2p_crypto:pubkey_bin()
+}).
 
 %% -------------------------------------------------------------------
 %% API Functions
@@ -160,6 +164,8 @@ init(Args) ->
     ok = declare_metrics(),
     _ = schedule_next_tick(),
 
+    _ = erlang:send_after(500, self(), post_init),
+
     {ok, #state{pubkey_bin = PubKeyBin}}.
 
 handle_call(_Request, _From, State) ->
@@ -168,6 +174,29 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+handle_info(post_init, #state{chain = undefined} = State) ->
+    case blockchain_worker:blockchain() of
+        undefined ->
+            erlang:send_after(500, self(), post_init),
+            {noreply, State};
+        Chain ->
+            _ = schedule_next_tick(),
+            {noreply, State#state{chain = Chain}}
+    end;
+handle_info({blockchain_event, {new_chain, Chain}}, State) ->
+    {noreply, State#state{chain = Chain}};
+handle_info(
+    {blockchain_event, {add_block, _BlockHash, _Syncing, _Ledger}},
+    #state{chain = undefined} = State
+) ->
+    erlang:send_after(500, self(), post_init),
+    {noreply, State};
+handle_info(
+    {blockchain_event, {add_block, BlockHash, _Syncing, _Ledger}},
+    #state{chain = Chain, pubkey_bin = PubkeyBin} = State
+) ->
+    _ = erlang:spawn(fun() -> ok = record_sc_close_conflict(Chain, BlockHash, PubkeyBin) end),
+    {noreply, State};
 handle_info(?METRICS_WORKER_TICK, #state{pubkey_bin = PubKeyBin} = State) ->
     lager:info("running metrics"),
     erlang:spawn(fun() ->
@@ -272,6 +301,10 @@ declare_metrics() ->
         {name, ?METRICS_SC_CLOSE_SUBMIT},
         {help, "State Channel Close Txn status"},
         {labels, [status]}
+    ]),
+    prometheus_gauge:declare([
+        {name, ?METRICS_SC_CLOSE_CONFLICT},
+        {help, "State Channels close with conflicts"}
     ]),
 
     %% VM Statistics
@@ -453,6 +486,34 @@ record_queues() ->
         maps:to_list(NewQs)
     ),
     ok.
+
+-spec record_sc_close_conflict(
+    Chain :: blockchain:blockchain(),
+    BlockHash :: binary(),
+    PubkeyBin :: libp2p_crypto:pubkey_bin()
+) -> ok.
+record_sc_close_conflict(Chain, BlockHash, PubkeyBin) ->
+    case blockchain:get_block(BlockHash, Chain) of
+        {error, _Reason} ->
+            lager:error("failed to get block:~p ~p", [BlockHash, _Reason]);
+        {ok, Block} ->
+            Txns = lists:filter(
+                fun(Txn) ->
+                    case blockchain_txn:type(Txn) of
+                        blockchain_txn_state_channel_close_v1 ->
+                            SC = blockchain_txn_state_channel_close_v1:state_channel(Txn),
+                            blockchain_state_channel_v1:owner(SC) == PubkeyBin andalso
+                                blockchain_txn_state_channel_close_v1:conflicts_with(Txn) =/=
+                                    undefined;
+                        _ ->
+                            false
+                    end
+                end,
+                blockchain_block:transactions(Block)
+            ),
+            _ = prometheus_gauge:set(?METRICS_SC_CLOSE_CONFLICT, erlang:length(Txns)),
+            ok
+    end.
 
 -spec get_pid_name(pid()) -> list().
 get_pid_name(Pid) ->
