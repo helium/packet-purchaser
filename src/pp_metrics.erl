@@ -20,6 +20,10 @@
 -define(METRICS_SC_ACTIVE_ACTORS, packet_purchaser_state_channel_active_actors).
 -define(METRICS_SC_CLOSE_SUBMIT, packet_purchaser_state_channel_close_submit_count).
 
+-define(METRICS_VM_CPU, packet_purchaser_vm_cpu).
+-define(METRICS_VM_PROC_Q, packet_purchaser_vm_process_queue).
+-define(METRICS_VM_ETS_MEMORY, packet_purchaser_vm_ets_memory).
+
 -define(METRICS_WORKER_TICK_INTERVAL, timer:seconds(10)).
 -define(METRICS_WORKER_TICK, '__pp_metrics_tick').
 
@@ -169,7 +173,10 @@ handle_info(?METRICS_WORKER_TICK, #state{pubkey_bin = PubKeyBin} = State) ->
     erlang:spawn(fun() ->
         ok = record_dc_balance(PubKeyBin),
         ok = record_chain_blocks(),
-        ok = record_state_channels()
+        ok = record_state_channels(),
+        ok = record_vm_stats(),
+        ok = record_ets(),
+        ok = record_queues()
     end),
     _ = schedule_next_tick(),
     {noreply, State};
@@ -267,6 +274,23 @@ declare_metrics() ->
         {labels, [status]}
     ]),
 
+    %% VM Statistics
+    prometheus_gauge:declare([
+        {name, ?METRICS_VM_CPU},
+        {help, "Packet Purchaser CPU usage"},
+        {labels, [cpu]}
+    ]),
+    prometheus_gauge:declare([
+        {name, ?METRICS_VM_PROC_Q},
+        {help, "Packet Purchaser process queue"},
+        {labels, [name]}
+    ]),
+    prometheus_gauge:declare([
+        {name, ?METRICS_VM_ETS_MEMORY},
+        {help, "Packet Purchaser ets memory"},
+        {labels, [name]}
+    ]),
+
     ok.
 
 -spec get_ledger() -> blockchain_ledger_v1:ledger().
@@ -346,3 +370,103 @@ record_state_channels() ->
 
     ok = ?MODULE:state_channels(OpenedCount, OverspentCount, ActiveCount, TotalDCLeft, TotalActors),
     ok.
+
+-spec record_vm_stats() -> ok.
+record_vm_stats() ->
+    [{_Mem, CPU}] = recon:node_stats_list(1, 1),
+    lists:foreach(
+        fun({Num, Usage}) ->
+            _ = prometheus_gauge:set(?METRICS_VM_CPU, [Num], Usage)
+        end,
+        proplists:get_value(scheduler_usage, CPU, [])
+    ),
+    ok.
+
+-spec record_ets() -> ok.
+record_ets() ->
+    lists:foreach(
+        fun(ETS) ->
+            Name = ets:info(ETS, name),
+            case ets:info(ETS, memory) of
+                undefined ->
+                    ok;
+                Memory ->
+                    Bytes = Memory * erlang:system_info(wordsize),
+                    case Bytes > 1000000 of
+                        false -> ok;
+                        true -> _ = prometheus_gauge:set(?METRICS_VM_ETS_MEMORY, [Name], Bytes)
+                    end
+            end
+        end,
+        ets:all()
+    ),
+    ok.
+
+-spec record_queues() -> ok.
+record_queues() ->
+    CurrentQs = lists:foldl(
+        fun({Pid, Length, _Extra}, Acc) ->
+            Name = get_pid_name(Pid),
+            maps:put(Name, Length, Acc)
+        end,
+        #{},
+        recon:proc_count(message_queue_len, 5)
+    ),
+    RecorderQs = lists:foldl(
+        fun({[{"name", Name} | _], Length}, Acc) ->
+            maps:put(Name, Length, Acc)
+        end,
+        #{},
+        prometheus_gauge:values(default, ?METRICS_VM_PROC_Q)
+    ),
+    OldQs = maps:without(maps:keys(CurrentQs), RecorderQs),
+    lists:foreach(
+        fun({Name, _Length}) ->
+            case name_to_pid(Name) of
+                undefined ->
+                    prometheus_gauge:remove(?METRICS_VM_PROC_Q, [Name]);
+                Pid ->
+                    case recon:info(Pid, message_queue_len) of
+                        undefined ->
+                            prometheus_gauge:remove(?METRICS_VM_PROC_Q, [Name]);
+                        {message_queue_len, 0} ->
+                            prometheus_gauge:remove(?METRICS_VM_PROC_Q, [Name]);
+                        {message_queue_len, Length} ->
+                            prometheus_gauge:set(?METRICS_VM_PROC_Q, [Name], Length)
+                    end
+            end
+        end,
+        maps:to_list(OldQs)
+    ),
+    NewQs = maps:without(maps:keys(OldQs), CurrentQs),
+    Config = application:get_env(router, metrics, []),
+    MinLength = proplists:get_value(record_queue_min_length, Config, 2000),
+    lists:foreach(
+        fun({Name, Length}) ->
+            case Length > MinLength of
+                true ->
+                    _ = prometheus_gauge:set(?METRICS_VM_PROC_Q, [Name], Length);
+                false ->
+                    ok
+            end
+        end,
+        maps:to_list(NewQs)
+    ),
+    ok.
+
+-spec get_pid_name(pid()) -> list().
+get_pid_name(Pid) ->
+    case recon:info(Pid, registered_name) of
+        [] -> erlang:pid_to_list(Pid);
+        {registered_name, Name} -> erlang:atom_to_list(Name);
+        _Else -> erlang:pid_to_list(Pid)
+    end.
+
+-spec name_to_pid(list()) -> pid() | undefined.
+name_to_pid(Name) ->
+    case erlang:length(string:split(Name, ".")) > 1 of
+        true ->
+            erlang:list_to_pid(Name);
+        false ->
+            erlang:whereis(erlang:list_to_atom(Name))
+    end.
