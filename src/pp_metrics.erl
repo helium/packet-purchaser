@@ -19,6 +19,11 @@
 -define(METRICS_SC_ACTIVE_BALANCE, packet_purchaser_state_channel_active_balance).
 -define(METRICS_SC_ACTIVE_ACTORS, packet_purchaser_state_channel_active_actors).
 -define(METRICS_SC_CLOSE_SUBMIT, packet_purchaser_state_channel_close_submit_count).
+-define(METRICS_SC_CLOSE_CONFLICT, packet_purchaser_state_channel_close_conflicts).
+
+-define(METRICS_VM_CPU, packet_purchaser_vm_cpu).
+-define(METRICS_VM_PROC_Q, packet_purchaser_vm_process_queue).
+-define(METRICS_VM_ETS_MEMORY, packet_purchaser_vm_ets_memory).
 
 -define(METRICS_WORKER_TICK_INTERVAL, timer:seconds(10)).
 -define(METRICS_WORKER_TICK, '__pp_metrics_tick').
@@ -60,7 +65,10 @@
     handle_event/3
 ]).
 
--record(state, {pubkey_bin :: libp2p_crypto:pubkey_bin()}).
+-record(state, {
+    chain = undefined :: undefined | blockchain:blockchain(),
+    pubkey_bin :: libp2p_crypto:pubkey_bin()
+}).
 
 %% -------------------------------------------------------------------
 %% API Functions
@@ -156,6 +164,8 @@ init(Args) ->
     ok = declare_metrics(),
     _ = schedule_next_tick(),
 
+    _ = erlang:send_after(500, self(), post_init),
+
     {ok, #state{pubkey_bin = PubKeyBin}}.
 
 handle_call(_Request, _From, State) ->
@@ -164,12 +174,38 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+handle_info(post_init, #state{chain = undefined} = State) ->
+    case blockchain_worker:blockchain() of
+        undefined ->
+            erlang:send_after(500, self(), post_init),
+            {noreply, State};
+        Chain ->
+            _ = schedule_next_tick(),
+            {noreply, State#state{chain = Chain}}
+    end;
+handle_info({blockchain_event, {new_chain, Chain}}, State) ->
+    {noreply, State#state{chain = Chain}};
+handle_info(
+    {blockchain_event, {add_block, _BlockHash, _Syncing, _Ledger}},
+    #state{chain = undefined} = State
+) ->
+    erlang:send_after(500, self(), post_init),
+    {noreply, State};
+handle_info(
+    {blockchain_event, {add_block, BlockHash, _Syncing, _Ledger}},
+    #state{chain = Chain, pubkey_bin = PubkeyBin} = State
+) ->
+    _ = erlang:spawn(fun() -> ok = record_sc_close_conflict(Chain, BlockHash, PubkeyBin) end),
+    {noreply, State};
 handle_info(?METRICS_WORKER_TICK, #state{pubkey_bin = PubKeyBin} = State) ->
     lager:info("running metrics"),
     erlang:spawn(fun() ->
         ok = record_dc_balance(PubKeyBin),
         ok = record_chain_blocks(),
-        ok = record_state_channels()
+        ok = record_state_channels(),
+        ok = record_vm_stats(),
+        ok = record_ets(),
+        ok = record_queues()
     end),
     _ = schedule_next_tick(),
     {noreply, State};
@@ -266,6 +302,27 @@ declare_metrics() ->
         {help, "State Channel Close Txn status"},
         {labels, [status]}
     ]),
+    prometheus_gauge:declare([
+        {name, ?METRICS_SC_CLOSE_CONFLICT},
+        {help, "State Channels close with conflicts"}
+    ]),
+
+    %% VM Statistics
+    prometheus_gauge:declare([
+        {name, ?METRICS_VM_CPU},
+        {help, "Packet Purchaser CPU usage"},
+        {labels, [cpu]}
+    ]),
+    prometheus_gauge:declare([
+        {name, ?METRICS_VM_PROC_Q},
+        {help, "Packet Purchaser process queue"},
+        {labels, [name]}
+    ]),
+    prometheus_gauge:declare([
+        {name, ?METRICS_VM_ETS_MEMORY},
+        {help, "Packet Purchaser ets memory"},
+        {labels, [name]}
+    ]),
 
     ok.
 
@@ -346,3 +403,131 @@ record_state_channels() ->
 
     ok = ?MODULE:state_channels(OpenedCount, OverspentCount, ActiveCount, TotalDCLeft, TotalActors),
     ok.
+
+-spec record_vm_stats() -> ok.
+record_vm_stats() ->
+    [{_Mem, CPU}] = recon:node_stats_list(1, 1),
+    lists:foreach(
+        fun({Num, Usage}) ->
+            _ = prometheus_gauge:set(?METRICS_VM_CPU, [Num], Usage)
+        end,
+        proplists:get_value(scheduler_usage, CPU, [])
+    ),
+    ok.
+
+-spec record_ets() -> ok.
+record_ets() ->
+    lists:foreach(
+        fun(ETS) ->
+            Name = ets:info(ETS, name),
+            case ets:info(ETS, memory) of
+                undefined ->
+                    ok;
+                Memory ->
+                    Bytes = Memory * erlang:system_info(wordsize),
+                    case Bytes > 1000000 of
+                        false -> ok;
+                        true -> _ = prometheus_gauge:set(?METRICS_VM_ETS_MEMORY, [Name], Bytes)
+                    end
+            end
+        end,
+        ets:all()
+    ),
+    ok.
+
+-spec record_queues() -> ok.
+record_queues() ->
+    CurrentQs = lists:foldl(
+        fun({Pid, Length, _Extra}, Acc) ->
+            Name = get_pid_name(Pid),
+            maps:put(Name, Length, Acc)
+        end,
+        #{},
+        recon:proc_count(message_queue_len, 5)
+    ),
+    RecorderQs = lists:foldl(
+        fun({[{"name", Name} | _], Length}, Acc) ->
+            maps:put(Name, Length, Acc)
+        end,
+        #{},
+        prometheus_gauge:values(default, ?METRICS_VM_PROC_Q)
+    ),
+    OldQs = maps:without(maps:keys(CurrentQs), RecorderQs),
+    lists:foreach(
+        fun({Name, _Length}) ->
+            case name_to_pid(Name) of
+                undefined ->
+                    prometheus_gauge:remove(?METRICS_VM_PROC_Q, [Name]);
+                Pid ->
+                    case recon:info(Pid, message_queue_len) of
+                        undefined ->
+                            prometheus_gauge:remove(?METRICS_VM_PROC_Q, [Name]);
+                        {message_queue_len, 0} ->
+                            prometheus_gauge:remove(?METRICS_VM_PROC_Q, [Name]);
+                        {message_queue_len, Length} ->
+                            prometheus_gauge:set(?METRICS_VM_PROC_Q, [Name], Length)
+                    end
+            end
+        end,
+        maps:to_list(OldQs)
+    ),
+    NewQs = maps:without(maps:keys(OldQs), CurrentQs),
+    Config = application:get_env(router, metrics, []),
+    MinLength = proplists:get_value(record_queue_min_length, Config, 2000),
+    lists:foreach(
+        fun({Name, Length}) ->
+            case Length > MinLength of
+                true ->
+                    _ = prometheus_gauge:set(?METRICS_VM_PROC_Q, [Name], Length);
+                false ->
+                    ok
+            end
+        end,
+        maps:to_list(NewQs)
+    ),
+    ok.
+
+-spec record_sc_close_conflict(
+    Chain :: blockchain:blockchain(),
+    BlockHash :: binary(),
+    PubkeyBin :: libp2p_crypto:pubkey_bin()
+) -> ok.
+record_sc_close_conflict(Chain, BlockHash, PubkeyBin) ->
+    case blockchain:get_block(BlockHash, Chain) of
+        {error, _Reason} ->
+            lager:error("failed to get block:~p ~p", [BlockHash, _Reason]);
+        {ok, Block} ->
+            Txns = lists:filter(
+                fun(Txn) ->
+                    case blockchain_txn:type(Txn) of
+                        blockchain_txn_state_channel_close_v1 ->
+                            SC = blockchain_txn_state_channel_close_v1:state_channel(Txn),
+                            blockchain_state_channel_v1:owner(SC) == PubkeyBin andalso
+                                blockchain_txn_state_channel_close_v1:conflicts_with(Txn) =/=
+                                    undefined;
+                        _ ->
+                            false
+                    end
+                end,
+                blockchain_block:transactions(Block)
+            ),
+            _ = prometheus_gauge:set(?METRICS_SC_CLOSE_CONFLICT, erlang:length(Txns)),
+            ok
+    end.
+
+-spec get_pid_name(pid()) -> list().
+get_pid_name(Pid) ->
+    case recon:info(Pid, registered_name) of
+        [] -> erlang:pid_to_list(Pid);
+        {registered_name, Name} -> erlang:atom_to_list(Name);
+        _Else -> erlang:pid_to_list(Pid)
+    end.
+
+-spec name_to_pid(list()) -> pid() | undefined.
+name_to_pid(Name) ->
+    case erlang:length(string:split(Name, ".")) > 1 of
+        true ->
+            erlang:list_to_pid(Name);
+        false ->
+            erlang:whereis(erlang:list_to_atom(Name))
+    end.
