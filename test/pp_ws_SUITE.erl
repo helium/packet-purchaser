@@ -270,7 +270,8 @@ ws_console_update_config_redirect_udp_worker_test(_Config) ->
         Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, ?DEVADDR, 0, #{
             dont_encode => true
         }),
-        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self())
+        _ = pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+        ok
     end,
 
     %% Make sure nothing gets through
