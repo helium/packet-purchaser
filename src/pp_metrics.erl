@@ -472,7 +472,7 @@ record_queues() ->
         maps:to_list(OldQs)
     ),
     NewQs = maps:without(maps:keys(OldQs), CurrentQs),
-    Config = application:get_env(router, metrics, []),
+    Config = application:get_env(packet_purchaser, metrics, []),
     MinLength = proplists:get_value(record_queue_min_length, Config, 2000),
     lists:foreach(
         fun({Name, Length}) ->
