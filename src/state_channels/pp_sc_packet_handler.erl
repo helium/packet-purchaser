@@ -37,7 +37,7 @@ handle_offer(Offer, _HandlerPid) ->
     end),
     Resp.
 
--spec handle_packet(blockchain_state_channel_packet_v1:packet(), pos_integer(), pid()) -> ok.
+-spec handle_packet(blockchain_state_channel_packet_v1:packet(), pos_integer(), pid()) -> ok | {error, any()}.
 handle_packet(SCPacket, PacketTime, Pid) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
