@@ -47,7 +47,6 @@
     ]},
     {libp2p, [
         {network, mainnet},
-        {max_tcp_connections, 50000},
         {use_dns_for_seeds, true},
         {seed_dns_cname, "seed.helium.io"},
         {seed_config_dns_name, "_seed_config.helium.io"},
