@@ -27,7 +27,8 @@
     reset_config/0,
     transform_config/1,
     load_config/1,
-    get_config/0
+    get_config/0,
+    reload_config_from_file/0
 ]).
 
 %% gen_server callbacks
@@ -197,6 +198,10 @@ load_config(ConfigList) ->
 
     ok.
 
+-spec reload_config_from_file() -> ok.
+reload_config_from_file() ->
+    gen_server:call(?MODULE, reload_config_from_file).
+
 -spec ws_update_config(list(map())) -> ok.
 ws_update_config(ConfigList) ->
     ?MODULE:load_config(ConfigList).
@@ -263,6 +268,10 @@ init([Filename]) ->
     ok = ?MODULE:write_config_to_ets(Config1),
     {ok, #state{filename = Filename}}.
 
+handle_call(reload_config_from_file, _From, #state{filename = Filename} = State) ->
+    NewConfig = ?MODULE:read_config(Filename),
+    ok = ?MODULE:load_config(NewConfig),
+    {reply, ok, State};
 handle_call(_Request, _From, State) ->
     {reply, ignored, State}.
 

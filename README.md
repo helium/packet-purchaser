@@ -15,7 +15,7 @@ We want to enable other LNS’s to take advantage of the coverage our community 
 Sample is in `./.env-template`
 
 | Variable                  | Default               | Note                                                                                       |
-|---------------------------+-----------------------+--------------------------------------------------------------------------------------------|
+|---------------------------|-----------------------|--------------------------------------------------------------------------------------------|
 | `PP_SC_EXPIRATION_BUFFER` | `5`                   | How closely state channels are allowed to close.                                           |
 | `PP_ENABLE_XOR_FILTER`    | `false`               | Enable if you're running an OUI and need to update XOR filters for receiving device joins. |
 | `PP_ROUTING_CONFIG_FILE`  | `routing_config.json` | Name of the config file mounted in the docker-compose file.                                |
