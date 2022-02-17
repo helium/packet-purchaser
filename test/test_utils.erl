@@ -326,7 +326,7 @@ frame_payload(MType, DevAddr, NwkSessionKey, AppSessionKey, FCnt) ->
             FOptsLen:4, FCnt:FCntSize/little-unsigned-integer, FOptsBin:FOptsLen/binary,
             Port:8/integer, Data/binary>>,
     B0 = b0(MType band 1, DevAddr, FCnt, erlang:byte_size(Payload0)),
-    MIC = crypto:cmac(aes_cbc128, NwkSessionKey, <<B0/binary, Payload0/binary>>, 4),
+    MIC = crypto:macN(cmac, aes_128_cbc, NwkSessionKey, <<B0/binary, Payload0/binary>>, 4),
     <<Payload0/binary, MIC:4/binary>>.
 
 join_offer(PubKeyBin, AppKey, DevNonce, DevEUI, AppEUI) ->
@@ -377,7 +377,7 @@ join_payload(AppKey, DevNonce, DevEUI0, AppEUI0) ->
     AppEUI = reverse(AppEUI0),
     DevEUI = reverse(DevEUI0),
     Payload0 = <<MType:3, MHDRRFU:3, Major:2, AppEUI:8/binary, DevEUI:8/binary, DevNonce:2/binary>>,
-    MIC = crypto:cmac(aes_cbc128, AppKey, Payload0, 4),
+    MIC = crypto:macN(cmac, aes_128_cbc, AppKey, Payload0, 4),
     <<Payload0/binary, MIC:4/binary>>.
 
 %% ------------------------------------------------------------------
@@ -401,12 +401,12 @@ cipher(Bin, Key, Dir, DevAddr, FCnt) ->
     cipher(Bin, Key, Dir, DevAddr, FCnt, 1, <<>>).
 
 cipher(<<Block:16/binary, Rest/binary>>, Key, Dir, DevAddr, FCnt, I, Acc) ->
-    Si = crypto:block_encrypt(aes_ecb, Key, ai(Dir, DevAddr, FCnt, I)),
+    Si = crypto:crypto_one_time(aes_128_ecb, Key, ai(Dir, DevAddr, FCnt, I), true),
     cipher(Rest, Key, Dir, DevAddr, FCnt, I + 1, <<(binxor(Block, Si, <<>>))/binary, Acc/binary>>);
 cipher(<<>>, _Key, _Dir, _DevAddr, _FCnt, _I, Acc) ->
     Acc;
 cipher(<<LastBlock/binary>>, Key, Dir, DevAddr, FCnt, I, Acc) ->
-    Si = crypto:block_encrypt(aes_ecb, Key, ai(Dir, DevAddr, FCnt, I)),
+    Si = crypto:crypto_one_time(aes_128_ecb, Key, ai(Dir, DevAddr, FCnt, I), true),
     <<(binxor(LastBlock, binary:part(Si, 0, byte_size(LastBlock)), <<>>))/binary, Acc/binary>>.
 
 -spec ai(integer(), binary(), integer(), integer()) -> binary().
