@@ -3,7 +3,7 @@ services:
   packet_purchaser:
     build:
       context: .
-      dockerfile: Dockerfile-local
+      dockerfile: Dockerfile-CI
     image:  quay.io/team-helium/packet_purchaser:local
     container_name: helium_packet_purchaser
     restart: always
