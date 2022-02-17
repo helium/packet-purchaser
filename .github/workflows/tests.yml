@@ -1,0 +1,133 @@
+name: Tests
+
+on:
+  push:
+    branches: master
+  pull_request:
+    branches: master
+  # Run every day at midnight PST (0800 UTC)
+  # https://crontab.guru/#0_8_*_*_*
+  schedule:
+    - cron: '0 8 * * *'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/team-helium/packet_purchaser:CI
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      # For some reason the toolchain is no installed properly so lets add it...
+      - name: rustup default stable
+        run: rustup default stable
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: cleanup
+        run: |
+          mkdir -p /tmp/packet_purchaser/_build
+          cp -R /opt/packet_purchaser/_build/* /tmp/packet_purchaser/_build
+          cp -R * /tmp/packet_purchaser
+          rm -rf /opt/packet_purchaser/*
+          cp -R /tmp/packet_purchaser /opt
+          rm -rf /tmp/packet_purchaser
+      - name: build
+        run: |
+          ./rebar3 compile
+        working-directory: /opt/packet_purchaser
+      - name: build test
+        run: ./rebar3 as test compile
+        working-directory: /opt/packet_purchaser
+      - name: tar
+        run: tar -cvzf build.tar.gz -C _build/ .
+        working-directory: /opt/packet_purchaser
+      - name: upload-artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: build
+          path: /opt/packet_purchaser/build.tar.gz
+  xref:
+    needs: build
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/team-helium/packet_purchaser:CI
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-xref
+      cancel-in-progress: true
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: download-artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: build
+      - name: untar
+        run: |
+          mkdir _build
+          tar -xvf build.tar.gz -C _build
+      - name: xref
+        run: ./rebar3 xref
+  eunit:
+    needs: build
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/team-helium/packet_purchaser:CI
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-eunit
+      cancel-in-progress: true
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: download-artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: build
+      - name: untar
+        run: |
+          mkdir _build
+          tar -xvf build.tar.gz -C _build
+      - name: eunit
+        run: ./rebar3 eunit -v
+  dialyzer:
+    needs: build
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/team-helium/packet_purchaser:CI
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-dialyzer
+      cancel-in-progress: true
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: download-artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: build
+      - name: untar
+        run: |
+          mkdir _build
+          tar -xvf build.tar.gz -C _build
+      - name: dialyzer
+        run: ./rebar3 dialyzer
+  ct:
+    needs: build
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/team-helium/packet_purchaser:CI
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-ct
+      cancel-in-progress: true
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: download-artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: build
+      - name: untar
+        run: |
+          mkdir _build
+          tar -xvf build.tar.gz -C _build
+      - name: ct
+        run: CT_LAGER=DEBUG ./rebar3 ct

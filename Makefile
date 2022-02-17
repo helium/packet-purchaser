@@ -24,7 +24,7 @@ run:
 	_build/default/rel/packet_purchaser/bin/packet_purchaser foreground
 
 docker-build:
-	docker build -f Dockerfile-local --force-rm -t quay.io/team-helium/packet_purchaser:local .
+	docker build -f Dockerfile-CI --force-rm -t quay.io/team-helium/packet_purchaser:local .
 
 docker-test:
 	docker run --rm -it --init --name=helium_packet_purchaser_test quay.io/team-helium/packet_purchaser:local make test
