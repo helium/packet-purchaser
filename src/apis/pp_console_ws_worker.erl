@@ -18,6 +18,7 @@
 -export([
     start_link/1,
     send/1,
+    raw_send/1,
     handle_packet/4
 ]).
 
@@ -135,7 +136,7 @@ send_address() ->
         ?WS_SEND_PP_ADDRESS,
         #{address => B58}
     ),
-    ok = ?MODULE:send(RouterAddressPayload).
+    ok = ?MODULE:raw_send(RouterAddressPayload).
 
 -spec send_get_config() -> ok.
 send_get_config() ->
@@ -144,7 +145,7 @@ send_get_config() ->
     Topic = ?ORGANIZATION_TOPIC,
     Event = ?WS_SEND_GET_CONFIG,
     Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, #{}),
-    ?MODULE:send(Payload).
+    ?MODULE:raw_send(Payload).
 
 -spec send_get_org_balances() -> ok.
 send_get_org_balances() ->
@@ -153,11 +154,17 @@ send_get_org_balances() ->
     Topic = ?ORGANIZATION_TOPIC,
     Event = ?WS_SEND_GET_ORG_BALANCES,
     Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, #{}),
-    ?MODULE:send(Payload).
+    ?MODULE:raw_send(Payload).
 
 -spec send(Data :: any()) -> ok.
 send(Data) ->
+    %% respects active flag
     gen_server:cast(?MODULE, {send, Data}).
+
+-spec raw_send(Data :: any()) -> ok.
+raw_send(Data) ->
+    %% disrespects active flag
+    gen_server:cast(?MODULE, {raw_send, Data}).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -205,6 +212,14 @@ handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
     {reply, ok, State}.
 
+handle_cast({raw_send, Payload}, #state{ws = WSPid} = State) ->
+    case WSPid of
+        undefined ->
+            lager:warning("got a raw send with no ws [payload: ~p]", [Payload]);
+        _ ->
+            websocket_client:cast(WSPid, {text, Payload})
+    end,
+    {noreply, State};
 handle_cast({send, _Payload}, #state{is_active = {true, 0}} = State) ->
     {noreply, State#state{is_active = false}};
 handle_cast({send, Payload}, #state{is_active = true, ws = WSPid} = State) ->
