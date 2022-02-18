@@ -89,13 +89,13 @@ all() ->
 %%--------------------------------------------------------------------
 init_per_testcase(join_websocket_inactive_test = TestCase, Config0) ->
     Config1 = [
-        {console_api, [{is_active, false}]}
+        {console_api, [{auto_connect, false}]}
         | Config0
     ],
     test_utils:init_per_testcase(TestCase, Config1);
 init_per_testcase(packet_websocket_inactive_test = TestCase, Config0) ->
     Config1 = [
-        {console_api, [{is_active, false}]}
+        {console_api, [{auto_connect, false}]}
         | Config0
     ],
     test_utils:init_per_testcase(TestCase, Config1);

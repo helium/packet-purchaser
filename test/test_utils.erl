@@ -43,7 +43,7 @@ init_per_testcase(TestCase, Config) ->
         {endpoint, ?CONSOLE_URL},
         {ws_endpoint, ?CONSOLE_WS_URL},
         {secret, <<>>},
-        {is_active, true}
+        {auto_connect, true}
     ],
     OverrideConsoleSettings = proplists:get_value(console_api, Config, []),
     ok = application:set_env(

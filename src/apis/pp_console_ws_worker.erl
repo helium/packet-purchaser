@@ -71,7 +71,9 @@
 -define(WS_RCV_REFETCH_ADDRESS, <<"organization:all:refetch:packet_purchaser_address">>).
 
 -record(state, {
-    ws :: undefind | pid(),
+    ws :: undefined | pid(),
+    http_endpoint :: binary(),
+    secret :: binary(),
     ws_endpoint :: binary(),
     is_active :: boolean() | {true, Limit :: integer()}
 }).
@@ -94,7 +96,7 @@ activate() ->
 activate(Limit) ->
     gen_server:call(?MODULE, {activate, Limit}).
 
--spec start_ws() -> ok.
+-spec start_ws() -> {ok, pid()} | {error, worker_not_started | no_token, any()}.
 start_ws() ->
     gen_server:call(?MODULE, start_ws).
 
@@ -175,21 +177,12 @@ init(Args) ->
     WSEndpoint = maps:get(ws_endpoint, Args),
     Endpoint = maps:get(endpoint, Args),
     Secret = maps:get(secret, Args),
-    IsActive =
-        case maps:get(is_active, Args, false) of
-            "true" -> true;
-            true -> true;
-            _ -> false
-        end,
-    WSPid =
-        case IsActive of
-            true -> start_ws(Endpoint, WSEndpoint, Secret);
-            false -> undefined
-        end,
     {ok, #state{
-        ws = WSPid,
+        ws = undefined,
+        http_endpoint = Endpoint,
+        secret = Secret,
         ws_endpoint = WSEndpoint,
-        is_active = IsActive
+        is_active = false
     }}.
 
 handle_call(activate, _From, State) ->
@@ -201,13 +194,20 @@ handle_call({activate, Limit}, _From, State) ->
 handle_call(deactivate, _From, State) ->
     lager:info("deactivating websocket worker"),
     {reply, {ok, inactive}, State#state{is_active = false}};
-handle_call(start_ws, _From, #state{ws_endpoint = WSEndpoint} = State) ->
+handle_call(
+    start_ws,
+    _From,
+    #state{http_endpoint = Endpoint, secret = Secret, ws_endpoint = WSEndpoint} = State
+) ->
     lager:info("starting websocket connection"),
-    #{endpoint := Endpoint, secret := Secret} = maps:from_list(
-        application:get_env(packet_purchaser, pp_console_api, [])
-    ),
-    WSPid = start_ws(Endpoint, WSEndpoint, Secret),
-    {reply, {ok, WSPid}, State#state{ws = WSPid}};
+    Reply = start_ws(Endpoint, WSEndpoint, Secret),
+    WSPid =
+        case Reply of
+            {ok, Pid} -> Pid;
+            _ -> undefined
+        end,
+
+    {reply, Reply, State#state{ws = WSPid}};
 handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
     {reply, ok, State}.
@@ -234,16 +234,16 @@ handle_cast(_Msg, State) ->
 
 handle_info(
     {'EXIT', WSPid0, _Reason},
-    #state{ws = WSPid0, ws_endpoint = WSEndpoint} = State
+    #state{ws = WSPid0, ws_endpoint = WSEndpoint, http_endpoint = Endpoint, secret = Secret} = State
 ) ->
     lager:error("websocket connection went down: ~p, restarting", [_Reason]),
-    #{endpoint := Endpoint, secret := Secret} = maps:from_list(
-        application:get_env(packet_purchaser, pp_console_api, [])
-    ),
-    WSPid1 = start_ws(Endpoint, WSEndpoint, Secret),
+    WSPid1 =
+        case start_ws(Endpoint, WSEndpoint, Secret) of
+            {ok, Pid} -> Pid;
+            _ -> undefined
+        end,
     {noreply, State#state{ws = WSPid1}};
 handle_info(ws_joined, #state{} = State) ->
-    lager:info("joined, sending packet_purchaser address to console"),
     ok = ?MODULE:send_address(),
     ok = ?MODULE:send_get_config(),
     %% TODO: dc tracker
@@ -364,7 +364,7 @@ get_token(Endpoint, Secret) ->
     end.
 
 -spec start_ws(Endpoint :: binary(), WSEndpoint :: binary(), Secret :: binary()) ->
-    pid() | undefined.
+    {ok, pid()} | {error, worker_not_started | no_token, any()}.
 start_ws(Endpoint, WSEndpoint, Secret) ->
     case get_token(Endpoint, Secret) of
         {ok, Token} ->
@@ -376,12 +376,12 @@ start_ws(Endpoint, WSEndpoint, Secret) ->
             },
             case pp_console_ws_handler:start_link(Args) of
                 {ok, Pid} ->
-                    Pid;
+                    {ok, Pid};
                 Err ->
                     lager:error("failed to open ws connection [reason: ~p]", [Err]),
-                    undefined
+                    {error, worker_not_started, Err}
             end;
         Err ->
             lager:error("failed to get token [reason: ~p]", [Err]),
-            undefined
+            {error, no_token, Err}
     end.
