@@ -68,6 +68,12 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 [PacketType, RoutingInfo]
             ),
             Err;
+        {error, invalid_net_id_type} = Err ->
+            lager:warning(
+                "~s: inavlid net id type [routing_info: ~p]",
+                [PacketType, RoutingInfo]
+            ),
+            Err;
         {ok, #{net_id := NetID} = WorkerArgs} ->
             case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs) of
                 {ok, WorkerPid} ->

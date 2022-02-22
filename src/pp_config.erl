@@ -92,7 +92,9 @@ start_link(Args) ->
 -spec lookup(eui() | devaddr()) ->
     {ok, map()}
     | {error, buying_inactive, NetID :: integer()}
-    | {error, unmapped_eui | routing_not_found | invalid_net_id_type}.
+    | {error, unmapped_eui}
+    | {error, routing_not_found}
+    | {error, invalid_net_id_type}.
 lookup({devaddr, _} = DevAddr) -> lookup_devaddr(DevAddr);
 lookup(EUI) -> lookup_eui(EUI).
 
@@ -133,7 +135,9 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
     end.
 
 -spec lookup_devaddr({devaddr, non_neg_integer()}) ->
-    {ok, map()} | {error, routing_not_found | invalid_net_id_type}.
+    {ok, map()}
+    | {error, routing_not_found}
+    | {error, invalid_net_id_type}.
 lookup_devaddr({devaddr, DevAddr}) ->
     case lorawan_devaddr:net_id(DevAddr) of
         {ok, NetID} ->
