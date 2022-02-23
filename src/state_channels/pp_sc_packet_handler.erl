@@ -101,15 +101,17 @@ handle_join_offer(EUI, Offer) ->
     case pp_config:lookup_eui(EUI) of
         {ok, #{multi_buy := MultiBuyMax}} ->
             pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
-        Err ->
-            Err
+        {error, _} = Err ->
+            Err;
+        {error, Reason, Extra} ->
+            {error, {Reason, Extra}}
     end.
 
 handle_packet_offer(DevAddr, Offer) ->
     case pp_config:lookup_devaddr(DevAddr) of
         {ok, #{multi_buy := MultiBuyMax}} ->
             pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
-        Err ->
+        {error, _} = Err ->
             Err
     end.
 

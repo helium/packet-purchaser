@@ -214,15 +214,15 @@ ws_stop_start_purchasing_test(_Config) ->
     timer:sleep(150),
 
     ?assertEqual(
-        {error, buying_inactive, ?NET_ID},
+        {error, {buying_inactive, ?NET_ID}},
         pp_sc_packet_handler:handle_offer(MakeOfferFun(), self())
     ),
     ?assertEqual(
-        {error, buying_inactive, ?NET_ID},
+        {error, {buying_inactive, ?NET_ID}},
         pp_sc_packet_handler:handle_offer(MakeOfferFun(), self())
     ),
     ?assertEqual(
-        {error, buying_inactive, ?NET_ID},
+        {error, {buying_inactive, ?NET_ID}},
         pp_sc_packet_handler:handle_offer(MakeOfferFun(), self())
     ),
 
