@@ -21,6 +21,9 @@
 -define(METRICS_SC_CLOSE_SUBMIT, packet_purchaser_state_channel_close_submit_count).
 -define(METRICS_SC_CLOSE_CONFLICT, packet_purchaser_state_channel_close_conflicts).
 
+-define(METRICS_WS_STATE, packet_purchaser_ws_state).
+-define(METRICS_WS_MSG_COUNT, packet_purchaser_ws_msg_count).
+
 -define(METRICS_VM_CPU, packet_purchaser_vm_cpu).
 -define(METRICS_VM_PROC_Q, packet_purchaser_vm_process_queue).
 -define(METRICS_VM_ETS_MEMORY, packet_purchaser_vm_ets_memory).
@@ -46,7 +49,8 @@
     state_channels/5,
     state_channel_close/1,
     %% Websocket
-    ws_state/1
+    ws_state/1,
+    ws_send_msg/1
 ]).
 
 %% gen_server callbacks
@@ -142,9 +146,12 @@ state_channel_close(Status) ->
     prometheus_counter:inc(?METRICS_SC_CLOSE_SUBMIT, [Status]).
 
 -spec ws_state(boolean()) -> ok.
-ws_state(_State) ->
-    %% TODO: prometheus_boolean:set(?METRICS_WS_STATE, State).
-    ok.
+ws_state(State) ->
+    prometheus_boolean:set(?METRICS_WS_STATE, State).
+
+-spec ws_send_msg(NetID :: non_neg_integer()) -> ok.
+ws_send_msg(NetID) ->
+    prometheus_counter:inc(?METRICS_WS_MSG_COUNT, [NetID]).
 
 %% -------------------------------------------------------------------
 %% gen_server Callbacks
@@ -305,6 +312,17 @@ declare_metrics() ->
     prometheus_gauge:declare([
         {name, ?METRICS_SC_CLOSE_CONFLICT},
         {help, "State Channels close with conflicts"}
+    ]),
+
+    %% Websocket
+    prometheus_boolean:declare([
+        {name, ?METRICS_WS_STATE},
+        {help, "Websocket State"}
+    ]),
+    prometheus_counter:declare([
+        {name, ?METRICS_WS_MSG_COUNT},
+        {help, "Websocket packet messages prepared for sending"},
+        {labels, [net_id]}
     ]),
 
     %% VM Statistics
