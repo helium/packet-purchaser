@@ -121,6 +121,7 @@ handle_packet(NetID, Packet, PacketTime, Type) ->
     Event = ?WS_SEND_NEW_PACKET,
 
     Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, Data),
+    ok = pp_metrics:ws_send_msg(NetID),
     ?MODULE:send(Payload).
 
 -spec send_address() -> ok.
