@@ -5,8 +5,6 @@
 %%%-------------------------------------------------------------------
 -module(pp_sc_packet_handler).
 
--include("packet_purchaser.hrl").
-
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
 
 -export([
@@ -51,25 +49,25 @@ handle_packet(SCPacket, PacketTime, Pid) ->
 
     case pp_config:lookup(RoutingInfo) of
         {error, {buying_inactive, NetID}} ->
-            lager:warning(
+            lager:debug(
                 "~s: buying disabled for ~p in net_id ~p",
                 [PacketType, RoutingInfo, NetID]
             ),
             {error, buying_inactive};
         {error, routing_not_found} = Err ->
-            lager:warning(
+            lager:debug(
                 "~s: routing information not found [routing_info: ~p]",
                 [PacketType, RoutingInfo]
             ),
             Err;
         {error, unmapped_eui} = Err ->
-            lager:warning(
+            lager:debug(
                 "~s: no mapping for [routing_info: ~p]",
                 [PacketType, RoutingInfo]
             ),
             Err;
         {error, invalid_net_id_type} = Err ->
-            lager:warning(
+            lager:debug(
                 "~s: inavlid net id type [routing_info: ~p]",
                 [PacketType, RoutingInfo]
             ),
