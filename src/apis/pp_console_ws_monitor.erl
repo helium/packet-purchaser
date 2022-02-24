@@ -15,7 +15,8 @@
 %% ------------------------------------------------------------------
 -export([
     start_link/1,
-    start_ws_connection/0
+    get_token/0,
+    start_ws/0
 ]).
 
 %% ------------------------------------------------------------------
@@ -32,13 +33,25 @@
 ]).
 
 -define(SERVER, ?MODULE).
+-define(POOL, router_console_api_pool).
+-define(HEADER_JSON, {<<"Content-Type">>, <<"application/json">>}).
 
--define(BACKOFF_MIN, timer:seconds(10)).
--define(BACKOFF_MAX, timer:minutes(5)).
+%% Topics
+-define(ORGANIZATION_TOPIC, <<"organization:all">>).
+-define(NET_ID_TOPIC, <<"net_id:all">>).
+
+-define(BACKOFF_MIN, timer:seconds(2)).
+-define(BACKOFF_MAX, timer:minutes(1)).
+
+-define(GET_TOKEN, get_token).
 -define(START_WS_CONNECTION, start_ws_connection).
 
 -record(state, {
-    auto_connect :: boolean(),
+    ws = undefined :: pid(),
+    http_endpoint :: binary(),
+    secret :: binary(),
+    ws_endpoint :: binary(),
+    token = undefined :: binary(),
     backoff :: backoff:backoff(),
     backoff_timer :: undefined | reference()
 }).
@@ -49,39 +62,43 @@
 start_link(Args) ->
     gen_server:start_link({local, ?SERVER}, ?SERVER, Args, []).
 
-start_ws_connection() ->
-    ?MODULE ! ?START_WS_CONNECTION.
+-spec get_token() -> {ok, Token :: binary()} | {error, any()}.
+get_token() ->
+    gen_server:call(?MODULE, ?GET_TOKEN).
+
+-spec start_ws() -> {ok, pid()} | {error, any()}.
+start_ws() ->
+    gen_server:call(?MODULE, ?START_WS_CONNECTION).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 init(Args) ->
-    ct:print("~p init with ~p", [?SERVER, Args]),
     lager:info("~p init with ~p", [?SERVER, Args]),
-    AutoConnect =
-        case maps:get(auto_connect, Args, false) of
-            "true" -> true;
-            true -> true;
-            _ -> false
-        end,
+    WSEndpoint = maps:get(ws_endpoint, Args),
+    Endpoint = maps:get(endpoint, Args),
+    Secret = maps:get(secret, Args),
     Backoff = backoff:type(backoff:init(?BACKOFF_MIN, ?BACKOFF_MAX), normal),
     {ok,
         #state{
-            auto_connect = AutoConnect,
+            http_endpoint = Endpoint,
+            secret = Secret,
+            ws_endpoint = WSEndpoint,
             backoff = Backoff
         },
-        {continue, ?START_WS_CONNECTION}}.
+        {continue, ?GET_TOKEN}}.
 
-handle_continue(?START_WS_CONNECTION, #state{auto_connect = true} = State) ->
-    lager:info("auto connecting websocket"),
-    ?MODULE:start_ws_connection(),
-    {noreply, State};
-handle_continue(?START_WS_CONNECTION, #state{auto_connect = false} = State) ->
-    {noreply, State};
-handle_continue(_Msg, State) ->
-    lager:warning("rcvd unknown continue msg: ~p", [_Msg]),
-    {noreply, State}.
+handle_continue(?GET_TOKEN, #state{} = State) ->
+    %% For use during initialization.
+    get_token(State);
+handle_continue(?START_WS_CONNECTION, #state{} = State) ->
+    start_ws(State).
 
+handle_call(?GET_TOKEN, _From, #state{} = State) ->
+    %% For manual use.
+    get_token(State);
+handle_call(?START_WS_CONNECTION, _From, #state{} = State) ->
+    start_ws(State);
 handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
     {reply, ok, State}.
@@ -90,20 +107,9 @@ handle_cast(_Msg, State) ->
     lager:debug("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
 
-handle_info(?START_WS_CONNECTION, State0) ->
-    State1 =
-        case pp_console_ws_worker:start_ws() of
-            {ok, _} ->
-                _ = pp_console_ws_worker:activate(),
-                backoff_success(State0);
-            {error, Reason, Err} ->
-                lager:warning(
-                    "could not start websocket connection: [reason: ~p] [error: ~p]",
-                    [Reason, Err]
-                ),
-                backoff_failure(State0)
-        end,
-    {noreply, State1};
+handle_info(?GET_TOKEN, State) ->
+    %% For backoff use.
+    get_token(State);
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p, ~p", [_Msg, State]),
     {noreply, State}.
@@ -114,6 +120,33 @@ code_change(_OldVsn, State, _Extra) ->
 terminate(_Reason, _State) ->
     ct:print("went down ~p : ~p", [?MODULE, _Reason]),
     ok.
+
+%% ------------------------------------------------------------------
+%% Internal State Function Definitions
+%% ------------------------------------------------------------------
+-spec get_token(#state{}) -> {ok, Token :: binary()} | {error, any()}.
+get_token(#state{http_endpoint = Endpoint, secret = Secret} = State) ->
+    case get_token(Endpoint, Secret) of
+        {ok, Token} ->
+            lager:info("console token success"),
+            {noreply, backoff_success(State#state{token = Token}),
+                {continue, ?START_WS_CONNECTION}};
+        {error, _} ->
+            lager:warning("console token failed"),
+            {noreply, backoff_failure(State)}
+    end.
+
+-spec start_ws(#state{}) -> {ok, pid()} | {error, any()}.
+start_ws(#state{ws_endpoint = WSEndpoint, token = Token} = State) ->
+    case start_ws(WSEndpoint, Token) of
+        {ok, Pid} ->
+            lager:info("console websocket success"),
+            ok = pp_console_ws_worker:ws_update_pid(Pid),
+            {noreply, State#state{ws = Pid}};
+        _ ->
+            lager:warning("console websocket failed"),
+            {noreply, backoff_failure(State)}
+    end.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
@@ -132,5 +165,32 @@ backoff_failure(#state{backoff = Backoff0, backoff_timer = Timer} = State) ->
     {Delay, Backoff1} = backoff:fail(Backoff0),
     State#state{
         backoff = Backoff1,
-        backoff_timer = erlang:send_after(Delay, self(), ?START_WS_CONNECTION)
+        backoff_timer = erlang:send_after(Delay, self(), ?GET_TOKEN)
     }.
+
+-spec get_token(Endpoint :: binary(), Secret :: binary()) -> {ok, binary()} | {error, any()}.
+get_token(Endpoint, Secret) ->
+    case
+        hackney:post(
+            <<Endpoint/binary, "/api/packet_purchaser/sessions">>,
+            [?HEADER_JSON],
+            jsx:encode(#{secret => Secret}),
+            [with_body, {pool, ?POOL}]
+        )
+    of
+        {ok, 201, _Headers, Body} ->
+            #{<<"jwt">> := Token} = jsx:decode(Body, [return_maps]),
+            {ok, Token};
+        _Other ->
+            {error, _Other}
+    end.
+
+-spec start_ws(WSEndpoint :: binary(), Token :: binary()) -> {ok, pid()} | {error, any()}.
+start_ws(WSEndpoint, Token) ->
+    Url = binary_to_list(<<WSEndpoint/binary, "?token=", Token/binary, "&vsn=2.0.0">>),
+    Args = #{
+        url => Url,
+        auto_join => [?ORGANIZATION_TOPIC, ?NET_ID_TOPIC],
+        forward => self()
+    },
+    pp_console_ws_handler:start_link(Args).
