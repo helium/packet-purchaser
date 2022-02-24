@@ -50,7 +50,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
         end,
 
     case pp_config:lookup(RoutingInfo) of
-        {error, buying_inactive, NetID} ->
+        {error, {buying_inactive, NetID}} ->
             lager:warning(
                 "~s: buying disabled for ~p in net_id ~p",
                 [PacketType, RoutingInfo, NetID]
@@ -101,17 +101,15 @@ handle_join_offer(EUI, Offer) ->
     case pp_config:lookup_eui(EUI) of
         {ok, #{multi_buy := MultiBuyMax}} ->
             pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
-        {error, _} = Err ->
-            Err;
-        {error, Reason, Extra} ->
-            {error, {Reason, Extra}}
+        Err ->
+            Err
     end.
 
 handle_packet_offer(DevAddr, Offer) ->
     case pp_config:lookup_devaddr(DevAddr) of
         {ok, #{multi_buy := MultiBuyMax}} ->
             pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
-        {error, _} = Err ->
+        Err ->
             Err
     end.
 

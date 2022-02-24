@@ -91,7 +91,7 @@ start_link(Args) ->
 
 -spec lookup(eui() | devaddr()) ->
     {ok, map()}
-    | {error, buying_inactive, NetID :: integer()}
+    | {error, {buying_inactive, NetID :: integer()}}
     | {error, unmapped_eui}
     | {error, routing_not_found}
     | {error, invalid_net_id_type}.
@@ -99,7 +99,9 @@ lookup({devaddr, _} = DevAddr) -> lookup_devaddr(DevAddr);
 lookup(EUI) -> lookup_eui(EUI).
 
 -spec lookup_eui(eui()) ->
-    {ok, map()} | {error, unmapped_eui} | {error, buying_inactive, NetID :: integer()}.
+    {ok, map()}
+    | {error, {buying_inactive, NetID :: integer()}}
+    | {error, unmapped_eui}.
 lookup_eui({eui, #eui_pb{deveui = DevEUI, appeui = AppEUI}}) ->
     lookup_eui({eui, DevEUI, AppEUI});
 lookup_eui(#eui_pb{deveui = DevEUI, appeui = AppEUI}) ->
@@ -115,7 +117,7 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
         [] ->
             {error, unmapped_eui};
         [#eui{buying_active = false, net_id = NetID}] ->
-            {error, buying_inactive, NetID};
+            {error, {buying_inactive, NetID}};
         [
             #eui{
                 address = Address,
@@ -136,6 +138,7 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
 
 -spec lookup_devaddr({devaddr, non_neg_integer()}) ->
     {ok, map()}
+    | {error, {buying_inactive, NetID :: integer()}}
     | {error, routing_not_found}
     | {error, invalid_net_id_type}.
 lookup_devaddr({devaddr, DevAddr}) ->
@@ -145,7 +148,7 @@ lookup_devaddr({devaddr, DevAddr}) ->
                 [] ->
                     {error, routing_not_found};
                 [#devaddr{buying_active = false, net_id = NetID}] ->
-                    {error, buying_inactive, NetID};
+                    {error, {buying_inactive, NetID}};
                 [
                     #devaddr{
                         address = Address,
