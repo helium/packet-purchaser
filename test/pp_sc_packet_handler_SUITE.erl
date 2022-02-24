@@ -678,7 +678,7 @@ stop_start_purchasing_net_id_packet_test(_Config) ->
     %% Stop buying
     ok = pp_config:stop_buying([?NET_ID_COMCAST]),
     ?assertMatch(
-        {error, buying_inactive, ?NET_ID_COMCAST},
+        {error, {buying_inactive, ?NET_ID_COMCAST}},
         pp_sc_packet_handler:handle_offer(Offer1, self())
     ),
     %% Offer from different NetID should still be purchased
@@ -744,11 +744,11 @@ stop_start_purchasing_net_id_join_test(_Config) ->
     %% Stop buying
     ok = pp_config:stop_buying([?NET_ID_COMCAST]),
     ?assertMatch(
-        {error, buying_inactive, ?NET_ID_COMCAST},
+        {error, {buying_inactive, ?NET_ID_COMCAST}},
         pp_sc_packet_handler:handle_offer(Dev1Offer, self())
     ),
     ?assertMatch(
-        {error, buying_inactive, ?NET_ID_COMCAST},
+        {error, {buying_inactive, ?NET_ID_COMCAST}},
         pp_sc_packet_handler:handle_offer(Dev2Offer, self())
     ),
     %% Offer from different NetID should still be purchased

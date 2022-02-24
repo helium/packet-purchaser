@@ -50,7 +50,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
         end,
 
     case pp_config:lookup(RoutingInfo) of
-        {error, buying_inactive, NetID} ->
+        {error, {buying_inactive, NetID}} ->
             lager:warning(
                 "~s: buying disabled for ~p in net_id ~p",
                 [PacketType, RoutingInfo, NetID]

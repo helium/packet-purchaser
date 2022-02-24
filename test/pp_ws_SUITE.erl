@@ -13,7 +13,8 @@
     ws_console_update_config_redirect_udp_worker_test/1,
     ws_active_inactive_test/1,
     ws_active_countdown_test/1,
-    ws_stop_start_purchasing_test/1
+    ws_stop_start_purchasing_test/1,
+    ws_request_address_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -43,7 +44,8 @@ all() ->
         ws_console_update_config_redirect_udp_worker_test,
         ws_active_inactive_test,
         ws_active_countdown_test,
-        ws_stop_start_purchasing_test
+        ws_stop_start_purchasing_test,
+        ws_request_address_test
     ].
 
 %%--------------------------------------------------------------------
@@ -120,6 +122,21 @@ ws_active_countdown_test(_Config) ->
         {test_case_failed, websocket_test_message_timeout},
         test_utils:ws_test_rcv()
     ),
+
+    ok.
+
+ws_request_address_test(_Config) ->
+    {ok, WSPid} = test_utils:ws_init(),
+    {ok, active} = pp_console_ws_worker:activate(),
+
+    PubKeyBin = blockchain_swarm:pubkey_bin(),
+    B58 = libp2p_crypto:bin_to_b58(PubKeyBin),
+
+    console_callback:request_address(WSPid),
+    {ok, #{
+        event := <<"packet_purchaser:address">>,
+        payload := #{<<"address">> := B58}
+    }} = test_utils:ws_roaming_rcv(),
 
     ok.
 
@@ -214,15 +231,15 @@ ws_stop_start_purchasing_test(_Config) ->
     timer:sleep(150),
 
     ?assertEqual(
-        {error, buying_inactive, ?NET_ID},
+        {error, {buying_inactive, ?NET_ID}},
         pp_sc_packet_handler:handle_offer(MakeOfferFun(), self())
     ),
     ?assertEqual(
-        {error, buying_inactive, ?NET_ID},
+        {error, {buying_inactive, ?NET_ID}},
         pp_sc_packet_handler:handle_offer(MakeOfferFun(), self())
     ),
     ?assertEqual(
-        {error, buying_inactive, ?NET_ID},
+        {error, {buying_inactive, ?NET_ID}},
         pp_sc_packet_handler:handle_offer(MakeOfferFun(), self())
     ),
 
