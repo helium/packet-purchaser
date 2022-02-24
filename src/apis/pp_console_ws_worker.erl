@@ -17,12 +17,14 @@
 %% ------------------------------------------------------------------
 -export([
     start_link/1,
-    send/1,
-    raw_send/1,
     handle_packet/4
 ]).
 
+%% ------------------------------------------------------------------
+%% Send API
+%% ------------------------------------------------------------------
 -export([
+    send/1,
     send_address/0,
     send_get_config/0,
     send_get_org_balances/0
@@ -38,14 +40,6 @@
     handle_info/2,
     terminate/2,
     code_change/3
-]).
-
--export([
-    deactivate/0,
-    activate/0, activate/1,
-    start_ws/0,
-    start_ws/3,
-    get_token/2
 ]).
 
 -define(SERVER, ?MODULE).
@@ -75,7 +69,6 @@
     http_endpoint :: binary(),
     secret :: binary(),
     ws_endpoint :: binary(),
-    is_active :: boolean() | {true, Limit :: integer()}
 }).
 
 %% ------------------------------------------------------------------
@@ -84,21 +77,17 @@
 start_link(Args) ->
     gen_server:start_link({local, ?SERVER}, ?SERVER, Args, []).
 
--spec deactivate() -> ok.
-deactivate() ->
-    gen_server:call(?MODULE, deactivate).
+-spec ws_update_pid(pid()) -> ok.
+ws_update_pid(Pid) ->
+    gen_server:cast(?MODULE, {update_ws_pid, Pid}).
 
--spec activate() -> ok.
-activate() ->
-    gen_server:call(?MODULE, activate).
+-spec ws_joined() -> ok.
+ws_joined() ->
+    ?MODULE:send_address().
 
--spec activate(non_neg_integer()) -> ok.
-activate(Limit) ->
-    gen_server:call(?MODULE, {activate, Limit}).
-
--spec start_ws() -> {ok, pid()} | {error, worker_not_started | no_token, any()}.
-start_ws() ->
-    gen_server:call(?MODULE, start_ws).
+-spec ws_handle_message(Topic :: binary(), Event :: binary(), Payload :: map()) -> ok.
+ws_handle_message(Topic, Event, Payload) ->
+    gen_server:cast(?MODULE, {ws_message, Topic, Event, Payload}).
 
 -spec handle_packet(
     NetID :: non_neg_integer(),
@@ -138,7 +127,7 @@ send_address() ->
         ?WS_SEND_PP_ADDRESS,
         #{address => B58}
     ),
-    ok = ?MODULE:raw_send(RouterAddressPayload).
+    ?MODULE:send(RouterAddressPayload).
 
 -spec send_get_config() -> ok.
 send_get_config() ->
@@ -147,7 +136,7 @@ send_get_config() ->
     Topic = ?ORGANIZATION_TOPIC,
     Event = ?WS_SEND_GET_CONFIG,
     Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, #{}),
-    ?MODULE:raw_send(Payload).
+    ?MODULE:send(Payload).
 
 -spec send_get_org_balances() -> ok.
 send_get_org_balances() ->
@@ -156,17 +145,12 @@ send_get_org_balances() ->
     Topic = ?ORGANIZATION_TOPIC,
     Event = ?WS_SEND_GET_ORG_BALANCES,
     Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, #{}),
-    ?MODULE:raw_send(Payload).
+    ?MODULE:send(Payload).
 
 -spec send(Data :: any()) -> ok.
 send(Data) ->
-    %% respects active flag
     gen_server:cast(?MODULE, {send, Data}).
 
--spec raw_send(Data :: any()) -> ok.
-raw_send(Data) ->
-    %% disrespects active flag
-    gen_server:cast(?MODULE, {raw_send, Data}).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -185,15 +169,6 @@ init(Args) ->
         is_active = false
     }}.
 
-handle_call(activate, _From, State) ->
-    lager:info("activating websocket worker"),
-    {reply, {ok, active}, State#state{is_active = true}};
-handle_call({activate, Limit}, _From, State) ->
-    lager:info("activating websocket for ~p messages", [Limit]),
-    {reply, {ok, active}, State#state{is_active = {true, Limit}}};
-handle_call(deactivate, _From, State) ->
-    lager:info("deactivating websocket worker"),
-    {reply, {ok, inactive}, State#state{is_active = false}};
 handle_call(
     start_ws,
     _From,
@@ -212,22 +187,15 @@ handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
     {reply, ok, State}.
 
-handle_cast({raw_send, Payload}, #state{ws = WSPid} = State) ->
+handle_cast({send, Payload}, #state{ws = WSPid} = State) ->
     case WSPid of
         undefined ->
-            lager:warning("got a raw send with no ws [payload: ~p]", [Payload]);
+            lager:debug("send with no connection [payload: ~p]", [Payload]);
         _ ->
             websocket_client:cast(WSPid, {text, Payload})
     end,
     {noreply, State};
-handle_cast({send, _Payload}, #state{is_active = {true, 0}} = State) ->
-    {noreply, State#state{is_active = false}};
-handle_cast({send, Payload}, #state{is_active = true, ws = WSPid} = State) ->
-    websocket_client:cast(WSPid, {text, Payload}),
     {noreply, State};
-handle_cast({send, Payload}, #state{is_active = {true, Limit}, ws = WSPid} = State) ->
-    websocket_client:cast(WSPid, {text, Payload}),
-    {noreply, State#state{is_active = {true, Limit - 1}}};
 handle_cast(_Msg, State) ->
     lager:debug("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
