@@ -1,12 +1,11 @@
 %%%-------------------------------------------------------------------
 %% @doc
-%% == Packet Purchaser Console WS Monitor ==
-%%
-%% - Restarts websocket connection if it goes down
+%% == Packet Purchaser Console WS Manager ==
+%% - Gets the console token with a backoff
 %%
 %% @end
 %%%-------------------------------------------------------------------
--module(pp_console_ws_monitor).
+-module(pp_console_ws_manager).
 
 -behavior(gen_server).
 

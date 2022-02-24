@@ -39,7 +39,7 @@ init([]) ->
     {ok,
         {?FLAGS, [
             ?WORKER(pp_console_ws_worker, [ConsoleAPIConfig]),
-            ?WORKER(pp_console_ws_monitor, [ConsoleAPIConfig])
+            ?WORKER(pp_console_ws_manager, [ConsoleAPIConfig])
         ]}}.
 
 %%====================================================================
