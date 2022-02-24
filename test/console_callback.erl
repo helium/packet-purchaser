@@ -19,12 +19,14 @@
 -export([
     update_config/2,
     start_buying/2,
-    stop_buying/2
+    stop_buying/2,
+    request_address/1
 ]).
 
 -define(UPDATE_CONFIG, update_config).
 -define(START_BUYING, start_buying).
 -define(STOP_BUYING, stop_buying).
+-define(REQUEST_ADDRESS, request_address).
 
 -spec update_config(pid(), list(map())) -> ok.
 update_config(WSPid, Config) ->
@@ -39,6 +41,11 @@ start_buying(WSPid, NetIDs) ->
 -spec stop_buying(pid(), list(integer())) -> ok.
 stop_buying(WSPid, NetIDs) ->
     WSPid ! {?STOP_BUYING, NetIDs},
+    ok.
+
+-spec request_address(pid()) -> ok.
+request_address(WSPid) ->
+    WSPid ! ?REQUEST_ADDRESS,
     ok.
 
 init(Req, Args) ->
@@ -102,6 +109,14 @@ websocket_info(_Req, {?STOP_BUYING, NetIDs}, State) ->
         <<"net_id:all">>,
         <<"net_id:all:stop_purchasing">>,
         #{net_ids => NetIDs}
+    ),
+    {reply, {text, Data}, State};
+websocket_info(_Req, ?REQUEST_ADDRESS, State) ->
+    Data = pp_console_ws_handler:encode_msg(
+        <<"0">>,
+        <<"organization:all">>,
+        <<"organization:all:refetch:packet_purchaser_address">>,
+        #{}
     ),
     {reply, {text, Data}, State};
 websocket_info(_Req, _Msg, State) ->

@@ -67,6 +67,7 @@
 -define(WS_RCV_DC_BALANCE_LIST, <<"organization:all:dc_balance:list">>).
 -define(WS_RCV_STOP_PURCHASING_NET_ID, <<"net_id:all:stop_purchasing">>).
 -define(WS_RCV_KEEP_PURCHASING_NET_ID, <<"net_id:all:keep_purchasing">>).
+-define(WS_RCV_REFETCH_ADDRESS, <<"organization:all:refetch:packet_purchaser_address">>).
 
 -record(state, {
     ws :: undefind | pid(),
@@ -258,6 +259,10 @@ handle_message(?ORGANIZATION_TOPIC, ?WS_RCV_DC_BALANCE_LIST, Payload) ->
     ok;
 handle_message(?ORGANIZATION_TOPIC, ?WS_RCV_REFILL_BALANCE, Payload) ->
     lager:info("refill DC balance: ~p", [Payload]),
+    ok;
+handle_message(?ORGANIZATION_TOPIC, ?WS_RCV_REFETCH_ADDRESS, Payload) ->
+    ct:print("sending address: ~p", [Payload]),
+    ?MODULE:send_address(),
     ok;
 handle_message(?NET_ID_TOPIC, ?WS_RCV_KEEP_PURCHASING_NET_ID, #{<<"net_ids">> := NetIDs}) ->
     lager:info("keep purchasing: ~p", [NetIDs]),
