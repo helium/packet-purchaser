@@ -209,7 +209,7 @@ wait_until(Fun, Retry, Delay) when Retry > 0 ->
 
 -spec ws_prepare_test_msg(binary()) -> ok.
 ws_prepare_test_msg(Bin) ->
-    pp_console_ws_handler:encode_msg(<<"0">>, <<"test_utils">>, <<"test_message">>, Bin).
+    pp_console_ws_client:encode_msg(<<"0">>, <<"test_utils">>, <<"test_message">>, Bin).
 
 -spec ws_test_rcv() -> {ok, any()}.
 ws_test_rcv() ->

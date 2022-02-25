@@ -81,14 +81,14 @@ handle_event(_Event, _Data, _Args) ->
     ok.
 
 websocket_handle(_Req, {text, Msg}, State) ->
-    {ok, Map} = pp_console_ws_handler:decode_msg(Msg),
+    {ok, Map} = pp_console_ws_client:decode_msg(Msg),
     handle_message(Map, State);
 websocket_handle(_Req, _Frame, State) ->
     lager:warning("websocket_handle ~p", [_Frame]),
     {ok, State}.
 
 websocket_info(_Req, {?UPDATE_CONFIG, Map}, State) ->
-    Data = pp_console_ws_handler:encode_msg(
+    Data = pp_console_ws_client:encode_msg(
         <<"0">>,
         <<"organization:all">>,
         <<"organization:all:config:list">>,
@@ -96,7 +96,7 @@ websocket_info(_Req, {?UPDATE_CONFIG, Map}, State) ->
     ),
     {reply, {text, Data}, State};
 websocket_info(_Req, {?START_BUYING, NetIDs}, State) ->
-    Data = pp_console_ws_handler:encode_msg(
+    Data = pp_console_ws_client:encode_msg(
         <<"0">>,
         <<"net_id:all">>,
         <<"net_id:all:keep_purchasing">>,
@@ -104,7 +104,7 @@ websocket_info(_Req, {?START_BUYING, NetIDs}, State) ->
     ),
     {reply, {text, Data}, State};
 websocket_info(_Req, {?STOP_BUYING, NetIDs}, State) ->
-    Data = pp_console_ws_handler:encode_msg(
+    Data = pp_console_ws_client:encode_msg(
         <<"0">>,
         <<"net_id:all">>,
         <<"net_id:all:stop_purchasing">>,
@@ -112,7 +112,7 @@ websocket_info(_Req, {?STOP_BUYING, NetIDs}, State) ->
     ),
     {reply, {text, Data}, State};
 websocket_info(_Req, ?REQUEST_ADDRESS, State) ->
-    Data = pp_console_ws_handler:encode_msg(
+    Data = pp_console_ws_client:encode_msg(
         <<"0">>,
         <<"organization:all">>,
         <<"organization:all:refetch:packet_purchaser_address">>,
@@ -147,7 +147,7 @@ handle(_Method, _Path, _Req, _Args) ->
     {404, [], <<"Not Found">>}.
 
 handle_message(#{ref := Ref, topic := <<"phoenix">>, event := <<"heartbeat">>}, State) ->
-    Data = pp_console_ws_handler:encode_msg(Ref, <<"phoenix">>, <<"phx_reply">>, #{
+    Data = pp_console_ws_client:encode_msg(Ref, <<"phoenix">>, <<"phx_reply">>, #{
         <<"status">> => <<"ok">>
     }),
     {reply, {text, Data}, State};
