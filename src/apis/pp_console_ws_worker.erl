@@ -117,7 +117,7 @@ handle_packet(NetID, Packet, PacketTime, Type) ->
     Topic = ?ORGANIZATION_TOPIC,
     Event = ?WS_SEND_NEW_PACKET,
 
-    Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, Data),
+    Payload = pp_console_ws_client:encode_msg(Ref, Topic, Event, Data),
     ok = pp_metrics:ws_send_msg(NetID),
     ?MODULE:send(Payload).
 
@@ -125,7 +125,7 @@ handle_packet(NetID, Packet, PacketTime, Type) ->
 send_address() ->
     PubKeyBin = blockchain_swarm:pubkey_bin(),
     B58 = libp2p_crypto:bin_to_b58(PubKeyBin),
-    RouterAddressPayload = pp_console_ws_handler:encode_msg(
+    RouterAddressPayload = pp_console_ws_client:encode_msg(
         <<"0">>,
         ?ORGANIZATION_TOPIC,
         ?WS_SEND_PP_ADDRESS,
@@ -139,7 +139,7 @@ send_get_config() ->
     Ref = <<"0">>,
     Topic = ?ORGANIZATION_TOPIC,
     Event = ?WS_SEND_GET_CONFIG,
-    Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, #{}),
+    Payload = pp_console_ws_client:encode_msg(Ref, Topic, Event, #{}),
     ?MODULE:send(Payload).
 
 -spec send_get_org_balances() -> ok.
@@ -148,7 +148,7 @@ send_get_org_balances() ->
     Ref = <<"0">>,
     Topic = ?ORGANIZATION_TOPIC,
     Event = ?WS_SEND_GET_ORG_BALANCES,
-    Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, #{}),
+    Payload = pp_console_ws_client:encode_msg(Ref, Topic, Event, #{}),
     ?MODULE:send(Payload).
 
 -spec send(Data :: any()) -> ok.

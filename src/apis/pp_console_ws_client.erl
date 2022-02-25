@@ -1,6 +1,6 @@
 %%%-------------------------------------------------------------------
 %% @doc
-%% == Packet Purchaser Console WS Worker ==
+%% == Packet Purchaser Console WS Client ==
 %%
 %% - Encoding/Decoding messages to/from Roaming Console
 %% - Websocket health
@@ -9,7 +9,7 @@
 %%
 %% @end
 %%%-------------------------------------------------------------------
--module(pp_console_ws_handler).
+-module(pp_console_ws_client).
 
 -behaviour(websocket_client).
 
@@ -126,7 +126,7 @@ websocket_info({heartbeat_timeout, Ref}, _Req, State) ->
     lager:warning("we missed heartbeat ~p, disconnecting", [Ref]),
     pp_metrics:ws_state(false),
     {close, <<"failed heartbeat">>, State#state{heartbeat = 0, heartbeat_timeout = undefined}};
-websocket_info(auto_join, _Req, #state{auto_join = AutoJoin, forward = Pid} = State) ->
+websocket_info(auto_join, _Req, #state{auto_join = AutoJoin} = State) ->
     lists:foreach(
         fun(Topic) ->
             Ref = <<"REF_", Topic/binary>>,
@@ -137,7 +137,7 @@ websocket_info(auto_join, _Req, #state{auto_join = AutoJoin, forward = Pid} = St
         AutoJoin
     ),
     lager:debug("joined"),
-    Pid ! ws_joined,
+    ok = pp_console_ws_worker:ws_joined(),
     {ok, State};
 websocket_info(close, _Req, State) ->
     lager:info("rcvd close msg"),
@@ -192,11 +192,8 @@ handle_message(
             lager:warning("joined unknown topic: ~p", [Topic])
     end,
     {ok, State};
-handle_message(
-    #{topic := Topic, event := Event, payload := Payload},
-    #state{forward = Pid} = State
-) ->
-    Pid ! {ws_message, Topic, Event, Payload},
+handle_message(#{topic := Topic, event := Event, payload := Payload}, #state{} = State) ->
+    ok = pp_console_ws_worker:ws_handle_message(Topic, Event, Payload),
     {ok, State};
 handle_message(_Msg, State) ->
     lager:debug("unhandle message ~p", [_Msg]),

@@ -192,4 +192,4 @@ start_ws(WSEndpoint, Token) ->
         auto_join => [?ORGANIZATION_TOPIC, ?NET_ID_TOPIC],
         forward => self()
     },
-    pp_console_ws_handler:start_link(Args).
+    pp_console_ws_client:start_link(Args).
