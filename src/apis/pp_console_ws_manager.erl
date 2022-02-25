@@ -35,10 +35,6 @@
 -define(POOL, router_console_api_pool).
 -define(HEADER_JSON, {<<"Content-Type">>, <<"application/json">>}).
 
-%% Topics
--define(ORGANIZATION_TOPIC, <<"organization:all">>).
--define(NET_ID_TOPIC, <<"net_id:all">>).
-
 -define(BACKOFF_MIN, timer:seconds(2)).
 -define(BACKOFF_MAX, timer:minutes(1)).
 
@@ -193,7 +189,7 @@ start_ws(WSEndpoint, Token) ->
     Url = binary_to_list(<<WSEndpoint/binary, "?token=", Token/binary, "&vsn=2.0.0">>),
     Args = #{
         url => Url,
-        auto_join => [?ORGANIZATION_TOPIC, ?NET_ID_TOPIC],
+        auto_join => pp_console_ws_worker:ws_get_auto_join_topics(),
         forward => self()
     },
     pp_console_ws_client:start_link(Args).
