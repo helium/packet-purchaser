@@ -44,11 +44,11 @@
 -define(START_WS_CONNECTION, start_ws_connection).
 
 -record(state, {
-    ws = undefined :: pid(),
+    ws = undefined :: undefined | pid(),
     http_endpoint :: binary(),
     secret :: binary(),
     ws_endpoint :: binary(),
-    token = undefined :: binary(),
+    token = undefined :: undefined | binary(),
     backoff :: backoff:backoff(),
     backoff_timer :: undefined | reference()
 }).
