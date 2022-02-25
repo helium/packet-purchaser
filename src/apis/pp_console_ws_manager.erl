@@ -1,7 +1,9 @@
 %%%-------------------------------------------------------------------
 %% @doc
 %% == Packet Purchaser Console WS Manager ==
+%%
 %% - Gets the console token with a backoff
+%% - Starts websocket connection when token is received successfully
 %%
 %% @end
 %%%-------------------------------------------------------------------

@@ -196,5 +196,5 @@ handle_message(#{topic := Topic, event := Event, payload := Payload}, #state{} =
     ok = pp_console_ws_worker:ws_handle_message(Topic, Event, Payload),
     {ok, State};
 handle_message(_Msg, State) ->
-    lager:debug("unhandle message ~p", [_Msg]),
+    lager:debug("unhandled message ~p", [_Msg]),
     {ok, State}.

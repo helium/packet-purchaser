@@ -2,8 +2,7 @@
 %% @doc
 %% == Packet Purchaser Console WS Worker ==
 %%
-%% - Restarts websocket connection if it goes down
-%% - Handles Roaming Console messages forwarded from ws_handler
+%% - Handles Roaming Console messages forwarded from ws_client
 %% - Sending messages to Roaming Console
 %%
 %% @end
