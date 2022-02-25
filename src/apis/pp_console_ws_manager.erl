@@ -89,17 +89,25 @@ init(Args) ->
             {ok, State}
     end.
 
-handle_continue(?GET_TOKEN, #state{} = State) ->
+handle_continue(?GET_TOKEN, State0) ->
     %% For use during initialization.
-    get_token(State);
-handle_continue(?START_WS_CONNECTION, #state{} = State) ->
-    start_ws(State).
+    case get_token(State0) of
+        {State1, Continue} -> {noreply, State1, Continue};
+        State1 -> {noreply, State1}
+    end;
+handle_continue(?START_WS_CONNECTION, State0) ->
+    State1 = start_ws(State0),
+    {noreply, State1}.
 
-handle_call(?GET_TOKEN, _From, #state{} = State) ->
+handle_call(?GET_TOKEN, _From, State0) ->
     %% For manual use.
-    get_token(State);
-handle_call(?START_WS_CONNECTION, _From, #state{} = State) ->
-    start_ws(State);
+    case get_token(State0) of
+        {State1, Continue} -> {noreply, State1, Continue};
+        State1 -> {noreply, State1}
+    end;
+handle_call(?START_WS_CONNECTION, _From, State0) ->
+    State1 = start_ws(State0),
+    {noreply, State1};
 handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
     {reply, ok, State}.
@@ -108,9 +116,12 @@ handle_cast(_Msg, State) ->
     lager:debug("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
 
-handle_info(?GET_TOKEN, State) ->
+handle_info(?GET_TOKEN, State0) ->
     %% For backoff use.
-    get_token(State);
+    case get_token(State0) of
+        {State1, Continue} -> {noreply, State1, Continue};
+        State1 -> {noreply, State1}
+    end;
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p, ~p", [_Msg, State]),
     {noreply, State}.
@@ -125,28 +136,27 @@ terminate(_Reason, _State) ->
 %% ------------------------------------------------------------------
 %% Internal State Function Definitions
 %% ------------------------------------------------------------------
--spec get_token(#state{}) -> {ok, Token :: binary()} | {error, any()}.
+-spec get_token(#state{}) -> {#state{}, {continue, atom()}} | #state{}.
 get_token(#state{http_endpoint = Endpoint, secret = Secret} = State) ->
     case get_token(Endpoint, Secret) of
         {ok, Token} ->
             lager:info("console token success"),
-            {noreply, backoff_success(State#state{token = Token}),
-                {continue, ?START_WS_CONNECTION}};
+            {backoff_success(State#state{token = Token}), {continue, ?START_WS_CONNECTION}};
         {error, _} ->
             lager:warning("console token failed"),
-            {noreply, backoff_failure(State)}
+            backoff_failure(State)
     end.
 
--spec start_ws(#state{}) -> {ok, pid()} | {error, any()}.
+-spec start_ws(#state{}) -> #state{}.
 start_ws(#state{ws_endpoint = WSEndpoint, token = Token} = State) ->
     case start_ws(WSEndpoint, Token) of
         {ok, Pid} ->
             lager:info("console websocket success"),
             ok = pp_console_ws_worker:ws_update_pid(Pid),
-            {noreply, State#state{ws = Pid}};
+            State#state{ws = Pid};
         _ ->
             lager:warning("console websocket failed"),
-            {noreply, backoff_failure(State)}
+            backoff_failure(State)
     end.
 
 %% ------------------------------------------------------------------
