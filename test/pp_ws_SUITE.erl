@@ -80,16 +80,18 @@ ws_receive_packet_test(_Config) ->
 
 ws_request_address_test(_Config) ->
     {ok, WSPid} = test_utils:ws_init(),
-    {ok, active} = pp_console_ws_worker:activate(),
 
     PubKeyBin = blockchain_swarm:pubkey_bin(),
     B58 = libp2p_crypto:bin_to_b58(PubKeyBin),
 
     console_callback:request_address(WSPid),
-    {ok, #{
-        event := <<"packet_purchaser:address">>,
-        payload := #{<<"address">> := B58}
-    }} = test_utils:ws_roaming_rcv(),
+    ?assertMatch(
+        {ok, #{
+            event := <<"packet_purchaser:address">>,
+            payload := #{<<"address">> := B58}
+        }},
+        test_utils:ws_roaming_rcv(pp_request_address)
+    ),
 
     ok.
 

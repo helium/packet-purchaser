@@ -78,14 +78,18 @@ init(Args) ->
     Endpoint = maps:get(endpoint, Args),
     Secret = maps:get(secret, Args),
     Backoff = backoff:type(backoff:init(?BACKOFF_MIN, ?BACKOFF_MAX), normal),
-    {ok,
-        #state{
-            http_endpoint = Endpoint,
-            secret = Secret,
-            ws_endpoint = WSEndpoint,
-            backoff = Backoff
-        },
-        {continue, ?GET_TOKEN}}.
+    State = #state{
+        http_endpoint = Endpoint,
+        secret = Secret,
+        ws_endpoint = WSEndpoint,
+        backoff = Backoff
+    },
+    case maps:get(auto_connect, Args, false) of
+        true ->
+            {ok, State, {continue, ?GET_TOKEN}};
+        false ->
+            {ok, State}
+    end.
 
 handle_continue(?GET_TOKEN, #state{} = State) ->
     %% For use during initialization.
