@@ -31,6 +31,15 @@
 ]).
 
 %% ------------------------------------------------------------------
+%% Websocket Client API
+%% ------------------------------------------------------------------
+-export([
+    ws_update_pid/1,
+    ws_joined/0,
+    ws_handle_message/3
+]).
+
+%% ------------------------------------------------------------------
 %% gen_server Function Exports
 %% ------------------------------------------------------------------
 -export([
@@ -43,8 +52,6 @@
 ]).
 
 -define(SERVER, ?MODULE).
--define(POOL, router_console_api_pool).
--define(HEADER_JSON, {<<"Content-Type">>, <<"application/json">>}).
 
 %% Topics
 -define(ORGANIZATION_TOPIC, <<"organization:all">>).
@@ -65,10 +72,7 @@
 -define(WS_RCV_REFETCH_ADDRESS, <<"organization:all:refetch:packet_purchaser_address">>).
 
 -record(state, {
-    ws :: undefined | pid(),
-    http_endpoint :: binary(),
-    secret :: binary(),
-    ws_endpoint :: binary(),
+    ws = undefined :: undefined | pid()
 }).
 
 %% ------------------------------------------------------------------
@@ -151,42 +155,20 @@ send_get_org_balances() ->
 send(Data) ->
     gen_server:cast(?MODULE, {send, Data}).
 
-
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 init(Args) ->
-    erlang:process_flag(trap_exit, true),
     lager:info("~p init with ~p", [?SERVER, Args]),
-    WSEndpoint = maps:get(ws_endpoint, Args),
-    Endpoint = maps:get(endpoint, Args),
-    Secret = maps:get(secret, Args),
-    {ok, #state{
-        ws = undefined,
-        http_endpoint = Endpoint,
-        secret = Secret,
-        ws_endpoint = WSEndpoint,
-        is_active = false
-    }}.
+    {ok, #state{}}.
 
-handle_call(
-    start_ws,
-    _From,
-    #state{http_endpoint = Endpoint, secret = Secret, ws_endpoint = WSEndpoint} = State
-) ->
-    lager:info("starting websocket connection"),
-    Reply = start_ws(Endpoint, WSEndpoint, Secret),
-    WSPid =
-        case Reply of
-            {ok, Pid} -> Pid;
-            _ -> undefined
-        end,
-
-    {reply, Reply, State#state{ws = WSPid}};
 handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
     {reply, ok, State}.
 
+handle_cast({update_ws_pid, NewPid}, #state{ws = OldPid} = State) ->
+    lager:info("ws connection pid updated [old: ~p] [new: ~p]", [OldPid, NewPid]),
+    {noreply, State#state{ws = NewPid}};
 handle_cast({send, Payload}, #state{ws = WSPid} = State) ->
     case WSPid of
         undefined ->
@@ -195,31 +177,13 @@ handle_cast({send, Payload}, #state{ws = WSPid} = State) ->
             websocket_client:cast(WSPid, {text, Payload})
     end,
     {noreply, State};
+handle_cast({ws_message, Topic, Event, Payload}, State) ->
+    handle_message(Topic, Event, Payload),
     {noreply, State};
 handle_cast(_Msg, State) ->
     lager:debug("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
 
-handle_info(
-    {'EXIT', WSPid0, _Reason},
-    #state{ws = WSPid0, ws_endpoint = WSEndpoint, http_endpoint = Endpoint, secret = Secret} = State
-) ->
-    lager:error("websocket connection went down: ~p, restarting", [_Reason]),
-    WSPid1 =
-        case start_ws(Endpoint, WSEndpoint, Secret) of
-            {ok, Pid} -> Pid;
-            _ -> undefined
-        end,
-    {noreply, State#state{ws = WSPid1}};
-handle_info(ws_joined, #state{} = State) ->
-    ok = ?MODULE:send_address(),
-    ok = ?MODULE:send_get_config(),
-    %% TODO: dc tracker
-    %% ok = ?MODULE:send_get_org_balances(),
-    {noreply, State};
-handle_info({ws_message, Topic, Event, Payload}, State) ->
-    ok = handle_message(Topic, Event, Payload),
-    {noreply, State};
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p, ~p", [_Msg, State]),
     {noreply, State}.
@@ -314,42 +278,3 @@ handle_message(Topic, Msg, Payload) ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
--spec get_token(Endpoint :: binary(), Secret :: binary()) -> {ok, binary()} | {error, any()}.
-get_token(Endpoint, Secret) ->
-    case
-        hackney:post(
-            <<Endpoint/binary, "/api/packet_purchaser/sessions">>,
-            [?HEADER_JSON],
-            jsx:encode(#{secret => Secret}),
-            [with_body, {pool, ?POOL}]
-        )
-    of
-        {ok, 201, _Headers, Body} ->
-            #{<<"jwt">> := Token} = jsx:decode(Body, [return_maps]),
-            {ok, Token};
-        _Other ->
-            {error, _Other}
-    end.
-
--spec start_ws(Endpoint :: binary(), WSEndpoint :: binary(), Secret :: binary()) ->
-    {ok, pid()} | {error, worker_not_started | no_token, any()}.
-start_ws(Endpoint, WSEndpoint, Secret) ->
-    case get_token(Endpoint, Secret) of
-        {ok, Token} ->
-            Url = binary_to_list(<<WSEndpoint/binary, "?token=", Token/binary, "&vsn=2.0.0">>),
-            Args = #{
-                url => Url,
-                auto_join => [?ORGANIZATION_TOPIC, ?NET_ID_TOPIC],
-                forward => self()
-            },
-            case pp_console_ws_handler:start_link(Args) of
-                {ok, Pid} ->
-                    {ok, Pid};
-                Err ->
-                    lager:error("failed to open ws connection [reason: ~p]", [Err]),
-                    {error, worker_not_started, Err}
-            end;
-        Err ->
-            lager:error("failed to get token [reason: ~p]", [Err]),
-            {error, no_token, Err}
-    end.
