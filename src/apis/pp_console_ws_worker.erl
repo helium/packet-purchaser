@@ -36,7 +36,8 @@
 -export([
     ws_update_pid/1,
     ws_joined/0,
-    ws_handle_message/3
+    ws_handle_message/3,
+    ws_get_auto_join_topics/0
 ]).
 
 %% ------------------------------------------------------------------
@@ -92,6 +93,10 @@ ws_joined() ->
 -spec ws_handle_message(Topic :: binary(), Event :: binary(), Payload :: map()) -> ok.
 ws_handle_message(Topic, Event, Payload) ->
     gen_server:cast(?MODULE, {ws_message, Topic, Event, Payload}).
+
+-spec ws_get_auto_join_topics() -> list(binary()).
+ws_get_auto_join_topics() ->
+    [?ORGANIZATION_TOPIC, ?NET_ID_TOPIC].
 
 -spec handle_packet(
     NetID :: non_neg_integer(),
