@@ -55,6 +55,7 @@
 -record(eui, {
     name :: undefined | binary(),
     net_id :: non_neg_integer(),
+    protocol :: udp | http,
     address :: binary(),
     port :: non_neg_integer(),
     multi_buy :: unlimited | non_neg_integer(),
@@ -67,6 +68,7 @@
 -record(devaddr, {
     name :: undefined | binary(),
     net_id :: non_neg_integer(),
+    protocol :: udp | http,
     address :: binary(),
     port :: non_neg_integer(),
     multi_buy :: unlimited | non_neg_integer(),
@@ -381,6 +383,7 @@ transform_config(ConfigList0) ->
 transform_config_entry(Entry) ->
     #{
         <<"net_id">> := NetID,
+        <<"protocol">> := Protocol0,
         <<"address">> := Address,
         <<"port">> := Port
     } = Entry,
@@ -392,11 +395,18 @@ transform_config_entry(Entry) ->
         end,
     Joins = maps:get(<<"joins">>, Entry, []),
     DisablePullData = maps:get(<<"disable_pull_data">>, Entry, false),
+    Protocol =
+        case erlang:list_to_existing_atom(Protocol0) of
+            udp -> udp;
+            http -> http;
+            Other -> throw({invalid_protocol_type, Other})
+        end,
     JoinRecords = lists:map(
         fun(#{<<"dev_eui">> := DevEUI, <<"app_eui">> := AppEUI}) ->
             #eui{
                 name = Name,
                 net_id = clean_config_value(NetID),
+                protocol = Protocol,
                 address = Address,
                 port = Port,
                 multi_buy = MultiBuy,
@@ -410,6 +420,7 @@ transform_config_entry(Entry) ->
     Routing = #devaddr{
         name = Name,
         net_id = clean_config_value(NetID),
+        protocol = Protocol,
         address = Address,
         port = Port,
         multi_buy = MultiBuy,

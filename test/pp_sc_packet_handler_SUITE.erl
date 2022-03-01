@@ -22,7 +22,8 @@
     join_websocket_test/1,
     join_websocket_inactive_test/1,
     stop_start_purchasing_net_id_packet_test/1,
-    stop_start_purchasing_net_id_join_test/1
+    stop_start_purchasing_net_id_join_test/1,
+    http_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -81,7 +82,8 @@ all() ->
         join_websocket_inactive_test,
         %% multi_buy_worst_case_stress_test
         stop_start_purchasing_net_id_packet_test,
-        stop_start_purchasing_net_id_join_test
+        stop_start_purchasing_net_id_join_test,
+        http_test
     ].
 
 %%--------------------------------------------------------------------
@@ -111,6 +113,48 @@ end_per_testcase(TestCase, Config) ->
 %%--------------------------------------------------------------------
 %% TEST CASES
 %%--------------------------------------------------------------------
+
+http_test(_Config) ->
+    %% One Gateway is going to be sending all the packets.
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    SendPacketFun = fun(DevAddr, NetID) ->
+        Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{
+            dont_encode => true
+        }),
+        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+
+        {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
+        get_udp_worker_address_port(Pid)
+    end,
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"address">> => <<"1.1.1.1">>,
+            <<"port">> => 1111,
+            <<"protocol">> => "http"
+        },
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_ORANGE,
+            <<"address">> => <<"2.2.2.2">>,
+            <<"port">> => 2222,
+            <<"protocol">> => "http"
+        },
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_COMCAST,
+            <<"address">> => <<"3.3.3.3">>,
+            <<"port">> => 3333,
+            <<"protocol">> => "http"
+        }
+    ]),
+    ?assertMatch({"1.1.1.1", 1111}, SendPacketFun(?DEVADDR_ACTILITY, ?NET_ID_ACTILITY)),
+    ?assertMatch({"2.2.2.2", 2222}, SendPacketFun(?DEVADDR_ORANGE, ?NET_ID_ORANGE)),
+    ?assertMatch({"3.3.3.3", 3333}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
+    ok.
 
 join_net_id_offer_test(_Config) ->
     SendJoinOfferFun = fun(DevEUI, AppEUI) ->
