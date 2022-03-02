@@ -384,7 +384,11 @@ transform_config_entry(Entry) ->
         <<"port">> := Port
     } = Entry,
     Name = maps:get(<<"name">>, Entry, <<"no_name">>),
-    MultiBuy = maps:get(<<"multi_buy">>, Entry, unlimited),
+    MultiBuy =
+        case maps:get(<<"multi_buy">>, Entry, null) of
+            null -> unlimited;
+            Val -> Val
+        end,
     Joins = maps:get(<<"joins">>, Entry, []),
     DisablePullData = maps:get(<<"disable_pull_data">>, Entry, false),
     JoinRecords = lists:map(
