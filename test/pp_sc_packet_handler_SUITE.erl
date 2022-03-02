@@ -32,6 +32,7 @@
 %% NetIDs
 -define(NET_ID_ACTILITY, 16#000002).
 -define(NET_ID_COMCAST, 16#000022).
+-define(NET_ID_COMCAST_2, 16#60001C).
 -define(NET_ID_EXPERIMENTAL, 16#000000).
 -define(NET_ID_ORANGE, 16#00000F).
 -define(NET_ID_TEKTELIC, 16#000037).
@@ -175,6 +176,33 @@ join_net_id_offer_test(_Config) ->
     ?assertMatch(ok, SendJoinOfferFun(DevEUI1, AppEUI1)),
     ?assertMatch(ok, SendJoinOfferFun(DevEUI2, AppEUI2)),
 
+    %% Accept One with multiple NetIDS
+    OneMappedTwice = [
+        #{
+            <<"name">> => "one-1",
+            <<"net_id">> => 1,
+            <<"address">> => <<>>,
+            <<"port">> => 1337,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1},
+                #{<<"dev_eui">> => DevEUI2, <<"app_eui">> => AppEUI2}
+            ]
+        },
+        #{
+            <<"name">> => "one-2",
+            <<"net_id">> => 2,
+            <<"address">> => <<>>,
+            <<"port">> => 1337,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1},
+                #{<<"dev_eui">> => DevEUI2, <<"app_eui">> => AppEUI2}
+            ]
+        }
+    ],
+    ok = pp_config:load_config(OneMappedTwice),
+    ?assertMatch(ok, SendJoinOfferFun(DevEUI1, AppEUI1)),
+    ?assertMatch(ok, SendJoinOfferFun(DevEUI2, AppEUI2)),
+
     ok.
 
 join_net_id_packet_test(_Config) ->
@@ -187,8 +215,21 @@ join_net_id_packet_test(_Config) ->
     AppEUI2 = <<0, 0, 0, 2, 0, 0, 0, 2>>,
 
     ok = pp_config:load_config([
+        %% TODO: Make order not matter for this test.
+        %% When joining, we go with the first #eui{}
+        %% returned, which will be the second provided
+        %% in the config list.
         #{
-            <<"name">> => "test",
+            <<"name">> => "test-2",
+            <<"net_id">> => ?NET_ID_COMCAST_2,
+            <<"address">> => <<"3.3.3.3">>,
+            <<"port">> => 3333,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1}
+            ]
+        },
+        #{
+            <<"name">> => "test-1",
             <<"net_id">> => ?NET_ID_COMCAST,
             <<"address">> => <<"3.3.3.3">>,
             <<"port">> => 3333,
