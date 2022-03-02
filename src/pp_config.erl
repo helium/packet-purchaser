@@ -126,6 +126,7 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
                 multi_buy = MultiBuy,
                 disable_pull_data = DisablePullData
             }
+            | _PotentiallIgnoredSecondNetID
         ] ->
             {ok, #{
                 net_id => NetID,
