@@ -141,6 +141,8 @@ ws_request_address_test(_Config) ->
     ok.
 
 ws_console_update_config_test(_Config) ->
+    %% NOTE: true is the default in test.config. This is for communication purposes.
+    ok = application:set_env(packet_purchaser, update_from_ws_config, true),
     {ok, WSPid} = test_utils:ws_init(),
     OneMapped = [
         #{
@@ -198,6 +200,24 @@ ws_console_update_config_test(_Config) ->
         {ok, pp_config:transform_config(TwoReMapped)},
         pp_config:get_config()
     ),
+
+    %% Now we turn off taking config updates from ws
+    ok = application:set_env(packet_purchaser, update_from_ws_config, false),
+    ok = pp_config:reset_config(),
+
+    Empty = #{joins => [], routing => []},
+
+    console_callback:update_config(WSPid, OneMapped),
+    timer:sleep(500),
+    ?assertEqual({ok, Empty}, pp_config:get_config()),
+
+    console_callback:update_config(WSPid, TwoMapped),
+    timer:sleep(500),
+    ?assertEqual({ok, Empty}, pp_config:get_config()),
+
+    console_callback:update_config(WSPid, TwoReMapped),
+    timer:sleep(500),
+    ?assertEqual({ok, Empty}, pp_config:get_config()),
 
     ok.
 

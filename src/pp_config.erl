@@ -178,8 +178,9 @@ reset_config() ->
 -spec load_config(list(map())) -> ok.
 load_config(ConfigList) ->
     {ok, PrevConfig} = ?MODULE:get_config(),
-    ok = ?MODULE:reset_config(),
     Config = ?MODULE:transform_config(ConfigList),
+
+    ok = ?MODULE:reset_config(),
     ok = ?MODULE:write_config_to_ets(Config),
 
     #{routing := PrevRouting} = PrevConfig,

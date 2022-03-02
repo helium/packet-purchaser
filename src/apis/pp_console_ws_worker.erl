@@ -251,9 +251,35 @@ terminate(_Reason, _State) ->
 %% ------------------------------------------------------------------
 %% Receive Message handler functions
 %% ------------------------------------------------------------------
-handle_message(?ORGANIZATION_TOPIC, ?WS_RCV_CONFIG_LIST, Payload) ->
-    lager:info("updating config: ~p", [Payload]),
-    ok = pp_config:ws_update_config(Payload);
+handle_message(
+    ?ORGANIZATION_TOPIC,
+    ?WS_RCV_CONFIG_LIST,
+    #{<<"org_config_list">> := Config} = Payload
+) ->
+    UpdateFromWsConfig =
+        case application:get_env(packet_purchaser, update_from_ws_config, false) of
+            "true" -> true;
+            true -> true;
+            _ -> false
+        end,
+    lager:info("updating config: [updating: ~p] [payload: ~p]", [UpdateFromWsConfig, Payload]),
+    ConfigParseable =
+        try pp_config:transform_config(Config) of
+            _ ->
+                lager:info("valid config"),
+                true
+        catch
+            Class:Err ->
+                lager:error("could not parse config [error: ~p]", [{Class, Err}]),
+                false
+        end,
+    case UpdateFromWsConfig andalso ConfigParseable of
+        true ->
+            pp_config:ws_update_config(Config);
+        _ ->
+            ok
+    end,
+    ok;
 handle_message(?ORGANIZATION_TOPIC, ?WS_RCV_DC_BALANCE_LIST, Payload) ->
     lager:info("updating dc balances: ~p", [Payload]),
     ok;

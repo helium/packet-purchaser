@@ -30,7 +30,7 @@
 
 -spec update_config(pid(), list(map())) -> ok.
 update_config(WSPid, Config) ->
-    WSPid ! {?UPDATE_CONFIG, Config},
+    WSPid ! {?UPDATE_CONFIG, #{<<"org_config_list">> => Config}},
     ok.
 
 -spec start_buying(pid(), list(integer())) -> ok.
