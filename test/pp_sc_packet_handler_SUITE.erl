@@ -295,7 +295,7 @@ multi_buy_join_test(_Config) ->
     }),
 
     %% -------------------------------------------------------------------
-    %% Send more than one of the same join packet, only 1 should be bought
+    %% Send more than one of the same join, only 1 should be bought
     BaseConfig = #{
         <<"name">> => "two",
         <<"net_id">> => ?NET_ID_COMCAST,
@@ -315,7 +315,7 @@ multi_buy_join_test(_Config) ->
     ?assertMatch({error, multi_buy_max_packet}, pp_sc_packet_handler:handle_offer(Offer1, self())),
 
     %% -------------------------------------------------------------------
-    %% Send more than one of the same join packet, 2 should be purchased
+    %% Send more than one of the same join, 2 should be purchased
     ok = pp_config:load_config([maps:merge(BaseConfig, #{<<"multi_buy">> => 2})]),
     Offer2 = MakeJoinOffer(),
     ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer2, self())),
@@ -323,12 +323,20 @@ multi_buy_join_test(_Config) ->
     ?assertMatch({error, multi_buy_max_packet}, pp_sc_packet_handler:handle_offer(Offer2, self())),
 
     %% -------------------------------------------------------------------
-    %% Send more than one of the same join packet, unlimited should be purchased
-    ok = pp_config:load_config([maps:merge(BaseConfig, #{<<"multi_buy">> => <<"unlimited">>})]),
+    %% Send more than one of the same join, none should be purchased
+    ok = pp_config:load_config([maps:merge(BaseConfig, #{<<"multi_buy">> => 0})]),
     Offer3 = MakeJoinOffer(),
+    ?assertMatch({error, multi_buy_disabled}, pp_sc_packet_handler:handle_offer(Offer3, self())),
+    ?assertMatch({error, multi_buy_disabled}, pp_sc_packet_handler:handle_offer(Offer3, self())),
+    ?assertMatch({error, multi_buy_disabled}, pp_sc_packet_handler:handle_offer(Offer3, self())),
+
+    %% -------------------------------------------------------------------
+    %% Send more than one of the same join, unlimited should be purchased
+    ok = pp_config:load_config([maps:merge(BaseConfig, #{<<"multi_buy">> => <<"unlimited">>})]),
+    Offer4 = MakeJoinOffer(),
     lists:foreach(
         fun(_Idx) ->
-            ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer3, self()))
+            ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer4, self()))
         end,
         lists:seq(1, 100)
     ),
@@ -406,7 +414,7 @@ multi_buy_packet_test(_Config) ->
     ?assertMatch({error, multi_buy_max_packet}, pp_sc_packet_handler:handle_offer(Offer1, self())),
 
     %% -------------------------------------------------------------------
-    %% Send more than one of the same join packet, 2 should be purchased
+    %% Send more than one of the same packet, 2 should be purchased
     ok = pp_config:load_config([maps:merge(BaseConfig, #{<<"multi_buy">> => 2})]),
     Offer2 = MakePacketOffer(),
     ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer2, self())),
@@ -414,13 +422,21 @@ multi_buy_packet_test(_Config) ->
     ?assertMatch({error, multi_buy_max_packet}, pp_sc_packet_handler:handle_offer(Offer2, self())),
 
     %% -------------------------------------------------------------------
-    %% Send more than one of the same join packet, unlimited should be purchased
-    ok = pp_config:load_config([maps:merge(BaseConfig, #{<<"multi_buy">> => <<"unlimited">>})]),
+    %% Send more than one of the same packet, none should be purchased
+    ok = pp_config:load_config([maps:merge(BaseConfig, #{<<"multi_buy">> => 0})]),
     Offer3 = MakePacketOffer(),
+    ?assertMatch({error, multi_buy_disabled}, pp_sc_packet_handler:handle_offer(Offer3, self())),
+    ?assertMatch({error, multi_buy_disabled}, pp_sc_packet_handler:handle_offer(Offer3, self())),
+    ?assertMatch({error, multi_buy_disabled}, pp_sc_packet_handler:handle_offer(Offer3, self())),
+
+    %% -------------------------------------------------------------------
+    %% Send more than one of the same packet, unlimited should be purchased
+    ok = pp_config:load_config([maps:merge(BaseConfig, #{<<"multi_buy">> => <<"unlimited">>})]),
+    Offer4 = MakePacketOffer(),
 
     lists:foreach(
         fun(_Idx) ->
-            ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer3, self()))
+            ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer4, self()))
         end,
         lists:seq(1, 100)
     ),

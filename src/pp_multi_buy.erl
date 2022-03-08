@@ -28,6 +28,7 @@
 -define(MB_ETS, multi_buy_ets).
 -define(MB_UNLIMITED, 9999).
 -define(MB_MAX_PACKET, multi_buy_max_packet).
+-define(MB_BUYING_DISABLED, multi_buy_disabled).
 -define(MB_EVICT_TIMEOUT, timer:seconds(6)).
 -define(MB_FUN(Hash), [
     {
@@ -61,6 +62,8 @@ start_link() ->
     Offer :: blockchain_state_channel_offer_v1:offer(),
     MultiBuyMax :: unlimited | non_neg_integer()
 ) -> ok | {error, any()}.
+maybe_buy_offer(_Offer, 0) ->
+    {error, ?MB_BUYING_DISABLED};
 maybe_buy_offer(Offer, MultiBuyMax) ->
     PHash = blockchain_state_channel_offer_v1:packet_hash(Offer),
     BFRef = lookup_bf(?BF_KEY),
