@@ -19,7 +19,7 @@
             {secret, <<"${PP_CONSOLE_SECRET}">>},
             {is_active, "${PP_ENABLE_CONSOLE}"}
         ]},
-        {update_from_ws_config, false},
+        {update_from_ws_config, "${PP_CONSOLE_UPDATE_FROM_WS_CONFIG}"},
         {sc_open_dc_amount, "${PP_SC_OPEN_DC_AMOUNT}"},
         {sc_expiration_interval, "${PP_SC_EXPIRATION_INTERVAL}"},
         {sc_expiration_buffer, "${PP_SC_EXPIRATION_BUFFER}"},
