@@ -119,30 +119,80 @@ http_test(_Config) ->
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
-    SendPacketFun = fun(DevAddr, NetID) ->
-        Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{
-            dont_encode => true
-        }),
-        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+    {ok, _ElliPid} = elli:start_link([
+        {callback, pp_lns},
+        {callback_args, #{forward => self()}},
+        {port, 3002},
+        {min_acceptors, 1}
+    ]),
 
-        {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        get_udp_worker_address_port(Pid)
+    SendPacketFun = fun(DevAddr) ->
+        Packet = test_utils:frame_packet(
+            ?UNCONFIRMED_UP,
+            PubKeyBin,
+            DevAddr,
+            0,
+            #{dont_encode => true}
+        ),
+        PacketTime = erlang:system_time(millisecond),
+        pp_sc_packet_handler:handle_packet(Packet, PacketTime, self()),
+        {ok, Packet, PacketTime}
     end,
+
     ok = pp_config:load_config([
         #{
             <<"name">> => "test",
             <<"net_id">> => ?NET_ID_ACTILITY,
-            <<"address">> => <<"1.1.1.1">>,
-            <<"port">> => 1111,
+            <<"address">> => <<"127.0.0.1">>,
+            <<"port">> => 3002,
             <<"protocol">> => "http"
-        },
+        }
+    ]),
+    {ok, SCPacket, PacketTime} = SendPacketFun(?DEVADDR_ACTILITY),
+    Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
+    Region = blockchain_state_channel_packet_v1:region(SCPacket),
+
+    {ok, Data} = test_utils:http_rcv(),
+
+    test_utils:match_map(
         #{
-            <<"name">> => "test",
-            <<"net_id">> => ?NET_ID_ORANGE,
-            <<"address">> => <<"2.2.2.2">>,
-            <<"port">> => 2222,
-            <<"protocol">> => "http"
+            <<"ProtocolVersion">> => <<"1.0">>,
+            <<"TransactionID">> => fun erlang:is_number/1,
+            <<"SenderID">> => <<"0xC00053">>,
+            <<"ReceiverID">> => pp_utils:binary_to_hexstring(?NET_ID_ACTILITY),
+            <<"MessageType">> => <<"PRStartReq">>,
+            <<"PHYPayload">> => pp_utils:binary_to_hexstring(
+                blockchain_helium_packet_v1:payload(Packet)
+            ),
+            <<"ULMetaData">> => #{
+                <<"DevAddr">> => pp_utils:binary_to_hexstring(?DEVADDR_ACTILITY),
+                <<"DataRate">> => pp_utils:datar_to_dr(
+                    Region,
+                    blockchain_helium_packet_v1:datarate(Packet)
+                ),
+                <<"ULFreq">> => blockchain_helium_packet_v1:frequency(Packet),
+                <<"RFRegion">> => erlang:atom_to_binary(Region),
+                <<"RecvTime">> => pp_utils:format_time(PacketTime),
+                <<"GWInfo">> => [
+                    #{
+                        <<"RFRegion">> => erlang:atom_to_binary(Region),
+                        <<"RSSI">> => blockchain_helium_packet_v1:signal_strength(Packet),
+                        <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
+                        <<"DLAllowed">> => true,
+                        <<"ID">> => libp2p_crypto:bin_to_b58(PubKeyBin)
+                        %% TODO: gateway
+                        %% <<"Lat">> := todo,
+                        %% <<"Lon">> := todo,
+                        %% <<"ULToken">> := todo,
+                    }
+                ]
+            }
         },
+        Data
+    ),
+
+    ok.
+
         #{
             <<"name">> => "test",
             <<"net_id">> => ?NET_ID_COMCAST,
