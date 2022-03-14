@@ -92,7 +92,8 @@ start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [Args], []).
 
 -spec lookup(eui() | devaddr()) ->
-    {ok, map()}
+    {udp, map()}
+    | {http, map()}
     | {error, {buying_inactive, NetID :: integer()}}
     | {error, unmapped_eui}
     | {error, routing_not_found}
@@ -101,7 +102,8 @@ lookup({devaddr, _} = DevAddr) -> lookup_devaddr(DevAddr);
 lookup(EUI) -> lookup_eui(EUI).
 
 -spec lookup_eui(eui()) ->
-    {ok, map()}
+    {udp, map()}
+    | {http, map()}
     | {error, {buying_inactive, NetID :: integer()}}
     | {error, unmapped_eui}.
 lookup_eui({eui, #eui_pb{deveui = DevEUI, appeui = AppEUI}}) ->
@@ -122,6 +124,7 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
             {error, {buying_inactive, NetID}};
         [
             #eui{
+                protocol = Protocol,
                 address = Address,
                 port = Port,
                 net_id = NetID,
@@ -130,7 +133,7 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
             }
             | _PotentiallIgnoredSecondNetID
         ] ->
-            {ok, #{
+            {Protocol, #{
                 net_id => NetID,
                 address => erlang:binary_to_list(Address),
                 port => Port,
@@ -140,7 +143,8 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
     end.
 
 -spec lookup_devaddr({devaddr, non_neg_integer()}) ->
-    {ok, map()}
+    {udp, map()}
+    | {http, map()}
     | {error, {buying_inactive, NetID :: integer()}}
     | {error, routing_not_found}
     | {error, invalid_net_id_type}.
@@ -154,13 +158,14 @@ lookup_devaddr({devaddr, DevAddr}) ->
                     {error, {buying_inactive, NetID}};
                 [
                     #devaddr{
+                        protocol = Protocol,
                         address = Address,
                         port = Port,
                         multi_buy = MultiBuy,
                         disable_pull_data = DisablePullData
                     }
                 ] ->
-                    {ok, #{
+                    {Protocol, #{
                         net_id => NetID,
                         address => erlang:binary_to_list(Address),
                         port => Port,

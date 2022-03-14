@@ -19,6 +19,8 @@
     match_map/2,
     wait_until/1, wait_until/3,
     %%
+    http_rcv/0,
+    %%
     ws_rcv/0,
     ws_init/0,
     ws_roaming_rcv/1,
@@ -237,6 +239,14 @@ ws_init() ->
     {ok, #{event := <<"packet_purchaser:address">>}} = ws_roaming_rcv(pp_address),
     {ok, #{event := <<"packet_purchaser:get_config">>}} = ws_roaming_rcv(pp_get_config),
     R.
+
+-spec http_rcv() -> {ok, any()}.
+http_rcv() ->
+    receive
+        {http_msg, Payload} ->
+            {ok, Payload}
+    after 2500 -> ct:fail(http_msg_timeout)
+    end.
 
 -spec ws_rcv() -> {ok, any()}.
 ws_rcv() ->

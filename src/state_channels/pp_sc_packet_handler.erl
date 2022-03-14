@@ -72,7 +72,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 [PacketType, RoutingInfo]
             ),
             Err;
-        {ok, #{net_id := NetID} = WorkerArgs} ->
+        {udp, #{net_id := NetID} = WorkerArgs} ->
             case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs) of
                 {ok, WorkerPid} ->
                     lager:debug(
@@ -88,7 +88,53 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                         [blockchain_utils:addr2name(PubKeyBin)]
                     ),
                     Err
-            end
+            end;
+        {http, #{address := Address, port := Port, net_id := NetID} = _Args} ->
+            URL = list_to_binary(io_lib:format("~p://~s:~p/new_thing", [http, Address, Port])),
+
+            Region = blockchain_state_channel_packet_v1:region(SCPacket),
+            DataRate = blockchain_helium_packet_v1:datarate(Packet),
+            %% Token = semtech_udp:token(),
+            %% MAC = pp_utils:pubkeybin_to_mac(PubKeyBin),
+            %% Tmst = blockchain_helium_packet_v1:timestamp(Packet),
+            Payload = blockchain_helium_packet_v1:payload(Packet),
+            SNR = blockchain_helium_packet_v1:snr(Packet),
+            Frequency = blockchain_helium_packet_v1:frequency(Packet),
+            RSSI = blockchain_helium_packet_v1:signal_strength(Packet),
+
+            {devaddr, DevAddr} = RoutingInfo,
+
+            Body = #{
+                'ProtocolVersion' => <<"1.0">>,
+                'SenderID' => <<"0xC00053">>,
+                'ReceiverID' => pp_utils:binary_to_hexstring(NetID),
+                'TransactionID' => 3,
+                'MessageType' => <<"PRStartReq">>,
+                'PHYPayload' => pp_utils:binary_to_hexstring(Payload),
+                'ULMetaData' => #{
+                    'DevAddr' => pp_utils:binary_to_hexstring(DevAddr),
+                    'DataRate' => pp_utils:datar_to_dr(Region, DataRate),
+                    'ULFreq' => Frequency,
+                    %% TODO: Is there a receive time we can use that isn't
+                    %% gateway dependent? Maybe the Tmst?
+                    'RecvTime' => pp_utils:format_time(PacketTime),
+                    'RFRegion' => Region,
+                    'GWInfo' => [
+                        #{
+                            'ID' => libp2p_crypto:bin_to_b58(PubKeyBin),
+                            'RFRegion' => Region,
+                            'RSSI' => RSSI,
+                            'SNR' => SNR,
+                            'Lat' => 0.000000,
+                            'Lon' => 0.000000,
+                            'DLAllowed' => true
+                        }
+                    ]
+                }
+            },
+            Res = hackney:post(URL, [], jsx:encode(Body), []),
+            ct:print("~p Http Res: ~n~p", [URL, Res]),
+            ok
     end.
 
 %% ------------------------------------------------------------------
@@ -97,7 +143,9 @@ handle_packet(SCPacket, PacketTime, Pid) ->
 
 handle_join_offer(EUI, Offer) ->
     case pp_config:lookup_eui(EUI) of
-        {ok, #{multi_buy := MultiBuyMax}} ->
+        {udp, #{multi_buy := MultiBuyMax}} ->
+            pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
+        {http, #{multi_buy := MultiBuyMax}} ->
             pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
         Err ->
             Err
@@ -105,7 +153,9 @@ handle_join_offer(EUI, Offer) ->
 
 handle_packet_offer(DevAddr, Offer) ->
     case pp_config:lookup_devaddr(DevAddr) of
-        {ok, #{multi_buy := MultiBuyMax}} ->
+        {udp, #{multi_buy := MultiBuyMax}} ->
+            pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
+        {http, #{multi_buy := MultiBuyMax}} ->
             pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
         Err ->
             Err
@@ -127,12 +177,12 @@ handle_offer_resp(Routing, Offer, Resp) ->
             {eui, _} = EUI ->
                 case pp_config:lookup_eui(EUI) of
                     {error, Reason} -> {ok, Reason};
-                    {ok, #{net_id := NetID0}} -> {ok, NetID0}
+                    {_, #{net_id := NetID0}} -> {ok, NetID0}
                 end;
             {devaddr, DevAddr} ->
                 case lorawan_devaddr:net_id(DevAddr) of
                     {error, Reason} -> {ok, Reason};
-                    {ok, NetID0} -> {ok, NetID0}
+                    {_, NetID0} -> {ok, NetID0}
                 end
         end,
 
