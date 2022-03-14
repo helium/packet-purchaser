@@ -48,6 +48,8 @@
 -define(DEVADDR_ETS, pp_config_routing_ets).
 -define(UDP_WORKER_ETS, pp_config_udp_worker_ets).
 
+-define(DEFAULT_PROTOCOL, <<"udp">>).
+
 -record(state, {
     filename :: testing | string()
 }).
@@ -388,7 +390,6 @@ transform_config(ConfigList0) ->
 transform_config_entry(Entry) ->
     #{
         <<"net_id">> := NetID,
-        <<"protocol">> := Protocol0,
         <<"address">> := Address,
         <<"port">> := Port
     } = Entry,
@@ -400,12 +401,15 @@ transform_config_entry(Entry) ->
         end,
     Joins = maps:get(<<"joins">>, Entry, []),
     DisablePullData = maps:get(<<"disable_pull_data">>, Entry, false),
+
+    Protocol0 = maps:get(<<"protocol">>, Entry, ?DEFAULT_PROTOCOL),
     Protocol =
-        case erlang:list_to_existing_atom(Protocol0) of
+        case erlang:binary_to_existing_atom(Protocol0) of
             udp -> udp;
             http -> http;
             Other -> throw({invalid_protocol_type, Other})
         end,
+
     JoinRecords = lists:map(
         fun(#{<<"dev_eui">> := DevEUI, <<"app_eui">> := AppEUI}) ->
             #eui{

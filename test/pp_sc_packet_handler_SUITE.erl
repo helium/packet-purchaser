@@ -143,11 +143,11 @@ http_test(_Config) ->
 
     ok = pp_config:load_config([
         #{
-            <<"name">> => "test",
+            <<"name">> => <<"test">>,
             <<"net_id">> => ?NET_ID_ACTILITY,
             <<"address">> => <<"127.0.0.1">>,
             <<"port">> => 3002,
-            <<"protocol">> => "http"
+            <<"protocol">> => <<"http">>
         }
     ]),
     {ok, SCPacket, PacketTime} = SendPacketFun(?DEVADDR_ACTILITY),
@@ -222,11 +222,11 @@ http_multiple_gateways_test(_Config) ->
 
     ok = pp_config:load_config([
         #{
-            <<"name">> => "test",
+            <<"name">> => <<"test">>,
             <<"net_id">> => ?NET_ID_ACTILITY,
             <<"address">> => <<"127.0.0.1">>,
             <<"port">> => 3002,
-            <<"protocol">> => "http"
+            <<"protocol">> => <<"http">>
         }
     ]),
     {ok, SCPacket, PacketTime} = SendPacketFun(PubKeyBin1, ?DEVADDR_ACTILITY),
