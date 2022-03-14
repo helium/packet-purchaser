@@ -29,6 +29,11 @@
     code_change/3
 ]).
 
+-export([
+    handle/2,
+    handle_event/3
+]).
+
 -define(SERVER, ?MODULE).
 
 -record(state, {
@@ -206,4 +211,24 @@ handle_udp(
     _State
 ) ->
     lager:warning("got an unkown udp packet: ~p  from ~p", [_UnkownUDPPacket, {_IP, _Port}]),
+    ok.
+
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
+
+handle(Req, Args) ->
+    Forward = maps:get(forward,Args),
+    Method =
+        case elli_request:get_header(<<"Upgrade">>, Req) of
+            <<"websocket">> ->
+                websocket;
+            _ ->
+                elli_request:method(Req)
+        end,
+    ct:print("~p", [{Method, elli_request:path(Req), Req, Args}]),
+    Forward ! {http_msg, elli_request:body(Req)},
+    {200, [], jsx:encode(#{})}.
+
+handle_event(_Event, _Data, _Args) ->
     ok.
