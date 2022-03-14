@@ -20,6 +20,7 @@
     wait_until/1, wait_until/3,
     %%
     http_rcv/0,
+    http_rcv/1,
     %%
     ws_rcv/0,
     ws_init/0,
@@ -244,8 +245,18 @@ ws_init() ->
 http_rcv() ->
     receive
         {http_msg, Payload} ->
-            {ok, Payload}
+            {ok, jsx:decode(Payload)}
     after 2500 -> ct:fail(http_msg_timeout)
+    end.
+
+http_rcv(Expected) ->
+    {ok, Got} = ?MODULE:http_rcv(),
+    case match_map(Expected, Got) of
+        true ->
+            {ok, Got};
+        {false, Reason} ->
+            ct:pal("FAILED got: ~n~p~n expected: ~n~p", [Got, Expected]),
+            ct:fail("http_rcv data failed ~p", [Reason])
     end.
 
 -spec ws_rcv() -> {ok, any()}.

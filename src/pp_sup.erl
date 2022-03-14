@@ -76,6 +76,7 @@ init([]) ->
         ?WORKER(pp_config, [ConfigFilename]),
         ?WORKER(pp_sc_worker, [#{}]),
         ?SUP(pp_udp_sup, []),
+        ?SUP(pp_http_sup, []),
         ?SUP(pp_console_sup, []),
         ?WORKER(pp_metrics, []),
         ?WORKER(pp_multi_buy, [])

@@ -89,52 +89,18 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                     ),
                     Err
             end;
-        {http, #{address := Address, port := Port, net_id := NetID} = _Args} ->
-            URL = list_to_binary(io_lib:format("~p://~s:~p/new_thing", [http, Address, Port])),
-
-            Region = blockchain_state_channel_packet_v1:region(SCPacket),
-            DataRate = blockchain_helium_packet_v1:datarate(Packet),
-            %% Token = semtech_udp:token(),
-            %% MAC = pp_utils:pubkeybin_to_mac(PubKeyBin),
-            %% Tmst = blockchain_helium_packet_v1:timestamp(Packet),
-            Payload = blockchain_helium_packet_v1:payload(Packet),
-            SNR = blockchain_helium_packet_v1:snr(Packet),
-            Frequency = blockchain_helium_packet_v1:frequency(Packet),
-            RSSI = blockchain_helium_packet_v1:signal_strength(Packet),
-
-            {devaddr, DevAddr} = RoutingInfo,
-
-            Body = #{
-                'ProtocolVersion' => <<"1.0">>,
-                'SenderID' => <<"0xC00053">>,
-                'ReceiverID' => pp_utils:binary_to_hexstring(NetID),
-                'TransactionID' => 3,
-                'MessageType' => <<"PRStartReq">>,
-                'PHYPayload' => pp_utils:binary_to_hexstring(Payload),
-                'ULMetaData' => #{
-                    'DevAddr' => pp_utils:binary_to_hexstring(DevAddr),
-                    'DataRate' => pp_utils:datar_to_dr(Region, DataRate),
-                    'ULFreq' => Frequency,
-                    %% TODO: Is there a receive time we can use that isn't
-                    %% gateway dependent? Maybe the Tmst?
-                    'RecvTime' => pp_utils:format_time(PacketTime),
-                    'RFRegion' => Region,
-                    'GWInfo' => [
-                        #{
-                            'ID' => libp2p_crypto:bin_to_b58(PubKeyBin),
-                            'RFRegion' => Region,
-                            'RSSI' => RSSI,
-                            'SNR' => SNR,
-                            'Lat' => 0.000000,
-                            'Lon' => 0.000000,
-                            'DLAllowed' => true
-                        }
-                    ]
-                }
-            },
-            Res = hackney:post(URL, [], jsx:encode(Body), []),
-            ct:print("~p Http Res: ~n~p", [URL, Res]),
-            ok
+        {http, #{address := _Address, port := _Port, net_id := _NetID} = Args} ->
+            PHash = blockchain_helium_packet_v1:packet_hash(Packet),
+            case pp_http_sup:maybe_start_worker(PHash, Args) of
+                {error, worker_not_started} = Err ->
+                    lager:error("failed to start http connector for ~p: ~p", [
+                        blockchain_utils:addr2name(PubKeyBin),
+                        Err
+                    ]),
+                    Err;
+                {ok, WorkerPid} ->
+                    pp_http_worker:handle_packet(WorkerPid, SCPacket, PacketTime)
+            end
     end.
 
 %% ------------------------------------------------------------------
