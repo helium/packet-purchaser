@@ -82,7 +82,7 @@ handle_cast(
         net_id = NetID
     } = State0
 ) ->
-    %% TODO send data
+    %% TODO handle https
     URL = list_to_binary(
         io_lib:format("~p://~s:~p/new_thing", [http, Address, Port])
     ),
