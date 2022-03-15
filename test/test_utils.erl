@@ -157,7 +157,7 @@ end_per_testcase(TestCase, Config) ->
 match_map(Expected, Got) when is_map(Got) ->
     case maps:size(Expected) == maps:size(Got) of
         false ->
-            {false, {size_mismatch, maps:size(Expected), maps:size(Got)}};
+            {false, {size_mismatch, {expected, maps:size(Expected)}, {got, maps:size(Got)}}};
         true ->
             maps:fold(
                 fun
