@@ -218,7 +218,6 @@ handle_udp(
 %% ------------------------------------------------------------------
 
 handle(Req, Args) ->
-    Forward = maps:get(forward,Args),
     Method =
         case elli_request:get_header(<<"Upgrade">>, Req) of
             <<"websocket">> ->
@@ -226,9 +225,28 @@ handle(Req, Args) ->
             _ ->
                 elli_request:method(Req)
         end,
-    ct:print("~p", [{Method, elli_request:path(Req), Req, Args}]),
-    Forward ! {http_msg, elli_request:body(Req)},
-    {200, [], jsx:encode(#{})}.
+    ct:pal("~p", [{Method, elli_request:path(Req), Req, Args}]),
+
+    Forward = maps:get(forward, Args),
+    Body = elli_request:body(Req),
+
+    ReceiverID = maps:get(<<"ReceiverID">>, jsx:decode(Body)),
+    Response =
+        {200, [],
+            jsx:encode(#{
+                'ProtocolVersion' => <<"1.0">>,
+                'SenderID' => ReceiverID,
+                'ReceiverID' => <<"0xC00053">>,
+                'TransactionID' => 45,
+                'MessageType' => <<"PRStartAns">>,
+                'Result' => #{'ResultCode' => <<"Success">>},
+                %% 11.3.1 Passive Roaming Start
+                %% Step 6: stateless fNS operation
+                'Lifetime' => 0
+            })},
+
+    Forward ! {http_msg, Body, Response},
+    Response.
 
 handle_event(_Event, _Data, _Args) ->
     ok.

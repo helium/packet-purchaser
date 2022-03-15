@@ -154,7 +154,7 @@ http_test(_Config) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
 
-    {ok, _Data} = test_utils:http_rcv(
+    {ok, _Data, {200, _RespBody}} = test_utils:http_rcv(
         #{
             <<"ProtocolVersion">> => <<"1.0">>,
             <<"TransactionID">> => fun erlang:is_number/1,
@@ -180,10 +180,6 @@ http_test(_Config) ->
                         <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
                         <<"DLAllowed">> => true,
                         <<"ID">> => libp2p_crypto:bin_to_b58(PubKeyBin)
-                        %% TODO: gateway
-                        %% <<"Lat">> := todo,
-                        %% <<"Lon">> := todo,
-                        %% <<"ULToken">> := todo,
                     }
                 ]
             }
@@ -234,7 +230,7 @@ http_multiple_gateways_test(_Config) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
 
-    {ok, _Data} = test_utils:http_rcv(#{
+    {ok, _Data, {200, _RespBody}} = test_utils:http_rcv(#{
         <<"ProtocolVersion">> => <<"1.0">>,
         <<"TransactionID">> => fun erlang:is_number/1,
         <<"SenderID">> => <<"0xC00053">>,

@@ -244,16 +244,16 @@ ws_init() ->
 -spec http_rcv() -> {ok, any()}.
 http_rcv() ->
     receive
-        {http_msg, Payload} ->
-            {ok, jsx:decode(Payload)}
+        {http_msg, Payload, {StatusCode, [], RespBody}} ->
+            {ok, jsx:decode(Payload), {StatusCode, jsx:decode(RespBody)}}
     after 2500 -> ct:fail(http_msg_timeout)
     end.
 
 http_rcv(Expected) ->
-    {ok, Got} = ?MODULE:http_rcv(),
+    {ok, Got, Response} = ?MODULE:http_rcv(),
     case match_map(Expected, Got) of
         true ->
-            {ok, Got};
+            {ok, Got, Response};
         {false, Reason} ->
             ct:pal("FAILED got: ~n~p~n expected: ~n~p", [Got, Expected]),
             ct:fail("http_rcv data failed ~p", [Reason])
