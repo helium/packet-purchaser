@@ -230,7 +230,7 @@ handle_info(
 handle_info(ws_joined, #state{} = State) ->
     lager:info("joined, sending packet_purchaser address to console"),
     ok = ?MODULE:send_address(),
-    %% ok = ?MODULE:send_get_config(),
+    ok = ?MODULE:send_get_config(),
     %% TODO: dc tracker
     %% ok = ?MODULE:send_get_org_balances(),
     {noreply, State};

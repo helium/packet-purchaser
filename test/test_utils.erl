@@ -235,6 +235,7 @@ ws_init() ->
     {ok, #{event := <<"phx_join">>, topic := <<"organization:all">>}} = ws_roaming_rcv(),
     {ok, #{event := <<"phx_join">>, topic := <<"net_id:all">>}} = ws_roaming_rcv(),
     {ok, #{event := <<"packet_purchaser:address">>}} = ws_roaming_rcv(),
+    {ok, #{event := <<"packet_purchaser:get_config">>}} = ws_roaming_rcv(),
     R.
 
 -spec ws_rcv() -> {ok, any()}.
