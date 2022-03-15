@@ -92,7 +92,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
         {http, #{address := _Address, port := _Port, net_id := _NetID} = Args} ->
             PHash = blockchain_helium_packet_v1:packet_hash(Packet),
             case pp_http_sup:maybe_start_worker(PHash, Args) of
-                {error, worker_not_started} = Err ->
+                {error, worker_not_started, _} = Err ->
                     lager:error("failed to start http connector for ~p: ~p", [
                         blockchain_utils:addr2name(PubKeyBin),
                         Err
