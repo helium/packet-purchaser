@@ -21,6 +21,10 @@
 -define(SERVER, ?MODULE).
 -define(PP_LOCATION_ETS, pp_location_ets).
 
+-define(LOCATION_FETCHING, location_fetching).
+-define(LOCATION_NONE, no_location).
+-define(LOCATION_UNKNOWN, unknown).
+
 -record(state, {
     chain :: undefined | blockchain:blockchain()
 }).
@@ -43,20 +47,21 @@ init_ets() ->
     ok.
 
 -spec get_hotspot_location(PubKeyBin :: binary()) ->
-    unknown
-    | {Index :: pos_integer(), Lat :: float(), Long :: float()}.
+    ?LOCATION_UNKNOWN
+    | {ok, ?LOCATION_NONE}
+    | {ok, {Index :: pos_integer(), Lat :: float(), Long :: float()}}.
 get_hotspot_location(PubKeyBin) ->
     case ets:lookup(?PP_LOCATION_ETS, PubKeyBin) of
         [] ->
             gen_server:cast(?MODULE, {fetch_hotspot_location, PubKeyBin}),
-            true = ets:insert(?PP_LOCATION_ETS, {PubKeyBin, fetching}),
-            unknown;
-        [{PubKeyBin, fetching}] ->
-            unknown;
-        [{PubKeyBin, unknown}] ->
-            unknown;
+            true = ets:insert(?PP_LOCATION_ETS, {PubKeyBin, ?LOCATION_FETCHING}),
+            ?LOCATION_UNKNOWN;
+        [{PubKeyBin, ?LOCATION_FETCHING}] ->
+            ?LOCATION_UNKNOWN;
+        [{PubKeyBin, ?LOCATION_NONE}] ->
+            {ok, ?LOCATION_NONE};
         [{PubKeyBin, Location}] ->
-            Location
+            {ok, Location}
     end.
 
 %%%===================================================================
@@ -74,18 +79,18 @@ handle_call(_Request, _From, State) ->
 handle_cast({fetch_hotspot_location, PubKeyBin}, #state{chain = Chain} = State) ->
     case Chain of
         undefined ->
-            undefined;
+            ok;
         _ ->
             Ledger = blockchain:ledger(Chain),
             case blockchain_ledger_v1:find_gateway_info(PubKeyBin, Ledger) of
                 {error, _} ->
-                    true = ets:insert(?PP_LOCATION_ETS, {PubKeyBin, unknown}),
-                    undefined;
+                    true = ets:insert(?PP_LOCATION_ETS, {PubKeyBin, ?LOCATION_NONE}),
+                    ok;
                 {ok, Hotspot} ->
                     case blockchain_ledger_gateway_v2:location(Hotspot) of
                         undefined ->
-                            true = ets:insert(?PP_LOCATION_ETS, {PubKeyBin, unknown}),
-                            undefined;
+                            true = ets:insert(?PP_LOCATION_ETS, {PubKeyBin, ?LOCATION_NONE}),
+                            ok;
                         Index ->
                             {Lat, Long} = h3:to_geo(Index),
                             true = ets:insert(?PP_LOCATION_ETS, {PubKeyBin, {Index, Lat, Long}})

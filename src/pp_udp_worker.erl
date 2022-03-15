@@ -39,7 +39,7 @@
 -define(SHUTDOWN_TIMER, timer:minutes(5)).
 
 -record(state, {
-    location :: {pos_integer(), float(), float()} | undefined,
+    location :: no_location | {pos_integer(), float(), float()} | undefined,
     pubkeybin :: libp2p_crypto:pubkey_bin(),
     net_id :: non_neg_integer(),
     socket :: pp_udp_socket:socket(),
@@ -113,7 +113,7 @@ init(Args) ->
             lager:warning("failed to get location"),
             erlang:send_after(500, self(), get_hotspot_location),
             {ok, State};
-        Location ->
+        {ok, Location} ->
             lager:info("got location ~p for hotspot", [Location]),
             {ok, State#state{location = Location}}
     end.
@@ -157,7 +157,7 @@ handle_info(get_hotspot_location, #state{pubkeybin = PubKeyBin} = State) ->
             lager:warning("failed to get location"),
             erlang:send_after(500, self(), get_hotspot_location),
             {noreply, State};
-        Location ->
+        {ok, Location} ->
             lager:info("got location ~p for hotspot", [Location]),
             {noreply, State#state{location = Location}}
     end;
@@ -224,7 +224,7 @@ terminate(_Reason, #state{socket = Socket}) ->
 -spec handle_data(
     SCPacket :: blockchain_state_channel_packet_v1:packet(),
     PacketTime :: pos_integer(),
-    Location :: {pos_integer(), float(), float()} | undefined
+    Location :: {pos_integer(), float(), float()} | no_location | undefined
 ) -> {binary(), binary()}.
 handle_data(SCPacket, PacketTime, Location) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
@@ -237,6 +237,7 @@ handle_data(SCPacket, PacketTime, Location) ->
     {Index, Lat, Long} =
         case Location of
             undefined -> {undefined, undefined, undefined};
+            no_location -> {undefined, undefined, undefined};
             {_, _, _} = L -> L
         end,
     Data = semtech_udp:push_data(
