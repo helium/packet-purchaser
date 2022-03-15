@@ -1284,7 +1284,6 @@ send_same_offer_with_actors([A | Rest], MakeOfferFun, DeadPid) ->
 get_udp_worker_address_port(Pid) ->
     {
         state,
-        _Chain,
         _Loc,
         _PubKeyBin1,
         _NetID,

@@ -2,7 +2,12 @@
 
 -include("packet_purchaser.hrl").
 
+-define(ETS, pp_utils_ets).
+
 -export([
+    init_ets/0,
+    get_chain/0,
+    get_ledger/0,
     get_oui/0,
     pubkeybin_to_mac/1,
     animal_name/1,
@@ -13,6 +18,40 @@
     datar_to_dr/2,
     format_time/1
 ]).
+
+-spec init_ets() -> ok.
+init_ets() ->
+    ?ETS = ets:new(?ETS, [public, named_table, set]),
+    ok.
+
+-spec get_chain() -> fetching | blockchain:blockchain().
+get_chain() ->
+    Key = blockchain_chain,
+    case ets:lookup(?ETS, Key) of
+        [] ->
+            spawn(fun() ->
+                Chain = blockchain_worker:blockchain(),
+                true = ets:insert(?ETS, {Key, Chain})
+            end),
+            true = ets:insert(?ETS, {Key, fetching}),
+            fetching;
+        [{Key, fetching}] ->
+            fetching;
+        [{Key, Chain}] ->
+            Chain
+    end.
+
+-spec get_ledger() -> blockchain_ledger_v1:ledger().
+get_ledger() ->
+    Key = blockchain_ledger,
+    case ets:lookup(?ETS, Key) of
+        [] ->
+            Ledger = blockchain:ledger(),
+            true = ets:insert(?ETS, {Key, Ledger}),
+            Ledger;
+        [{Key, Ledger}] ->
+            Ledger
+    end.
 
 format_time(Time) ->
     iso8601:format(calendar:system_time_to_universal_time(Time, millisecond)).

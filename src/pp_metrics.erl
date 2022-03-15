@@ -5,8 +5,6 @@
 
 -include_lib("elli/include/elli.hrl").
 
--define(ETS, pp_metrics_ets).
-
 -define(METRICS_OFFER_COUNT, packet_purchaser_offer_count).
 -define(METRICS_PACKET_COUNT, packet_purchaser_packet_count).
 -define(METRICS_GWMP_COUNT, packet_purchaser_gwmp_counter).
@@ -167,7 +165,6 @@ init(Args) ->
     {ok, PubKey, _, _} = blockchain_swarm:keys(),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
-    ok = init_ets(),
     ok = declare_metrics(),
     _ = schedule_next_tick(),
 
@@ -242,11 +239,6 @@ handle_event(_Event, _Data, _Args) ->
 %% -------------------------------------------------------------------
 %% Internal Functions
 %% -------------------------------------------------------------------
-
--spec init_ets() -> ok.
-init_ets() ->
-    ?ETS = ets:new(?ETS, [public, named_table, set]),
-    ok.
 
 -spec declare_metrics() -> ok.
 declare_metrics() ->
@@ -344,36 +336,12 @@ declare_metrics() ->
 
     ok.
 
--spec get_ledger() -> blockchain_ledger_v1:ledger().
-get_ledger() ->
-    Key = blockchain_ledger,
-    case ets:lookup(?ETS, Key) of
-        [] ->
-            Ledger = blockchain:ledger(),
-            true = ets:insert(?ETS, {Key, Ledger}),
-            Ledger;
-        [{Key, Ledger}] ->
-            Ledger
-    end.
-
--spec get_chain() -> blockchain:blockchain().
-get_chain() ->
-    Key = blockchain_chain,
-    case ets:lookup(?ETS, Key) of
-        [] ->
-            Chain = blockchain_worker:blockchain(),
-            true = ets:insert(?ETS, {Key, Chain}),
-            Chain;
-        [{Key, Chain}] ->
-            Chain
-    end.
-
 -spec schedule_next_tick() -> reference().
 schedule_next_tick() ->
     erlang:send_after(?METRICS_WORKER_TICK_INTERVAL, self(), ?METRICS_WORKER_TICK).
 
 record_dc_balance(PubKeyBin) ->
-    Ledger = get_ledger(),
+    Ledger = pp_utils:get_ledger(),
     case blockchain_ledger_v1:find_dc_entry(PubKeyBin, Ledger) of
         {error, _} ->
             ok;
@@ -384,42 +352,56 @@ record_dc_balance(PubKeyBin) ->
     ok.
 
 record_chain_blocks() ->
-    Chain = get_chain(),
-    case blockchain:head_block(Chain) of
-        {error, _} ->
+    case pp_utils:get_chain() of
+        fetching ->
             ok;
-        {ok, Block} ->
-            Now = erlang:system_time(seconds),
-            Time = blockchain_block:time(Block),
-            ok = ?MODULE:blocks(Now - Time)
+        Chain ->
+            case blockchain:head_block(Chain) of
+                {error, _} ->
+                    ok;
+                {ok, Block} ->
+                    Now = erlang:system_time(seconds),
+                    Time = blockchain_block:time(Block),
+                    ok = ?MODULE:blocks(Now - Time)
+            end
     end.
 
 record_state_channels() ->
-    Chain = get_chain(),
-    {ok, Height} = blockchain:height(Chain),
-    {OpenedCount, OverspentCount, _GettingCloseCount} = pp_sc_worker:counts(Height),
+    case pp_utils:get_chain() of
+        fetching ->
+            ok;
+        Chain ->
+            {ok, Height} = blockchain:height(Chain),
+            {OpenedCount, OverspentCount, _GettingCloseCount} = pp_sc_worker:counts(Height),
 
-    ActiveSCs = maps:values(blockchain_state_channels_server:get_actives()),
-    ActiveCount = erlang:length(ActiveSCs),
+            ActiveSCs = maps:values(blockchain_state_channels_server:get_actives()),
+            ActiveCount = erlang:length(ActiveSCs),
 
-    {TotalDCLeft, TotalActors} = lists:foldl(
-        fun({ActiveSC, _, _}, {DCs, Actors}) ->
-            Summaries = blockchain_state_channel_v1:summaries(ActiveSC),
-            TotalDC = blockchain_state_channel_v1:total_dcs(ActiveSC),
-            DCLeft = blockchain_state_channel_v1:amount(ActiveSC) - TotalDC,
-            %% If SC ran out of DC we should not be counted towards active metrics
-            case DCLeft of
-                0 ->
-                    {DCs, Actors};
-                _ ->
-                    {DCs + DCLeft, Actors + erlang:length(Summaries)}
-            end
-        end,
-        {0, 0},
-        ActiveSCs
-    ),
+            {TotalDCLeft, TotalActors} = lists:foldl(
+                fun({ActiveSC, _, _}, {DCs, Actors}) ->
+                    Summaries = blockchain_state_channel_v1:summaries(ActiveSC),
+                    TotalDC = blockchain_state_channel_v1:total_dcs(ActiveSC),
+                    DCLeft = blockchain_state_channel_v1:amount(ActiveSC) - TotalDC,
+                    %% If SC ran out of DC we should not be counted towards active metrics
+                    case DCLeft of
+                        0 ->
+                            {DCs, Actors};
+                        _ ->
+                            {DCs + DCLeft, Actors + erlang:length(Summaries)}
+                    end
+                end,
+                {0, 0},
+                ActiveSCs
+            ),
 
-    ok = ?MODULE:state_channels(OpenedCount, OverspentCount, ActiveCount, TotalDCLeft, TotalActors),
+            ok = ?MODULE:state_channels(
+                OpenedCount,
+                OverspentCount,
+                ActiveCount,
+                TotalDCLeft,
+                TotalActors
+            )
+    end,
     ok.
 
 -spec record_vm_stats() -> ok.

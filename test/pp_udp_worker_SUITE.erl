@@ -26,7 +26,6 @@
 ]).
 
 -record(state, {
-    blockchain :: blockchain:blockchain() | undefined,
     location :: {pos_integer(), float(), float()} | undefined,
     pubkeybin :: libp2p_crypto:pubkey_bin(),
     net_id :: non_neg_integer(),

@@ -39,7 +39,6 @@
 -define(SHUTDOWN_TIMER, timer:minutes(5)).
 
 -record(state, {
-    blockchain :: blockchain:blockchain() | undefined,
     location :: {pos_integer(), float(), float()} | undefined,
     pubkeybin :: libp2p_crypto:pubkey_bin(),
     net_id :: non_neg_integer(),
@@ -109,15 +108,14 @@ init(Args) ->
         pull_data_timer = PullDataTimer,
         shutdown_timer = {ShutdownTimeout, ShutdownRef}
     },
-    case blockchain_worker:blockchain() of
-        undefined ->
-            lager:warning("failed to get chain"),
+    case pp_location:get_hotspot_location(PubKeyBin) of
+        unknown ->
+            lager:warning("failed to get location"),
             erlang:send_after(500, self(), get_hotspot_location),
             {ok, State};
-        Chain ->
-            Loc = get_hotspot_location(PubKeyBin, Chain),
-            lager:info("got location ~p for hotspot", [Loc]),
-            {ok, State#state{blockchain = Chain, location = Loc}}
+        Location ->
+            lager:info("got location ~p for hotspot", [Location]),
+            {ok, State#state{location = Location}}
     end.
 
 handle_call(
@@ -154,15 +152,14 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info(get_hotspot_location, #state{pubkeybin = PubKeyBin} = State) ->
-    case blockchain_worker:blockchain() of
-        undefined ->
-            lager:warning("failed to get chain"),
+    case pp_location:get_hotspot_location(PubKeyBin) of
+        unknown ->
+            lager:warning("failed to get location"),
             erlang:send_after(500, self(), get_hotspot_location),
-            {ok, State};
-        Chain ->
-            Loc = get_hotspot_location(PubKeyBin, Chain),
-            lager:info("got location ~p for hotspot", [Loc]),
-            {ok, State#state{blockchain = Chain, location = Loc}}
+            {noreply, State};
+        Location ->
+            lager:info("got location ~p for hotspot", [Location]),
+            {noreply, State#state{location = Location}}
     end;
 handle_info(
     {udp, Socket, _Address, Port, Data},
@@ -271,25 +268,6 @@ handle_data(SCPacket, PacketTime, Location) ->
         }
     ),
     {Token, Data}.
-
--spec get_hotspot_location(
-    PubKeyBin :: libp2p_crypto:pubkey_bin(),
-    Blockchain :: blockchain:blockchain()
-) -> {pos_integer(), float(), float()} | undefined.
-get_hotspot_location(PubKeyBin, Blockchain) ->
-    Ledger = blockchain:ledger(Blockchain),
-    case blockchain_ledger_v1:find_gateway_info(PubKeyBin, Ledger) of
-        {error, _} ->
-            undefined;
-        {ok, Hotspot} ->
-            case blockchain_ledger_gateway_v2:location(Hotspot) of
-                undefined ->
-                    undefined;
-                Index ->
-                    {Lat, Long} = h3:to_geo(Index),
-                    {Index, Lat, Long}
-            end
-    end.
 
 -spec handle_udp(binary(), #state{}) -> {noreply, #state{}}.
 handle_udp(Data, State) ->

@@ -71,6 +71,10 @@ init([]) ->
 
     {ok, ConfigFilename} = application:get_env(packet_purchaser, pp_routing_config_filename),
 
+    ok = pp_utils:init_ets(),
+    _ = pp_utils:get_chain(),
+    ok = pp_location:init_ets(),
+
     ChildSpecs = [
         ?SUP(blockchain_sup, [BlockchainOpts]),
         ?WORKER(pp_config, [ConfigFilename]),
