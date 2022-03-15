@@ -216,6 +216,7 @@ http_multiple_gateways_test(_Config) ->
         {ok, Packet, PacketTime}
     end,
 
+    ok = pp_location:insert_hotspot_location(PubKeyBin1, {0, 1.0, 1.0}),
     ok = pp_config:load_config([
         #{
             <<"name">> => <<"test">>,
@@ -254,7 +255,9 @@ http_multiple_gateways_test(_Config) ->
                     <<"RFRegion">> => erlang:atom_to_binary(Region),
                     <<"RSSI">> => blockchain_helium_packet_v1:signal_strength(Packet),
                     <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
-                    <<"DLAllowed">> => true
+                    <<"DLAllowed">> => true,
+                    <<"Lat">> => 1.0,
+                    <<"Lon">> => 1.0
                 },
                 #{
                     <<"ID">> => libp2p_crypto:bin_to_b58(PubKeyBin2),

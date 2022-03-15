@@ -6,7 +6,8 @@
 -export([
     start_link/0,
     init_ets/0,
-    get_hotspot_location/1
+    get_hotspot_location/1,
+    insert_hotspot_location/2
 ]).
 
 %% gen_server callbacks
@@ -29,6 +30,10 @@
     chain :: undefined | blockchain:blockchain()
 }).
 
+-type location() :: ?LOCATION_NONE | {Index :: pos_integer(), Lat :: float(), Long :: float()}.
+
+-export_type([location/0]).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -48,21 +53,29 @@ init_ets() ->
 
 -spec get_hotspot_location(PubKeyBin :: binary()) ->
     ?LOCATION_UNKNOWN
-    | {ok, ?LOCATION_NONE}
-    | {ok, {Index :: pos_integer(), Lat :: float(), Long :: float()}}.
+    | ?LOCATION_NONE
+    | {Index :: pos_integer(), Lat :: float(), Long :: float()}.
 get_hotspot_location(PubKeyBin) ->
     case ets:lookup(?PP_LOCATION_ETS, PubKeyBin) of
         [] ->
             gen_server:cast(?MODULE, {fetch_hotspot_location, PubKeyBin}),
-            true = ets:insert(?PP_LOCATION_ETS, {PubKeyBin, ?LOCATION_FETCHING}),
+            ok = ?MODULE:insert_hotspot_location(PubKeyBin, ?LOCATION_FETCHING),
             ?LOCATION_UNKNOWN;
         [{PubKeyBin, ?LOCATION_FETCHING}] ->
             ?LOCATION_UNKNOWN;
         [{PubKeyBin, ?LOCATION_NONE}] ->
-            {ok, ?LOCATION_NONE};
+            ?LOCATION_NONE;
         [{PubKeyBin, Location}] ->
-            {ok, Location}
+            Location
     end.
+
+-spec insert_hotspot_location(
+    PubKeyBin :: binary(),
+    Location :: ?LOCATION_FETCHING | location()
+) -> ok.
+insert_hotspot_location(PubKeyBin, Location) ->
+    true = ets:insert(?PP_LOCATION_ETS, {PubKeyBin, Location}),
+    ok.
 
 %%%===================================================================
 %%% gen_server callbacks

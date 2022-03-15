@@ -113,7 +113,7 @@ init(Args) ->
             lager:warning("failed to get location"),
             erlang:send_after(500, self(), get_hotspot_location),
             {ok, State};
-        {ok, Location} ->
+        Location ->
             lager:info("got location ~p for hotspot", [Location]),
             {ok, State#state{location = Location}}
     end.
@@ -157,7 +157,7 @@ handle_info(get_hotspot_location, #state{pubkeybin = PubKeyBin} = State) ->
             lager:warning("failed to get location"),
             erlang:send_after(500, self(), get_hotspot_location),
             {noreply, State};
-        {ok, Location} ->
+        Location ->
             lager:info("got location ~p for hotspot", [Location]),
             {noreply, State#state{location = Location}}
     end;

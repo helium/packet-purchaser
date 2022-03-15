@@ -29,7 +29,12 @@
 -define(SEND_DATA_TICK, send_data_tick).
 
 -record(state, {
-    copies = [],
+    copies = [] :: [
+        {
+            SCPacket :: blockchain_state_channel_packet_v1:packet(),
+            Location :: pp_location:location()
+        }
+    ],
     packet_time :: undefined | non_neg_integer(),
     send_data_timer = 200 :: non_neg_integer(),
     address :: binary(),
@@ -75,7 +80,7 @@ handle_call(_Msg, _From, State) ->
 handle_cast(
     send_data,
     #state{
-        copies = [SCPacket | _] = Copies,
+        copies = [{SCPacket, _} | _] = Copies,
         address = Address,
         port = Port,
         packet_time = PacketTime,
@@ -123,7 +128,11 @@ handle_cast(
     #state{send_data_timer = Timer, copies = []} = State0
 ) ->
     ct:print("first copy"),
-    State1 = State0#state{copies = [SCPacket], packet_time = PacketTime},
+    PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
+    State1 = State0#state{
+        copies = [{SCPacket, pp_location:get_hotspot_location(PubKeyBin)}],
+        packet_time = PacketTime
+    },
     schedule_send_data(Timer),
     {noreply, State1};
 handle_cast(
@@ -131,7 +140,10 @@ handle_cast(
     #state{copies = Copies} = State0
 ) ->
     ct:print("collecting another packet"),
-    State1 = State0#state{copies = [SCPacket | Copies]},
+    PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
+    State1 = State0#state{
+        copies = [{SCPacket, pp_location:get_hotspot_location(PubKeyBin)} | Copies]
+    },
     {noreply, State1};
 handle_cast(_Msg, State) ->
     lager:warning("rcvd unknown cast msg: ~p", [_Msg]),
@@ -152,7 +164,7 @@ terminate(_Reason, #state{}) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-gw_info(SCPacket) ->
+gw_info({SCPacket, Location}) ->
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
@@ -160,16 +172,19 @@ gw_info(SCPacket) ->
     SNR = blockchain_helium_packet_v1:snr(Packet),
     RSSI = blockchain_helium_packet_v1:signal_strength(Packet),
 
-    #{
+    GW = #{
         'ID' => libp2p_crypto:bin_to_b58(PubKeyBin),
         'RFRegion' => Region,
         'RSSI' => RSSI,
         'SNR' => SNR,
         'DLAllowed' => true
-        %% TODO: lazy fetch location
-        %% 'Lat' => 0.000000,
-        %% 'Lon' => 0.000000,
-    }.
+    },
+    case Location of
+        {_Index, Lat, Long} ->
+            GW#{'Lat' => Lat, 'Lon' => Long};
+        _ ->
+            GW
+    end.
 
 schedule_send_data(Timeout) ->
     timer:apply_after(Timeout, ?MODULE, send_data, [self()]).

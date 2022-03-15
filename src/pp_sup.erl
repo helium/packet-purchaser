@@ -79,6 +79,7 @@ init([]) ->
         ?SUP(blockchain_sup, [BlockchainOpts]),
         ?WORKER(pp_config, [ConfigFilename]),
         ?WORKER(pp_sc_worker, [#{}]),
+        ?WORKER(pp_location, []),
         ?SUP(pp_udp_sup, []),
         ?SUP(pp_http_sup, []),
         ?SUP(pp_console_sup, []),
