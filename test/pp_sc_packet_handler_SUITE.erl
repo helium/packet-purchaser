@@ -24,7 +24,8 @@
     stop_start_purchasing_net_id_packet_test/1,
     stop_start_purchasing_net_id_join_test/1,
     http_test/1,
-    http_multiple_gateways_test/1
+    http_multiple_gateways_test/1,
+    http_downlink_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -85,7 +86,8 @@ all() ->
         stop_start_purchasing_net_id_packet_test,
         stop_start_purchasing_net_id_join_test,
         http_test,
-        http_multiple_gateways_test
+        http_multiple_gateways_test,
+        http_downlink_test
     ].
 
 %%--------------------------------------------------------------------
@@ -115,6 +117,117 @@ end_per_testcase(TestCase, Config) ->
 %%--------------------------------------------------------------------
 %% TEST CASES
 %%--------------------------------------------------------------------
+
+http_downlink_test(_Config) ->
+    %% Two thing need to happen in this test.
+    %% 1. Queue the downlink with the appropriate state channel handler.
+    %% 2. Send an http response to the downlink requester.
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    %% 'DevEUI'
+    %% 'FPort'
+    %% 'FCntDown'
+    %% 'DLFreq1'
+    %% 'DLFreq2'
+    %% 'RXDelay1'
+    %% 'ClassMode'
+    %% 'DataRate1'
+    %% 'DataRate2'
+    %% 'FNSULToken'
+    %% 'GWInfo'
+    %% 'HiPriorityFlag'
+
+    DownlinkPayload = <<"downlink_payload">>,
+    DownlinkTimestamp = erlang:system_time(millisecond),
+    DownlinkFreq = 915.0,
+    DownlinkDatr = <<"SF10BW125">>,
+
+    Token = pp_utils:binary_to_hexstring(
+        erlang:iolist_to_binary([
+            libp2p_crypto:bin_to_b58(PubKeyBin),
+            ":",
+            erlang:atom_to_binary('US915'),
+            ":",
+            erlang:integer_to_binary(DownlinkTimestamp)
+        ])
+    ),
+
+    RXDelay = 1,
+
+    DownlinkBody = #{
+        'ProtocolVersion' => <<"1.0">>,
+        'SenderID' => pp_utils:binary_to_hexstring(?NET_ID_ACTILITY),
+        'ReceiverID' => <<"0xC00053">>,
+        'TransactionID' => 23,
+        'MessageType' => <<"XmitDataReq">>,
+        'PHYPayload' => pp_utils:binary_to_hexstring(base64:encode(DownlinkPayload)),
+        'DLMetaData' => #{
+            'DevEUI' => <<"0xaabbffccfeeff001">>,
+            'DLFreq1' => DownlinkFreq,
+            'DataRate1' => 0,
+            'RXDelay1' => RXDelay,
+            'FNSULToken' => Token,
+            'GWInfo' => [
+                #{'ULToken' => libp2p_crypto:bin_to_b58(PubKeyBin)}
+            ],
+            'ClassMode' => <<"A">>,
+            'HiPriorityFlag' => false
+        }
+    },
+
+    {ok, _ElliPid} = elli:start_link([
+        {callback, pp_downlink},
+        {callback_args, #{}},
+        {port, 3003},
+        {min_acceptors, 1}
+    ]),
+
+    ok = pp_downlink:insert_handler(PubKeyBin, self()),
+
+    {ok, 200, _Headers, Resp} = hackney:post(
+        <<"http://127.0.0.1:3003">>,
+        [],
+        jsx:encode(DownlinkBody),
+        [with_body]
+    ),
+
+    case
+        test_utils:match_map(
+            #{
+                <<"ProtocolVersion">> => <<"1.0">>,
+                <<"TransactionID">> => 23,
+                <<"SenderID">> => <<"0xC00053">>,
+                <<"ReceiverID">> => pp_utils:binary_to_hexstring(?NET_ID_ACTILITY),
+                <<"MessageType">> => <<"XmitDataAns">>,
+                <<"Result">> => #{
+                    <<"ResultCode">> => <<"Success">>
+                },
+                <<"DLFreq1">> => DownlinkFreq
+            },
+            jsx:decode(Resp)
+        )
+    of
+        true -> ok;
+        {false, Reason} -> ct:fail({http_response, Reason})
+    end,
+
+    ok =
+        receive
+            {send_response, SCResp} ->
+                Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
+                ?assertEqual(DownlinkPayload, blockchain_helium_packet_v1:payload(Downlink)),
+                ?assertEqual(
+                    DownlinkTimestamp + RXDelay,
+                    blockchain_helium_packet_v1:timestamp(Downlink)
+                ),
+                ?assertEqual(DownlinkFreq, blockchain_helium_packet_v1:frequency(Downlink)),
+                ?assertEqual(27, blockchain_helium_packet_v1:signal_strength(Downlink)),
+                ?assertEqual(DownlinkDatr, blockchain_helium_packet_v1:datarate(Downlink)),
+                ok
+        after 3000 -> ct:fail("http state channel response timeout")
+        end,
+    ok.
 
 http_test(_Config) ->
     %% One Gateway is going to be sending all the packets.

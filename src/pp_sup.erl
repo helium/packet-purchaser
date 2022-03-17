@@ -74,6 +74,7 @@ init([]) ->
     ok = pp_utils:init_ets(),
     _ = pp_utils:get_chain(),
     ok = pp_location:init_ets(),
+    ok = pp_downlink:init_ets(),
 
     ChildSpecs = [
         ?SUP(blockchain_sup, [BlockchainOpts]),
