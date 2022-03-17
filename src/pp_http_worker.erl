@@ -28,14 +28,14 @@
 -define(SERVER, ?MODULE).
 -define(SEND_DATA_TICK, send_data_tick).
 
+-type packet() :: {
+    SCPacket :: blockchain_state_channel_packet_v1:packet(),
+    PacketTime :: non_neg_integer(),
+    Location :: pp_location:location()
+}.
+
 -record(state, {
-    copies = [] :: [
-        {
-            SCPacket :: blockchain_state_channel_packet_v1:packet(),
-            Location :: pp_location:location()
-        }
-    ],
-    packet_time :: undefined | non_neg_integer(),
+    copies = [] :: list(packet()),
     send_data_timer = 200 :: non_neg_integer(),
     address :: binary(),
     port :: non_neg_integer(),
@@ -80,13 +80,14 @@ handle_call(_Msg, _From, State) ->
 handle_cast(
     send_data,
     #state{
-        copies = [{SCPacket, _} | _] = Copies,
+        copies = Copies,
         address = Address,
         port = Port,
-        packet_time = PacketTime,
         net_id = NetID
     } = State0
 ) ->
+    {SCPacket, PacketTime, _} = select_best(Copies),
+
     %% TODO handle https
     URL = list_to_binary(
         io_lib:format("~p://~s:~p/new_thing", [http, Address, Port])
@@ -101,7 +102,6 @@ handle_cast(
     Frequency = blockchain_helium_packet_v1:frequency(Packet),
 
     {devaddr, DevAddr} = RoutingInfo,
-
 
     Token0 = [libp2p_crypto:bin_to_b58(PubKeyBin), ":", erlang:integer_to_binary(PacketTime)],
     Token1 = erlang:iolist_to_binary(Token0),
@@ -134,19 +134,18 @@ handle_cast(
     ct:print("first copy"),
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
     State1 = State0#state{
-        copies = [{SCPacket, pp_location:get_hotspot_location(PubKeyBin)}],
-        packet_time = PacketTime
+        copies = [{SCPacket, PacketTime, pp_location:get_hotspot_location(PubKeyBin)}]
     },
     schedule_send_data(Timer),
     {noreply, State1};
 handle_cast(
-    {handle_packet, SCPacket, _PacketTime},
+    {handle_packet, SCPacket, PacketTime},
     #state{copies = Copies} = State0
 ) ->
     ct:print("collecting another packet"),
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
     State1 = State0#state{
-        copies = [{SCPacket, pp_location:get_hotspot_location(PubKeyBin)} | Copies]
+        copies = [{SCPacket, PacketTime, pp_location:get_hotspot_location(PubKeyBin)} | Copies]
     },
     {noreply, State1};
 handle_cast(_Msg, State) ->
@@ -168,7 +167,21 @@ terminate(_Reason, #state{}) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-gw_info({SCPacket, Location}) ->
+-spec select_best(list(packet())) -> packet().
+select_best(Copies) ->
+    [Best | _] = lists:sort(
+        fun({SCPacketA, _, _}, {SCPacketB, _, _}) ->
+            PacketA = blockchain_state_channel_packet_v1:packet(SCPacketA),
+            PacketB = blockchain_state_channel_packet_v1:packet(SCPacketB),
+            RSSIA = blockchain_helium_packet_v1:signal_strength(PacketA),
+            RSSIB = blockchain_helium_packet_v1:signal_strength(PacketB),
+            RSSIA > RSSIB
+        end,
+        Copies
+    ),
+    Best.
+
+gw_info({SCPacket, _PacketTime, Location}) ->
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),

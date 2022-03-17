@@ -214,17 +214,17 @@ http_multiple_gateways_test(_Config) ->
         {min_acceptors, 1}
     ]),
 
-    SendPacketFun = fun(PubKeyBin, DevAddr) ->
-        Packet = test_utils:frame_packet(
+    SendPacketFun = fun(PubKeyBin, DevAddr, RSSI) ->
+        Packet1 = test_utils:frame_packet(
             ?UNCONFIRMED_UP,
             PubKeyBin,
             DevAddr,
             0,
-            #{dont_encode => true}
+            #{dont_encode => true, rssi => RSSI}
         ),
-        PacketTime = erlang:system_time(millisecond),
-        pp_sc_packet_handler:handle_packet(Packet, PacketTime, self()),
-        {ok, Packet, PacketTime}
+        PacketTime1 = erlang:system_time(millisecond),
+        pp_sc_packet_handler:handle_packet(Packet1, PacketTime1, self()),
+        {ok, Packet1, PacketTime1}
     end,
 
     ok = pp_location:insert_hotspot_location(PubKeyBin1, {0, 1.0, 1.0}),
@@ -237,10 +237,12 @@ http_multiple_gateways_test(_Config) ->
             <<"protocol">> => <<"http">>
         }
     ]),
-    {ok, SCPacket, PacketTime} = SendPacketFun(PubKeyBin1, ?DEVADDR_ACTILITY),
-    {ok, _, _} = SendPacketFun(PubKeyBin2, ?DEVADDR_ACTILITY),
-    Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
-    Region = blockchain_state_channel_packet_v1:region(SCPacket),
+
+    {ok, SCPacket1, PacketTime1} = SendPacketFun(PubKeyBin1, ?DEVADDR_ACTILITY, -25.0),
+    {ok, SCPacket2, _PacketTime2} = SendPacketFun(PubKeyBin2, ?DEVADDR_ACTILITY, -30.0),
+    Packet1 = blockchain_state_channel_packet_v1:packet(SCPacket1),
+    Packet2 = blockchain_state_channel_packet_v1:packet(SCPacket2),
+    Region = blockchain_state_channel_packet_v1:region(SCPacket1),
 
     {ok, _Data, {200, _RespBody}} = test_utils:http_rcv(#{
         <<"ProtocolVersion">> => <<"1.0">>,
@@ -249,32 +251,42 @@ http_multiple_gateways_test(_Config) ->
         <<"ReceiverID">> => pp_utils:binary_to_hexstring(?NET_ID_ACTILITY),
         <<"MessageType">> => <<"PRStartReq">>,
         <<"PHYPayload">> => pp_utils:binary_to_hexstring(
-            blockchain_helium_packet_v1:payload(Packet)
+            blockchain_helium_packet_v1:payload(Packet1)
         ),
         <<"ULMetaData">> => #{
             <<"DevAddr">> => pp_utils:binary_to_hexstring(?DEVADDR_ACTILITY),
             <<"DataRate">> => pp_lorawan:datar_to_dr(
                 Region,
-                blockchain_helium_packet_v1:datarate(Packet)
+                blockchain_helium_packet_v1:datarate(Packet1)
             ),
-            <<"ULFreq">> => blockchain_helium_packet_v1:frequency(Packet),
+            <<"ULFreq">> => blockchain_helium_packet_v1:frequency(Packet1),
             <<"RFRegion">> => erlang:atom_to_binary(Region),
-            <<"RecvTime">> => pp_utils:format_time(PacketTime),
+            <<"RecvTime">> => pp_utils:format_time(PacketTime1),
+
+            %% Gateway with better RSSI should be chosen
+            <<"FNSULToken">> => pp_utils:binary_to_hexstring(
+                erlang:iolist_to_binary([
+                    libp2p_crypto:bin_to_b58(PubKeyBin1),
+                    ":",
+                    erlang:integer_to_binary(PacketTime1)
+                ])
+            ),
+
             <<"GWInfo">> => [
                 #{
-                    <<"ID">> => pp_utils:pubkeybin_to_mac(PubKeyBin1),
+                    <<"ID">> => pp_utils:binary_to_hexstring(pp_utils:pubkeybin_to_mac(PubKeyBin1)),
                     <<"RFRegion">> => erlang:atom_to_binary(Region),
-                    <<"RSSI">> => blockchain_helium_packet_v1:signal_strength(Packet),
-                    <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
+                    <<"RSSI">> => blockchain_helium_packet_v1:signal_strength(Packet1),
+                    <<"SNR">> => blockchain_helium_packet_v1:snr(Packet1),
                     <<"DLAllowed">> => true,
                     <<"Lat">> => 1.0,
                     <<"Lon">> => 1.0
                 },
                 #{
-                    <<"ID">> => pp_utils:pubkeybin_to_mac(PubKeyBin2),
+                    <<"ID">> => pp_utils:binary_to_hexstring(pp_utils:pubkeybin_to_mac(PubKeyBin2)),
                     <<"RFRegion">> => erlang:atom_to_binary(Region),
-                    <<"RSSI">> => blockchain_helium_packet_v1:signal_strength(Packet),
-                    <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
+                    <<"RSSI">> => blockchain_helium_packet_v1:signal_strength(Packet2),
+                    <<"SNR">> => blockchain_helium_packet_v1:snr(Packet2),
                     <<"DLAllowed">> => true
                 }
             ]
