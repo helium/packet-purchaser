@@ -179,7 +179,9 @@ http_test(_Config) ->
                         <<"RSSI">> => blockchain_helium_packet_v1:signal_strength(Packet),
                         <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
                         <<"DLAllowed">> => true,
-                        <<"ID">> => libp2p_crypto:bin_to_b58(PubKeyBin)
+                        <<"ID">> => pp_utils:binary_to_hexstring(
+                            pp_utils:pubkeybin_to_mac(PubKeyBin)
+                        )
                     }
                 ]
             }
@@ -251,7 +253,7 @@ http_multiple_gateways_test(_Config) ->
             <<"RecvTime">> => pp_utils:format_time(PacketTime),
             <<"GWInfo">> => [
                 #{
-                    <<"ID">> => libp2p_crypto:bin_to_b58(PubKeyBin1),
+                    <<"ID">> => pp_utils:pubkeybin_to_mac(PubKeyBin1),
                     <<"RFRegion">> => erlang:atom_to_binary(Region),
                     <<"RSSI">> => blockchain_helium_packet_v1:signal_strength(Packet),
                     <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
@@ -260,7 +262,7 @@ http_multiple_gateways_test(_Config) ->
                     <<"Lon">> => 1.0
                 },
                 #{
-                    <<"ID">> => libp2p_crypto:bin_to_b58(PubKeyBin2),
+                    <<"ID">> => pp_utils:pubkeybin_to_mac(PubKeyBin2),
                     <<"RFRegion">> => erlang:atom_to_binary(Region),
                     <<"RSSI">> => blockchain_helium_packet_v1:signal_strength(Packet),
                     <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),

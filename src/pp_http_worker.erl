@@ -173,7 +173,7 @@ gw_info({SCPacket, Location}) ->
     RSSI = blockchain_helium_packet_v1:signal_strength(Packet),
 
     GW = #{
-        'ID' => libp2p_crypto:bin_to_b58(PubKeyBin),
+        'ID' => pp_utils:binary_to_hexstring(pp_utils:pubkeybin_to_mac(PubKeyBin)),
         'RFRegion' => Region,
         'RSSI' => RSSI,
         'SNR' => SNR,
