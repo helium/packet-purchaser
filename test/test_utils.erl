@@ -256,7 +256,7 @@ http_rcv(Expected) ->
             {ok, Got, Response};
         {false, Reason} ->
             ct:pal("FAILED got: ~n~p~n expected: ~n~p", [Got, Expected]),
-            ct:fail("http_rcv data failed ~p", [Reason])
+            ct:fail({http_rcv, Reason})
     end.
 
 -spec ws_rcv() -> {ok, any()}.
