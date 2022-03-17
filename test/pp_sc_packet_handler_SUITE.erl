@@ -166,7 +166,7 @@ http_test(_Config) ->
             ),
             <<"ULMetaData">> => #{
                 <<"DevAddr">> => pp_utils:binary_to_hexstring(?DEVADDR_ACTILITY),
-                <<"DataRate">> => pp_utils:datar_to_dr(
+                <<"DataRate">> => pp_lorawan:datar_to_dr(
                     Region,
                     blockchain_helium_packet_v1:datarate(Packet)
                 ),
@@ -244,7 +244,7 @@ http_multiple_gateways_test(_Config) ->
         ),
         <<"ULMetaData">> => #{
             <<"DevAddr">> => pp_utils:binary_to_hexstring(?DEVADDR_ACTILITY),
-            <<"DataRate">> => pp_utils:datar_to_dr(
+            <<"DataRate">> => pp_lorawan:datar_to_dr(
                 Region,
                 blockchain_helium_packet_v1:datarate(Packet)
             ),

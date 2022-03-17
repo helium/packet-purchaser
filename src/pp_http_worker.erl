@@ -111,7 +111,7 @@ handle_cast(
         'PHYPayload' => pp_utils:binary_to_hexstring(Payload),
         'ULMetaData' => #{
             'DevAddr' => pp_utils:binary_to_hexstring(DevAddr),
-            'DataRate' => pp_utils:datar_to_dr(Region, DataRate),
+            'DataRate' => pp_lorawan:datar_to_dr(Region, DataRate),
             'ULFreq' => Frequency,
             %% TODO: Is there a receive time we can use that isn't
             %% gateway dependent? Maybe the Tmst?

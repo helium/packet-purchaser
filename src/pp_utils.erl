@@ -15,7 +15,6 @@
     hex_to_binary/1,
     binary_to_hex/1,
     binary_to_hexstring/1,
-    datar_to_dr/2,
     format_time/1
 ]).
 
@@ -111,93 +110,3 @@ hex_to_binary(ID) ->
 %% lora mac region
 %%--------------------------------------------------------------------
 
-datar_to_dr(Region, DataRate) ->
-    TopLevelRegion = top_level_region(Region),
-    datar_to_dr_(TopLevelRegion, DataRate).
-
-datar_to_dr_(Region, DataRate) ->
-    {DR, _, _} = lists:keyfind(datar_to_tuple(DataRate), 2, datars(Region)),
-    DR.
-
-datar_to_tuple(DataRate) when is_binary(DataRate) ->
-    [SF, BW] = binary:split(DataRate, [<<"SF">>, <<"BW">>], [global, trim_all]),
-    {binary_to_integer(SF), binary_to_integer(BW)};
-datar_to_tuple(DataRate) when is_list(DataRate) ->
-    datar_to_tuple(erlang:list_to_binary(DataRate));
-datar_to_tuple(DataRate) when is_integer(DataRate) ->
-    %% FSK
-    DataRate.
-
-top_level_region('AS923_1') -> 'AS923';
-top_level_region('AS923_2') -> 'AS923';
-top_level_region('AS923_3') -> 'AS923';
-top_level_region('AS923_4') -> 'AS923';
-top_level_region(Region) -> Region.
-
-datars(Region) ->
-    TopLevelRegion = top_level_region(Region),
-    datars_(TopLevelRegion).
-
-datars_(Region) when Region == 'US915' ->
-    [
-        {0, {10, 125}, up},
-        {1, {9, 125}, up},
-        {2, {8, 125}, up},
-        {3, {7, 125}, up},
-        {4, {8, 500}, up}
-        | us_down_datars()
-    ];
-datars_(Region) when Region == 'AU915' ->
-    [
-        {0, {12, 125}, up},
-        {1, {11, 125}, up},
-        {2, {10, 125}, up},
-        {3, {9, 125}, up},
-        {4, {8, 125}, up},
-        {5, {7, 125}, up},
-        {6, {8, 500}, up}
-        | us_down_datars()
-    ];
-datars_(Region) when Region == 'CN470' ->
-    [
-        {0, {12, 125}, updown},
-        {1, {11, 125}, updown},
-        {2, {10, 125}, updown},
-        {3, {9, 125}, updown},
-        {4, {8, 125}, updown},
-        {5, {7, 125}, updown}
-    ];
-datars_(Region) when Region == 'AS923' ->
-    [
-        {0, {12, 125}, updown},
-        {1, {11, 125}, updown},
-        {2, {10, 125}, updown},
-        {3, {9, 125}, updown},
-        {4, {8, 125}, updown},
-        {5, {7, 125}, updown},
-        {6, {7, 250}, updown},
-        %% FSK
-        {7, 50000, updown}
-    ];
-datars_(_Region) ->
-    [
-        {0, {12, 125}, updown},
-        {1, {11, 125}, updown},
-        {2, {10, 125}, updown},
-        {3, {9, 125}, updown},
-        {4, {8, 125}, updown},
-        {5, {7, 125}, updown},
-        {6, {7, 250}, updown},
-        %% FSK
-        {7, 50000, updown}
-    ].
-
-us_down_datars() ->
-    [
-        {8, {12, 500}, down},
-        {9, {11, 500}, down},
-        {10, {10, 500}, down},
-        {11, {9, 500}, down},
-        {12, {8, 500}, down},
-        {13, {7, 500}, down}
-    ].
