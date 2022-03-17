@@ -13,6 +13,7 @@
     animal_name/1,
     calculate_dc_amount/1,
     hex_to_binary/1,
+    hexstring_to_binary/1,
     binary_to_hex/1,
     binary_to_hexstring/1,
     format_time/1
@@ -98,6 +99,12 @@ binary_to_hexstring(ID) when erlang:is_number(ID) ->
 binary_to_hexstring(ID) ->
     <<"0x", (binary_to_hex(ID))/binary>>.
 
+-spec hexstring_to_binary(binary()) -> binary().
+hexstring_to_binary(<<"0x", Bin/binary>>) ->
+    hex_to_binary(Bin);
+hexstring_to_binary(_Invalid) ->
+    throw({invalid_hexstring_binary, _Invalid}).
+
 -spec binary_to_hex(binary()) -> binary().
 binary_to_hex(ID) ->
     <<<<Y>> || <<X:4>> <= ID, Y <- integer_to_list(X, 16)>>.
@@ -109,4 +116,3 @@ hex_to_binary(ID) ->
 %%--------------------------------------------------------------------
 %% lora mac region
 %%--------------------------------------------------------------------
-
