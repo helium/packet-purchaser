@@ -91,7 +91,7 @@ handle_cast(
     URL = list_to_binary(
         io_lib:format("~p://~s:~p/new_thing", [http, Address, Port])
     ),
-
+    PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     RoutingInfo = blockchain_helium_packet_v1:routing_info(Packet),
 
@@ -101,6 +101,11 @@ handle_cast(
     Frequency = blockchain_helium_packet_v1:frequency(Packet),
 
     {devaddr, DevAddr} = RoutingInfo,
+
+
+    Token0 = [libp2p_crypto:bin_to_b58(PubKeyBin), ":", erlang:integer_to_binary(PacketTime)],
+    Token1 = erlang:iolist_to_binary(Token0),
+    Token = pp_utils:binary_to_hexstring(Token1),
 
     Body = #{
         'ProtocolVersion' => <<"1.0">>,
@@ -117,6 +122,7 @@ handle_cast(
             %% gateway dependent? Maybe the Tmst?
             'RecvTime' => pp_utils:format_time(PacketTime),
             'RFRegion' => Region,
+            'FNSULToken' => Token,
             'GWInfo' => lists:map(fun gw_info/1, Copies)
         }
     },

@@ -173,6 +173,15 @@ http_test(_Config) ->
                 <<"ULFreq">> => blockchain_helium_packet_v1:frequency(Packet),
                 <<"RFRegion">> => erlang:atom_to_binary(Region),
                 <<"RecvTime">> => pp_utils:format_time(PacketTime),
+
+                <<"FNSULToken">> => pp_utils:binary_to_hexstring(
+                    erlang:iolist_to_binary([
+                        libp2p_crypto:bin_to_b58(PubKeyBin),
+                        ":",
+                        erlang:integer_to_binary(PacketTime)
+                    ])
+                ),
+
                 <<"GWInfo">> => [
                     #{
                         <<"RFRegion">> => erlang:atom_to_binary(Region),
