@@ -12,7 +12,10 @@
 -export([start_link/0]).
 
 %% Multi-buy API
--export([maybe_buy_offer/2]).
+-export([
+    maybe_buy_offer/2,
+    init_ets/0
+]).
 
 %% gen_server callbacks
 -export([
@@ -58,6 +61,25 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+-spec init_ets() -> ok.
+init_ets() ->
+    ?MB_ETS = ets:new(?MB_ETS, [
+        public,
+        named_table,
+        set,
+        {write_concurrency, true},
+        {read_concurrency, true}
+    ]),
+    ets:new(?BF_ETS, [public, named_table, set, {read_concurrency, true}]),
+    {ok, BloomJoinRef} = bloom:new_forgetful(
+        ?BF_BITMAP_SIZE,
+        ?BF_UNIQ_CLIENTS_MAX,
+        ?BF_FILTERS_MAX,
+        ?BF_ROTATE_AFTER
+    ),
+    true = ets:insert(?BF_ETS, {?BF_KEY, BloomJoinRef}),
+    ok.
+
 -spec maybe_buy_offer(
     Offer :: blockchain_state_channel_offer_v1:offer(),
     MultiBuyMax :: unlimited | non_neg_integer()
@@ -100,21 +122,6 @@ maybe_buy_offer_unseen_hash(MultiBuyMax, PHash) ->
 %% -------------------------------------------------------------------
 
 init([]) ->
-    ?MB_ETS = ets:new(?MB_ETS, [
-        public,
-        named_table,
-        set,
-        {write_concurrency, true},
-        {read_concurrency, true}
-    ]),
-    ets:new(?BF_ETS, [public, named_table, set, {read_concurrency, true}]),
-    {ok, BloomJoinRef} = bloom:new_forgetful(
-        ?BF_BITMAP_SIZE,
-        ?BF_UNIQ_CLIENTS_MAX,
-        ?BF_FILTERS_MAX,
-        ?BF_ROTATE_AFTER
-    ),
-    true = ets:insert(?BF_ETS, {?BF_KEY, BloomJoinRef}),
     {ok, #state{}}.
 
 handle_call(_Request, _From, State) ->

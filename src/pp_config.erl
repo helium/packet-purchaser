@@ -268,10 +268,8 @@ stop_buying([NetID | NetIDS]) ->
 %% -------------------------------------------------------------------
 
 init([testing]) ->
-    ok = ?MODULE:init_ets(),
     {ok, #state{filename = testing}};
 init([Filename]) ->
-    ok = ?MODULE:init_ets(),
     Config0 = ?MODULE:read_config(Filename),
     Config1 = ?MODULE:transform_config(Config0),
     ok = ?MODULE:write_config_to_ets(Config1),
@@ -445,6 +443,7 @@ clean_config_value(Bin) -> Bin.
 -include_lib("eunit/include/eunit.hrl").
 
 join_eui_to_net_id_test() ->
+    ok = pp_config:init_ets(),
     {ok, _} = pp_config:start_link(testing),
     Dev1 = 7,
     App1 = 13,
