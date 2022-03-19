@@ -52,6 +52,7 @@ handle(Req, Args) ->
     Decoded = jsx:decode(Body),
 
     #{
+        <<"MessageType">> := <<"XmitDataReq">>,
         <<"TransactionID">> := TransactionID,
         <<"SenderID">> := SenderID,
         <<"PHYPayload">> := Payload,
