@@ -2,6 +2,7 @@
 
 -export([
     all/0,
+    groups/0,
     init_per_testcase/2,
     end_per_testcase/2
 ]).
@@ -88,6 +89,15 @@ all() ->
         http_test,
         http_multiple_gateways_test,
         http_downlink_test
+    ].
+
+groups() ->
+    [
+        {http, [
+            http_test,
+            http_multiple_gateways_test,
+            http_downlink_test
+        ]}
     ].
 
 %%--------------------------------------------------------------------
