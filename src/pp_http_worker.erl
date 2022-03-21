@@ -38,7 +38,6 @@
     copies = [] :: list(packet()),
     send_data_timer = 200 :: non_neg_integer(),
     address :: binary(),
-    port :: non_neg_integer(),
     net_id :: binary()
 }).
 
@@ -65,11 +64,10 @@ send_data(Pid) ->
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 init(Args) ->
-    #{address := Address, port := Port, net_id := NetID} = Args,
+    #{protocol := {http, Address}, net_id := NetID} = Args,
     ct:print("~p init with ~p", [?MODULE, Args]),
     {ok, #state{
         address = Address,
-        port = Port,
         net_id = pp_utils:binary_to_hexstring(NetID)
     }}.
 
@@ -81,17 +79,12 @@ handle_cast(
     send_data,
     #state{
         copies = Copies,
-        address = Address,
-        port = Port,
+        address = URL,
         net_id = NetID
     } = State0
 ) ->
     {SCPacket, PacketTime, _} = select_best(Copies),
 
-    %% TODO handle https
-    URL = list_to_binary(
-        io_lib:format("~p://~s:~p/new_thing", [http, Address, Port])
-    ),
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     RoutingInfo = blockchain_helium_packet_v1:routing_info(Packet),

@@ -89,7 +89,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                     ),
                     Err
             end;
-        {http, #{address := _Address, port := _Port, net_id := _NetID} = Args} ->
+        {http, #{} = Args} ->
             PHash = blockchain_helium_packet_v1:packet_hash(Packet),
             case pp_http_sup:maybe_start_worker(PHash, Args) of
                 {error, worker_not_started, _} = Err ->

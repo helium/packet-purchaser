@@ -11,7 +11,7 @@
 -export([
     start_link/1,
     push_data/4,
-    update_address/3
+    update_address/2
 ]).
 
 %% ------------------------------------------------------------------
@@ -64,10 +64,10 @@ push_data(WorkerPid, SCPacket, PacketTime, HandlerPid) ->
 
 -spec update_address(
     WorkerPid :: pid(),
-    Address :: pp_udp_socket:socket_address(),
-    Port :: pp_udp_socket:socket_port()
+    Protocol ::
+        {udp, Address :: pp_udp_socket:socket_address(), Port :: pp_udp_socket:socket_port()}
 ) -> ok.
-update_address(WorkerPid, Address, Port) ->
+update_address(WorkerPid, {udp, Address, Port}) ->
     gen_server:call(WorkerPid, {update_address, Address, Port}).
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions

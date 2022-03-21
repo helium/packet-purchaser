@@ -258,9 +258,8 @@ http_test(_Config) ->
         #{
             <<"name">> => <<"test">>,
             <<"net_id">> => ?NET_ID_ACTILITY,
-            <<"address">> => <<"127.0.0.1">>,
-            <<"port">> => 3002,
-            <<"protocol">> => <<"http">>
+            <<"protocol">> => <<"http">>,
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>
         }
     ]),
     {ok, SCPacket, PacketTime} = SendPacketFun(?DEVADDR_ACTILITY),
@@ -345,9 +344,8 @@ http_multiple_gateways_test(_Config) ->
         #{
             <<"name">> => <<"test">>,
             <<"net_id">> => ?NET_ID_ACTILITY,
-            <<"address">> => <<"127.0.0.1">>,
-            <<"port">> => 3002,
-            <<"protocol">> => <<"http">>
+            <<"protocol">> => <<"http">>,
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>
         }
     ]),
 
