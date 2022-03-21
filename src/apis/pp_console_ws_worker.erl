@@ -87,7 +87,8 @@ ws_update_pid(Pid) ->
 
 -spec ws_joined() -> ok.
 ws_joined() ->
-    ?MODULE:send_address().
+    ?MODULE:send_address(),
+    ?MODULE:send_get_config().
 
 -spec ws_handle_message(Topic :: binary(), Event :: binary(), Payload :: map()) -> ok.
 ws_handle_message(Topic, Event, Payload) ->
