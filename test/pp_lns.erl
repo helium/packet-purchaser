@@ -17,6 +17,11 @@
     send_packet/2
 ]).
 
+-export([
+    http_rcv/0,
+    http_rcv/1
+]).
+
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
 %% ------------------------------------------------------------------
@@ -66,6 +71,25 @@ rcv(Pid, Type, Delay) ->
     receive
         {?MODULE, Pid, Type, Data} -> {ok, Data}
     after Delay -> ct:fail("pp_lns rcv timeout")
+    end.
+
+-spec http_rcv() -> {ok, any()}.
+http_rcv() ->
+    receive
+        {http_msg, Payload, {StatusCode, [], RespBody}} ->
+            {ok, jsx:decode(Payload), {StatusCode, jsx:decode(RespBody)}}
+    after 2500 -> ct:fail(http_msg_timeout)
+    end.
+
+-spec http_rcv(map()) -> {ok, any(), any()}.
+http_rcv(Expected) ->
+    {ok, Got, Response} = ?MODULE:http_rcv(),
+    case test_utils:match_map(Expected, Got) of
+        true ->
+            {ok, Got, Response};
+        {false, Reason} ->
+            ct:pal("FAILED got: ~n~p~n expected: ~n~p", [Got, Expected]),
+            ct:fail({http_rcv, Reason})
     end.
 
 not_rcv(Pid, Type, Delay) ->
@@ -230,23 +254,39 @@ handle(Req, Args) ->
     Forward = maps:get(forward, Args),
     Body = elli_request:body(Req),
 
-    ReceiverID = maps:get(<<"ReceiverID">>, jsx:decode(Body)),
-    Response =
-        {200, [],
-            jsx:encode(#{
-                'ProtocolVersion' => <<"1.0">>,
-                'SenderID' => ReceiverID,
-                'ReceiverID' => <<"0xC00053">>,
-                'TransactionID' => 45,
-                'MessageType' => <<"PRStartAns">>,
-                'Result' => #{'ResultCode' => <<"Success">>},
-                %% 11.3.1 Passive Roaming Start
-                %% Step 6: stateless fNS operation
-                'Lifetime' => 0
-            })},
+    ResponseBody = make_response_body(jsx:decode(Body)),
+    Response = {200, [], jsx:encode(ResponseBody)},
 
     Forward ! {http_msg, Body, Response},
     Response.
 
 handle_event(_Event, _Data, _Args) ->
     ok.
+
+make_response_body(#{
+    <<"ReceiverID">> := ReceiverID,
+    <<"SenderID">> := SenderID,
+    <<"TransactionID">> := TransactionID,
+    <<"ULMetaData">> := #{
+        <<"ULFreq">> := Freq,
+        <<"DevEUI">> := DevEUI,
+        <<"FNSULToken">> := Token
+    }
+}) ->
+    %% Join Response
+    %% includes similar information from XmitDataReq
+    #{
+        'ProtocolVersion' => <<"1.0">>,
+        'SenderID' => ReceiverID,
+        'ReceiverID' => SenderID,
+        'TransactionID' => TransactionID,
+        'MessageType' => <<"PRStartAns">>,
+        'Result' => #{'ResultCode' => <<"Success">>},
+        %% 11.3.1 Passive Roaming Start
+        %% Step 6: stateless fNS operation
+        'Lifetime' => 0,
+        'DLFreq1' => Freq,
+        'DevEUI' => DevEUI,
+        'FNSULToken' => Token,
+        'PHYPayload' => join_accept_payload
+    }.

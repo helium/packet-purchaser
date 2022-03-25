@@ -276,7 +276,7 @@ http_test(_Config) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
 
-    {ok, _Data, {200, _RespBody}} = test_utils:http_rcv(
+    {ok, _Data, {200, _RespBody}} = pp_lns:http_rcv(
         #{
             <<"ProtocolVersion">> => <<"1.0">>,
             <<"TransactionID">> => fun erlang:is_number/1,
@@ -365,7 +365,7 @@ http_multiple_gateways_test(_Config) ->
     Packet2 = blockchain_state_channel_packet_v1:packet(SCPacket2),
     Region = blockchain_state_channel_packet_v1:region(SCPacket1),
 
-    {ok, _Data, {200, _RespBody}} = test_utils:http_rcv(#{
+    {ok, _Data, {200, _RespBody}} = pp_lns:http_rcv(#{
         <<"ProtocolVersion">> => <<"1.0">>,
         <<"TransactionID">> => fun erlang:is_number/1,
         <<"SenderID">> => <<"0xC00053">>,
