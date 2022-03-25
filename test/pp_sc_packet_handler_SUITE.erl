@@ -24,7 +24,9 @@
     join_websocket_inactive_test/1,
     stop_start_purchasing_net_id_packet_test/1,
     stop_start_purchasing_net_id_join_test/1,
-    http_test/1,
+    %% http_test/1,
+    http_uplink_join_test/1,
+    http_uplink_packet_test/1,
     http_multiple_gateways_test/1,
     http_downlink_test/1
 ]).
@@ -86,7 +88,10 @@ all() ->
         %% multi_buy_worst_case_stress_test
         stop_start_purchasing_net_id_packet_test,
         stop_start_purchasing_net_id_join_test,
-        http_test,
+        %%
+        http_uplink_join_test,
+        http_uplink_packet_test,
+        %%
         http_multiple_gateways_test,
         http_downlink_test
     ].
@@ -239,7 +244,142 @@ http_downlink_test(_Config) ->
         end,
     ok.
 
-http_test(_Config) ->
+http_uplink_join_test(_Config) ->
+    %% One Gateway is going to be sending all the packets.
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    {ok, _ElliPid} = elli:start_link([
+        {callback, pp_lns},
+        {callback_args, #{forward => self()}},
+        {port, 3002},
+        {min_acceptors, 1}
+    ]),
+
+    DevEUI = <<0, 0, 0, 0, 0, 0, 0, 1>>,
+    AppEUI = <<0, 0, 0, 2, 0, 0, 0, 1>>,
+
+    SendPacketFun = fun(DevAddr) ->
+        Routing = blockchain_helium_packet_v1:make_routing_info({eui, DevEUI, AppEUI}),
+        Packet = test_utils:frame_packet(
+            ?UNCONFIRMED_UP,
+            PubKeyBin,
+            DevAddr,
+            0,
+            Routing,
+            #{dont_encode => true}
+        ),
+        PacketTime = erlang:system_time(millisecond),
+        pp_sc_packet_handler:handle_packet(Packet, PacketTime, self()),
+        {ok, Packet, PacketTime}
+    end,
+
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => <<"test">>,
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"protocol">> => <<"http">>,
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI, <<"app_eui">> => AppEUI}
+            ]
+        }
+    ]),
+
+    %% ===================================================================
+    %% Done with setup.
+
+    %% 1. Send a join uplink
+    {ok, SCPacket, PacketTime} = SendPacketFun(?DEVADDR_ACTILITY),
+    Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
+    Region = blockchain_state_channel_packet_v1:region(SCPacket),
+
+    Token = pp_utils:binary_to_hexstring(
+        erlang:iolist_to_binary([
+            libp2p_crypto:bin_to_b58(PubKeyBin),
+            ":",
+            erlang:integer_to_binary(PacketTime)
+        ])
+    ),
+
+    %% 2. Expect a PRStartReq to the lns
+    {ok, #{<<"TransactionID">> := TransactionID}, {200, RespBody}} = pp_lns:http_rcv(
+        #{
+            <<"ProtocolVersion">> => <<"1.0">>,
+            <<"TransactionID">> => fun erlang:is_number/1,
+            <<"SenderID">> => <<"0xC00053">>,
+            <<"ReceiverID">> => pp_utils:binary_to_hexstring(?NET_ID_ACTILITY),
+            <<"MessageType">> => <<"PRStartReq">>,
+            <<"PHYPayload">> => pp_utils:binary_to_hexstring(
+                blockchain_helium_packet_v1:payload(Packet)
+            ),
+            <<"ULMetaData">> => #{
+                <<"DevEUI">> => pp_utils:binary_to_hexstring(DevEUI),
+                <<"DataRate">> => pp_lorawan:datar_to_dr(
+                    Region,
+                    blockchain_helium_packet_v1:datarate(Packet)
+                ),
+                <<"ULFreq">> => blockchain_helium_packet_v1:frequency(Packet),
+                <<"RFRegion">> => erlang:atom_to_binary(Region),
+                <<"RecvTime">> => pp_utils:format_time(PacketTime),
+
+                <<"FNSULToken">> => Token,
+                <<"GWInfo">> => [
+                    #{
+                        <<"RFRegion">> => erlang:atom_to_binary(Region),
+                        <<"RSSI">> => blockchain_helium_packet_v1:signal_strength(Packet),
+                        <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
+                        <<"DLAllowed">> => true,
+                        <<"ID">> => pp_utils:binary_to_hexstring(
+                            pp_utils:pubkeybin_to_mac(PubKeyBin)
+                        )
+                    }
+                ]
+            }
+        }
+    ),
+
+    %% 3. Expect a PRStartAns from the lns
+    %%   - With DevEUI
+    %%   - With PHyPayload
+    %% Make sure we're mocking things correctly
+    case
+        test_utils:match_map(
+            #{
+                <<"ProtocolVersion">> => <<"1.0">>,
+                <<"TransactionID">> => TransactionID,
+                <<"SenderID">> => pp_utils:binary_to_hexstring(?NET_ID_ACTILITY),
+                <<"ReceiverID">> => <<"0xC00053">>,
+                <<"MessageType">> => <<"PRStartAns">>,
+                <<"Result">> => #{
+                    <<"ResultCode">> => <<"Success">>
+                },
+                <<"DLFreq1">> => blockchain_helium_packet_v1:frequency(Packet),
+                <<"PHYPayload">> => <<"join_accept_payload">>,
+                <<"FNSULToken">> => Token,
+                <<"DevEUI">> => pp_utils:binary_to_hexstring(DevEUI),
+                <<"Lifetime">> => 0
+            },
+            RespBody
+        )
+    of
+        true -> ok;
+        {false, Reason} -> ct:fail({http_response, Reason})
+    end,
+
+    %% 4. Expect downlink queued for gateway
+    ok =
+        receive
+            {send_response, SCResp} ->
+                Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
+                ?assertEqual(27, blockchain_helium_packet_v1:signal_strength(Downlink)),
+                ok
+        after 3000 -> ct:fail("http state channel response timeout")
+        end,
+
+    ok.
+
+http_uplink_packet_test(_Config) ->
     %% One Gateway is going to be sending all the packets.
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
