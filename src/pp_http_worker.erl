@@ -94,11 +94,13 @@ handle_cast(
     Payload = blockchain_helium_packet_v1:payload(Packet),
     Frequency = blockchain_helium_packet_v1:frequency(Packet),
 
-    {devaddr, DevAddr} = RoutingInfo,
+    {RoutingKey, RoutingValue} =
+        case RoutingInfo of
+            {devaddr, DevAddr} -> {'DevAddr', pp_utils:binary_to_hexstring(DevAddr)};
+            {eui, DevEUI, _AppEUI} -> {'DevEUI', pp_utils:binary_to_hexstring(DevEUI)}
+        end,
 
-    Token0 = [libp2p_crypto:bin_to_b58(PubKeyBin), ":", erlang:integer_to_binary(PacketTime)],
-    Token1 = erlang:iolist_to_binary(Token0),
-    Token = pp_utils:binary_to_hexstring(Token1),
+    Token = pp_downlink:make_uplink_token(PubKeyBin, 'US915', PacketTime),
 
     Body = #{
         'ProtocolVersion' => <<"1.0">>,
@@ -108,7 +110,7 @@ handle_cast(
         'MessageType' => <<"PRStartReq">>,
         'PHYPayload' => pp_utils:binary_to_hexstring(Payload),
         'ULMetaData' => #{
-            'DevAddr' => pp_utils:binary_to_hexstring(DevAddr),
+            RoutingKey => RoutingValue,
             'DataRate' => pp_lorawan:datar_to_dr(Region, DataRate),
             'ULFreq' => Frequency,
             'RecvTime' => pp_utils:format_time(PacketTime),
@@ -117,8 +119,10 @@ handle_cast(
             'GWInfo' => lists:map(fun gw_info/1, Copies)
         }
     },
-    Res = hackney:post(URL, [], jsx:encode(Body), []),
-    ct:print("~p Http Res: ~n~p", [URL, Res]),
+
+    {ok, 200, _Headers, Res} = hackney:post(URL, [], jsx:encode(Body), [with_body]),
+    ok = handle_resp(jsx:decode(Res)),
+
     {stop, data_sent, State0};
 handle_cast(
     {handle_packet, SCPacket, PacketTime},
@@ -198,3 +202,43 @@ gw_info({SCPacket, _PacketTime, Location}) ->
 
 schedule_send_data(Timeout) ->
     timer:apply_after(Timeout, ?MODULE, send_data, [self()]).
+
+handle_resp(#{
+    <<"Result">> := #{<<"ResultCode">> := <<"Success">>},
+    <<"MessageType">> := <<"PRStartAns">>,
+    <<"FNSULToken">> := Token,
+    <<"DLFreq1">> := Frequency,
+    <<"PHYPayload">> := Payload,
+    <<"DevEUI">> := _DevEUI
+}) ->
+    {ok, PubKeyBin, Region, PacketTime} = pp_downlink:parse_uplink_token(Token),
+    {ok, SCPid} = pp_downlink:lookup_handler(PubKeyBin),
+
+    %% NOTE: May need to get DR from response
+    DR = 0,
+    DataRate = pp_lorawan:dr_to_datar(Region, DR),
+
+    DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
+        %% NOTE: Payload maye need to be decoded
+        Payload,
+        _SignalStrength = 27,
+        %% FIXME: Make sure this is the correct resolution
+        %% JOIN1_WINDOW pulled from lora_mac_region
+        PacketTime + 5000000,
+        Frequency,
+        DataRate,
+        _RX2 = undefined
+    ),
+    SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
+
+    ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
+    ok;
+handle_resp(
+    #{
+        <<"MessageType">> := <<"PRStartAns">>,
+        <<"Result">> := #{<<"ResultCode">> := <<"Success">>}
+    } = _Got
+) ->
+    ok;
+handle_resp(Res) ->
+    ct:fail({bad_response, Res}).

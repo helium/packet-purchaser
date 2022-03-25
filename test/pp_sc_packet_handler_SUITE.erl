@@ -158,15 +158,7 @@ http_downlink_test(_Config) ->
     DownlinkFreq = 915.0,
     DownlinkDatr = <<"SF10BW125">>,
 
-    Token = pp_utils:binary_to_hexstring(
-        erlang:iolist_to_binary([
-            libp2p_crypto:bin_to_b58(PubKeyBin),
-            ":",
-            erlang:atom_to_binary('US915'),
-            ":",
-            erlang:integer_to_binary(DownlinkTimestamp)
-        ])
-    ),
+    Token = pp_downlink:make_uplink_token(PubKeyBin, 'US915', DownlinkTimestamp),
 
     RXDelay = 1,
 
@@ -249,6 +241,8 @@ http_uplink_join_test(_Config) ->
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
+    ok = pp_downlink:insert_handler(PubKeyBin, self()),
+
     {ok, _ElliPid} = elli:start_link([
         {callback, pp_lns},
         {callback_args, #{forward => self()}},
@@ -294,13 +288,7 @@ http_uplink_join_test(_Config) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
 
-    Token = pp_utils:binary_to_hexstring(
-        erlang:iolist_to_binary([
-            libp2p_crypto:bin_to_b58(PubKeyBin),
-            ":",
-            erlang:integer_to_binary(PacketTime)
-        ])
-    ),
+    Token = pp_downlink:make_uplink_token(PubKeyBin, 'US915', PacketTime),
 
     %% 2. Expect a PRStartReq to the lns
     {ok, #{<<"TransactionID">> := TransactionID}, {200, RespBody}} = pp_lns:http_rcv(
@@ -355,7 +343,7 @@ http_uplink_join_test(_Config) ->
                     <<"ResultCode">> => <<"Success">>
                 },
                 <<"DLFreq1">> => blockchain_helium_packet_v1:frequency(Packet),
-                <<"PHYPayload">> => <<"join_accept_payload">>,
+                <<"PHYPayload">> => pp_utils:binary_to_hex(<<"join_accept_payload">>),
                 <<"FNSULToken">> => Token,
                 <<"DevEUI">> => pp_utils:binary_to_hexstring(DevEUI),
                 <<"Lifetime">> => 0

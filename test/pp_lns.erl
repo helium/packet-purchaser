@@ -288,5 +288,5 @@ make_response_body(#{
         'DLFreq1' => Freq,
         'DevEUI' => DevEUI,
         'FNSULToken' => Token,
-        'PHYPayload' => join_accept_payload
+        'PHYPayload' => pp_utils:binary_to_hex(<<"join_accept_payload">>)
     }.

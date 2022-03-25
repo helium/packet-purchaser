@@ -5,7 +5,8 @@
     insert_handler/2,
     delete_handler/1,
     lookup_handler/1,
-    make_uplink_token/3
+    make_uplink_token/3,
+    parse_uplink_token/1
 ]).
 
 -define(ETS, pp_downlink_ets).
