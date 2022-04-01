@@ -1542,7 +1542,7 @@ start_downlink_listener() ->
     %% Downlinks sent from an LNS whenever they decide
     {ok, _ElliPid} = elli:start_link([
         {callback, pp_http},
-        {callback_args, #{}},
+        {callback_args, #{forward => self()}},
         {port, 3003},
         {min_acceptors, 1}
     ]),
@@ -1552,8 +1552,8 @@ start_uplink_listener() ->
     %% Uplinks we send to an LNS
     {ok, _ElliPid} = elli:start_link([
         {callback, pp_lns},
-        {callback_args, #{}},
-        {port, 3003},
+        {callback_args, #{forward => self()}},
+        {port, 3002},
         {min_acceptors, 1}
     ]),
     ok.

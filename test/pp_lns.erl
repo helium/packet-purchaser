@@ -241,7 +241,7 @@ handle_udp(
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-handle(Req, _Args) ->
+handle(Req, Args) ->
     Method =
         case elli_request:get_header(<<"Upgrade">>, Req) of
             <<"websocket">> ->
@@ -249,7 +249,7 @@ handle(Req, _Args) ->
             _ ->
                 elli_request:method(Req)
         end,
-    ct:pal("~p", [{Method, elli_request:path(Req), Req, _Args}]),
+    ct:pal("~p", [{Method, elli_request:path(Req), Req, Args}]),
     Forward = maps:get(forward, Args),
     Body = elli_request:body(Req),
 
@@ -260,6 +260,8 @@ handle(Req, _Args) ->
     Response.
 
 handle_event(_Event, _Data, _Args) ->
+    %% uncomment for Elli errors.
+    %% ct:print("Elli Event (~p):~nData~n~p~nArgs~n~p", [_Event, _Data, _Args]),
     ok.
 
 make_response_body(#{

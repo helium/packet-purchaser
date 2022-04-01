@@ -7,8 +7,6 @@
 
 -behaviour(supervisor).
 
--include("packet_purchaser.hrl").
-
 %% API
 -export([start_link/0]).
 
@@ -71,21 +69,22 @@ init([]) ->
 
     {ok, ConfigFilename} = application:get_env(packet_purchaser, pp_routing_config_filename),
 
-    ok = pp_utils:init_ets(),
-    _ = pp_utils:get_chain(),
-    ok = pp_location:init_ets(),
+    ok = pp_config:init_ets(),
     ok = pp_http:init_ets(),
+    ok = pp_location:init_ets(),
+    ok = pp_multi_buy:init_ets(),
+    ok = pp_utils:init_ets(),
 
     ChildSpecs = [
-        ?SUP(blockchain_sup, [BlockchainOpts]),
+        ?WORKER(pp_multi_buy, []),
         ?WORKER(pp_config, [ConfigFilename]),
+        ?SUP(blockchain_sup, [BlockchainOpts]),
         ?WORKER(pp_sc_worker, [#{}]),
         ?WORKER(pp_location, []),
         ?SUP(pp_udp_sup, []),
         ?SUP(pp_http_sup, []),
         ?SUP(pp_console_sup, []),
-        ?WORKER(pp_metrics, []),
-        ?WORKER(pp_multi_buy, [])
+        ?WORKER(pp_metrics, [])
     ],
     {ok, {?FLAGS, ChildSpecs}}.
 

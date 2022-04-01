@@ -107,8 +107,10 @@ counts(Height) ->
             Max = blockchain_state_channel_v1:amount(SC),
             ExpireAtBlock = blockchain_state_channel_v1:expire_at_block(SC),
             ExpireIn = ExpireAtBlock - Height,
-            GettingClose =
-                (100 * Used) / Max > ?GETTING_CLOSE_DC orelse ExpireIn < ?GETTING_CLOSE_EXPIRE,
+            PercentUsage = (100 * Used) / Max,
+            GettingClose = PercentUsage > ?GETTING_CLOSE_DC orelse ExpireIn < ?GETTING_CLOSE_EXPIRE,
+            SCName = blockchain_utils:addr2name(blockchain_state_channel_v1:id(SC)),
+            lager:debug("~p expires in ~p (usage=~p%)", [SCName, ExpireIn, PercentUsage]),
             case {Closed, Overspent, GettingClose} of
                 {true, _, _} ->
                     {OpenedCount, OverspentCount, GettingCloseCount};
@@ -148,8 +150,9 @@ init(Args) ->
 
 handle_call(is_active, _From, State) ->
     {reply, State#state.is_active, State};
-handle_call(force_open, _From, #state{in_flight = InFlight} = State) ->
-    {ok, ID} = open_next_state_channel(1, State),
+handle_call(force_open, _From, #state{height = Height, in_flight = InFlight} = State) ->
+    {OpenedCount, _OverspentCount, _GettingCloseCount} = ?MODULE:counts(Height),
+    {ok, ID} = open_next_state_channel(OpenedCount, State),
     {reply, ID, State#state{in_flight = [ID | InFlight]}};
 handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
@@ -242,7 +245,8 @@ handle_info(
     #state{is_active = true, chain = Chain} = State
 ) ->
     Limit = max_sc_open(Chain),
-    {noreply, State#state{open_sc_limit = Limit}};
+    {ok, Height} = blockchain:height(Chain),
+    {noreply, State#state{open_sc_limit = Limit, height = Height}};
 handle_info(?SC_TICK, #state{is_active = false} = State) ->
     %% don't do anything if the server is inactive
     Tref = schedule_next_tick(),
@@ -367,8 +371,9 @@ maybe_start_state_channel(
 open_next_state_channel(NumExistingSCs, #state{
     pubkey = PubKey,
     sig_fun = SigFun,
+    chain = Chain,
     oui = OUI,
-    chain = Chain
+    in_flight = InFlight
 }) ->
     Ledger = blockchain:ledger(Chain),
     {ok, ChainHeight} = blockchain:height(Chain),
@@ -385,7 +390,7 @@ open_next_state_channel(NumExistingSCs, #state{
                     (get_sc_buffer() * NumExistingSCs)
         end,
     PubkeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
-    Nonce = get_nonce(PubkeyBin, Ledger),
+    Nonce = get_nonce(PubkeyBin, Ledger) + erlang:length(InFlight),
     Id = create_and_send_sc_open_txn(
         PubkeyBin,
         SigFun,
