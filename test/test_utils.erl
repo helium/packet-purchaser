@@ -21,7 +21,7 @@
     %%
     ws_rcv/0,
     ws_init/0,
-    ws_roaming_rcv/0,
+    ws_roaming_rcv/1,
     ws_test_rcv/0,
     ws_prepare_test_msg/1,
     %%
@@ -43,7 +43,7 @@ init_per_testcase(TestCase, Config) ->
         {endpoint, ?CONSOLE_URL},
         {ws_endpoint, ?CONSOLE_WS_URL},
         {secret, <<>>},
-        {is_active, true}
+        {auto_connect, true}
     ],
     OverrideConsoleSettings = proplists:get_value(console_api, Config, []),
     ok = application:set_env(
@@ -209,7 +209,7 @@ wait_until(Fun, Retry, Delay) when Retry > 0 ->
 
 -spec ws_prepare_test_msg(binary()) -> ok.
 ws_prepare_test_msg(Bin) ->
-    pp_console_ws_handler:encode_msg(<<"0">>, <<"test_utils">>, <<"test_message">>, Bin).
+    pp_console_ws_client:encode_msg(<<"0">>, <<"test_utils">>, <<"test_message">>, Bin).
 
 -spec ws_test_rcv() -> {ok, any()}.
 ws_test_rcv() ->
@@ -232,10 +232,10 @@ ws_init() ->
         after 2500 -> ct:fail(websocket_init_timeout)
         end,
     %% Eat phx_join message and packet_purchaser address message
-    {ok, #{event := <<"phx_join">>, topic := <<"organization:all">>}} = ws_roaming_rcv(),
-    {ok, #{event := <<"phx_join">>, topic := <<"net_id:all">>}} = ws_roaming_rcv(),
-    {ok, #{event := <<"packet_purchaser:address">>}} = ws_roaming_rcv(),
-    {ok, #{event := <<"packet_purchaser:get_config">>}} = ws_roaming_rcv(),
+    {ok, #{event := <<"phx_join">>, topic := <<"organization:all">>}} = ws_roaming_rcv(org_join),
+    {ok, #{event := <<"phx_join">>, topic := <<"net_id:all">>}} = ws_roaming_rcv(net_id_join),
+    {ok, #{event := <<"packet_purchaser:address">>}} = ws_roaming_rcv(pp_address),
+    {ok, #{event := <<"packet_purchaser:get_config">>}} = ws_roaming_rcv(pp_get_config),
     R.
 
 -spec ws_rcv() -> {ok, any()}.
@@ -247,12 +247,12 @@ ws_rcv() ->
     after 2500 -> ct:fail(websocket_msg_timeout)
     end.
 
--spec ws_roaming_rcv() -> {ok, binary(), binary(), any()}.
-ws_roaming_rcv() ->
+-spec ws_roaming_rcv(atom()) -> {ok, binary(), binary(), any()}.
+ws_roaming_rcv(ErrId) ->
     receive
         {websocket_msg, Payload} ->
             {ok, Payload}
-    after 2500 -> ct:fail(websocket_roaming_msg_timeout)
+    after 2500 -> ct:fail({websocket_roaming_msg_timeout, ErrId})
     end.
 
 ignore_messages() ->

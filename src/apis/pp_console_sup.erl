@@ -18,7 +18,7 @@
 }).
 
 -define(FLAGS, #{
-    strategy => rest_for_one,
+    strategy => one_for_one,
     intensity => 1,
     period => 5
 }).
@@ -38,7 +38,8 @@ init([]) ->
     ConsoleAPIConfig = maps:from_list(application:get_env(packet_purchaser, pp_console_api, [])),
     {ok,
         {?FLAGS, [
-            ?WORKER(pp_console_ws_worker, [ConsoleAPIConfig])
+            ?WORKER(pp_console_ws_worker, [ConsoleAPIConfig]),
+            ?WORKER(pp_console_ws_manager, [ConsoleAPIConfig])
         ]}}.
 
 %%====================================================================

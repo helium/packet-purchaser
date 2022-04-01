@@ -2,8 +2,7 @@
 %% @doc
 %% == Packet Purchaser Console WS Worker ==
 %%
-%% - Restarts websocket connection if it goes down
-%% - Handles Roaming Console messages forwarded from ws_handler
+%% - Handles Roaming Console messages forwarded from ws_client
 %% - Sending messages to Roaming Console
 %%
 %% @end
@@ -17,14 +16,27 @@
 %% ------------------------------------------------------------------
 -export([
     start_link/1,
-    send/1,
     handle_packet/4
 ]).
 
+%% ------------------------------------------------------------------
+%% Send API
+%% ------------------------------------------------------------------
 -export([
+    send/1,
     send_address/0,
     send_get_config/0,
     send_get_org_balances/0
+]).
+
+%% ------------------------------------------------------------------
+%% Websocket Client API
+%% ------------------------------------------------------------------
+-export([
+    ws_update_pid/1,
+    ws_joined/0,
+    ws_handle_message/3,
+    ws_get_auto_join_topics/0
 ]).
 
 %% ------------------------------------------------------------------
@@ -39,17 +51,7 @@
     code_change/3
 ]).
 
--export([
-    deactivate/0,
-    activate/0, activate/1,
-    start_ws/0,
-    start_ws/3,
-    get_token/2
-]).
-
 -define(SERVER, ?MODULE).
--define(POOL, router_console_api_pool).
--define(HEADER_JSON, {<<"Content-Type">>, <<"application/json">>}).
 
 %% Topics
 -define(ORGANIZATION_TOPIC, <<"organization:all">>).
@@ -70,9 +72,7 @@
 -define(WS_RCV_REFETCH_ADDRESS, <<"organization:all:refetch:packet_purchaser_address">>).
 
 -record(state, {
-    ws :: undefind | pid(),
-    ws_endpoint :: binary(),
-    is_active :: boolean() | {true, Limit :: integer()}
+    ws = undefined :: undefined | pid()
 }).
 
 %% ------------------------------------------------------------------
@@ -81,21 +81,22 @@
 start_link(Args) ->
     gen_server:start_link({local, ?SERVER}, ?SERVER, Args, []).
 
--spec deactivate() -> ok.
-deactivate() ->
-    gen_server:call(?MODULE, deactivate).
+-spec ws_update_pid(pid()) -> ok.
+ws_update_pid(Pid) ->
+    gen_server:cast(?MODULE, {update_ws_pid, Pid}).
 
--spec activate() -> ok.
-activate() ->
-    gen_server:call(?MODULE, activate).
+-spec ws_joined() -> ok.
+ws_joined() ->
+    ?MODULE:send_address(),
+    ?MODULE:send_get_config().
 
--spec activate(non_neg_integer()) -> ok.
-activate(Limit) ->
-    gen_server:call(?MODULE, {activate, Limit}).
+-spec ws_handle_message(Topic :: binary(), Event :: binary(), Payload :: map()) -> ok.
+ws_handle_message(Topic, Event, Payload) ->
+    gen_server:cast(?MODULE, {ws_message, Topic, Event, Payload}).
 
--spec start_ws() -> ok.
-start_ws() ->
-    gen_server:call(?MODULE, start_ws).
+-spec ws_get_auto_join_topics() -> list(binary()).
+ws_get_auto_join_topics() ->
+    [?ORGANIZATION_TOPIC, ?NET_ID_TOPIC].
 
 -spec handle_packet(
     NetID :: non_neg_integer(),
@@ -121,7 +122,7 @@ handle_packet(NetID, Packet, PacketTime, Type) ->
     Topic = ?ORGANIZATION_TOPIC,
     Event = ?WS_SEND_NEW_PACKET,
 
-    Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, Data),
+    Payload = pp_console_ws_client:encode_msg(Ref, Topic, Event, Data),
     ok = pp_metrics:ws_send_msg(NetID),
     ?MODULE:send(Payload).
 
@@ -129,13 +130,13 @@ handle_packet(NetID, Packet, PacketTime, Type) ->
 send_address() ->
     PubKeyBin = blockchain_swarm:pubkey_bin(),
     B58 = libp2p_crypto:bin_to_b58(PubKeyBin),
-    RouterAddressPayload = pp_console_ws_handler:encode_msg(
+    RouterAddressPayload = pp_console_ws_client:encode_msg(
         <<"0">>,
         ?ORGANIZATION_TOPIC,
         ?WS_SEND_PP_ADDRESS,
         #{address => B58}
     ),
-    ok = ?MODULE:send(RouterAddressPayload).
+    ?MODULE:send(RouterAddressPayload).
 
 -spec send_get_config() -> ok.
 send_get_config() ->
@@ -143,7 +144,7 @@ send_get_config() ->
     Ref = <<"0">>,
     Topic = ?ORGANIZATION_TOPIC,
     Event = ?WS_SEND_GET_CONFIG,
-    Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, #{}),
+    Payload = pp_console_ws_client:encode_msg(Ref, Topic, Event, #{}),
     ?MODULE:send(Payload).
 
 -spec send_get_org_balances() -> ok.
@@ -152,7 +153,7 @@ send_get_org_balances() ->
     Ref = <<"0">>,
     Topic = ?ORGANIZATION_TOPIC,
     Event = ?WS_SEND_GET_ORG_BALANCES,
-    Payload = pp_console_ws_handler:encode_msg(Ref, Topic, Event, #{}),
+    Payload = pp_console_ws_client:encode_msg(Ref, Topic, Event, #{}),
     ?MODULE:send(Payload).
 
 -spec send(Data :: any()) -> ok.
@@ -163,80 +164,31 @@ send(Data) ->
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 init(Args) ->
-    erlang:process_flag(trap_exit, true),
     lager:info("~p init with ~p", [?SERVER, Args]),
-    WSEndpoint = maps:get(ws_endpoint, Args),
-    Endpoint = maps:get(endpoint, Args),
-    Secret = maps:get(secret, Args),
-    IsActive =
-        case maps:get(is_active, Args, false) of
-            "true" -> true;
-            true -> true;
-            _ -> false
-        end,
-    WSPid =
-        case IsActive of
-            true -> start_ws(Endpoint, WSEndpoint, Secret);
-            false -> undefined
-        end,
-    {ok, #state{
-        ws = WSPid,
-        ws_endpoint = WSEndpoint,
-        is_active = IsActive
-    }}.
+    {ok, #state{}}.
 
-handle_call(activate, _From, State) ->
-    lager:info("activating websocket worker"),
-    {reply, {ok, active}, State#state{is_active = true}};
-handle_call({activate, Limit}, _From, State) ->
-    lager:info("activating websocket for ~p messages", [Limit]),
-    {reply, {ok, active}, State#state{is_active = {true, Limit}}};
-handle_call(deactivate, _From, State) ->
-    lager:info("deactivating websocket worker"),
-    {reply, {ok, inactive}, State#state{is_active = false}};
-handle_call(start_ws, _From, #state{ws_endpoint = WSEndpoint} = State) ->
-    lager:info("starting websocket connection"),
-    #{endpoint := Endpoint, secret := Secret} = maps:from_list(
-        application:get_env(packet_purchaser, pp_console_api, [])
-    ),
-    WSPid = start_ws(Endpoint, WSEndpoint, Secret),
-    {reply, {ok, WSPid}, State#state{ws = WSPid}};
 handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
     {reply, ok, State}.
 
-handle_cast({send, _Payload}, #state{is_active = {true, 0}} = State) ->
-    {noreply, State#state{is_active = false}};
-handle_cast({send, Payload}, #state{is_active = true, ws = WSPid} = State) ->
-    websocket_client:cast(WSPid, {text, Payload}),
+handle_cast({update_ws_pid, NewPid}, #state{ws = OldPid} = State) ->
+    lager:info("ws connection pid updated [old: ~p] [new: ~p]", [OldPid, NewPid]),
+    {noreply, State#state{ws = NewPid}};
+handle_cast({send, Payload}, #state{ws = WSPid} = State) ->
+    case WSPid of
+        undefined ->
+            lager:debug("send with no connection [payload: ~p]", [Payload]);
+        _ ->
+            websocket_client:cast(WSPid, {text, Payload})
+    end,
     {noreply, State};
-handle_cast({send, Payload}, #state{is_active = {true, Limit}, ws = WSPid} = State) ->
-    websocket_client:cast(WSPid, {text, Payload}),
-    {noreply, State#state{is_active = {true, Limit - 1}}};
+handle_cast({ws_message, Topic, Event, Payload}, State) ->
+    handle_message(Topic, Event, Payload),
+    {noreply, State};
 handle_cast(_Msg, State) ->
     lager:debug("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
 
-handle_info(
-    {'EXIT', WSPid0, _Reason},
-    #state{ws = WSPid0, ws_endpoint = WSEndpoint} = State
-) ->
-    lager:error("websocket connection went down: ~p, restarting", [_Reason]),
-    #{endpoint := Endpoint, secret := Secret} = maps:from_list(
-        application:get_env(packet_purchaser, pp_console_api, [])
-    ),
-    WSPid1 = start_ws(Endpoint, WSEndpoint, Secret),
-    {noreply, State#state{ws = WSPid1}};
-handle_info(ws_joined, #state{} = State) ->
-    lager:info("joined, sending packet_purchaser address to console"),
-    ok = ?MODULE:send_address(),
-    ok = ?MODULE:send_get_config(),
-    %% TODO: dc tracker
-    %% ok = ?MODULE:send_get_org_balances(),
-    {noreply, State};
-handle_info({ws_message, Topic, Event, Payload}, State) ->
-    ok = handle_message(Topic, Event, Payload),
-    {noreply, State};
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p, ~p", [_Msg, State]),
     {noreply, State}.
@@ -331,42 +283,3 @@ handle_message(Topic, Msg, Payload) ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
--spec get_token(Endpoint :: binary(), Secret :: binary()) -> {ok, binary()} | {error, any()}.
-get_token(Endpoint, Secret) ->
-    case
-        hackney:post(
-            <<Endpoint/binary, "/api/packet_purchaser/sessions">>,
-            [?HEADER_JSON],
-            jsx:encode(#{secret => Secret}),
-            [with_body, {pool, ?POOL}]
-        )
-    of
-        {ok, 201, _Headers, Body} ->
-            #{<<"jwt">> := Token} = jsx:decode(Body, [return_maps]),
-            {ok, Token};
-        _Other ->
-            {error, _Other}
-    end.
-
--spec start_ws(Endpoint :: binary(), WSEndpoint :: binary(), Secret :: binary()) ->
-    pid() | undefined.
-start_ws(Endpoint, WSEndpoint, Secret) ->
-    case get_token(Endpoint, Secret) of
-        {ok, Token} ->
-            Url = binary_to_list(<<WSEndpoint/binary, "?token=", Token/binary, "&vsn=2.0.0">>),
-            Args = #{
-                url => Url,
-                auto_join => [?ORGANIZATION_TOPIC, ?NET_ID_TOPIC],
-                forward => self()
-            },
-            case pp_console_ws_handler:start_link(Args) of
-                {ok, Pid} ->
-                    Pid;
-                Err ->
-                    lager:error("failed to open ws connection [reason: ~p]", [Err]),
-                    undefined
-            end;
-        Err ->
-            lager:error("failed to get token [reason: ~p]", [Err]),
-            undefined
-    end.
