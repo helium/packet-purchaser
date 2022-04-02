@@ -1,7 +1,18 @@
 -module(pp_http).
 
--compile([export_all, nowarn_export_all]).
+%% Uplinking API
+-export([
+    send_data/2,
+    make_uplink_payload/2
+]).
 
+%% Downlink API
+-export([
+    handle/2,
+    handle_event/3
+]).
+
+%% State Channel API
 -export([
     init_ets/0,
     insert_handler/2,
@@ -9,9 +20,16 @@
     lookup_handler/1
 ]).
 
+%% Incoming message API
 -export([
-    handle/2,
-    handle_event/3
+    handle_prstart_ans/1,
+    handle_xmitdata_req/1
+]).
+
+%% Utils
+-export([
+    make_uplink_token/3,
+    parse_uplink_token/1
 ]).
 
 -define(ETS, pp_http_ets).
@@ -54,38 +72,21 @@ handle(Req, Args) ->
 handle_event(_Event, _Data, _Args) ->
     ok.
 
-%% State Channel =====================================================
+%% Uplinking =========================================================
 
--spec init_ets() -> ok.
-init_ets() ->
-    ?ETS = ets:new(?ETS, [
-        public,
-        named_table,
-        set,
-        {read_concurrency, true},
-        {write_concurrency, true}
-    ]),
+-spec send_data(binary(), map()) -> ok.
+send_data(URL, Data) ->
+    {ok, 200, _Headers, Res} = hackney:post(URL, [], jsx:encode(Data), [with_body]),
+    case pp_http:handle_prstart_ans(jsx:decode(Res)) of
+        ok ->
+            ok;
+        {downlink, {SCPid, SCResp}} ->
+            ok = blockchain_state_channel_common:send_response(SCPid, SCResp)
+    end,
     ok.
 
--spec insert_handler(PubKeyBin :: binary(), SCPid :: pid()) -> ok.
-insert_handler(PubKeyBin, SCPid) ->
-    true = ets:insert(?ETS, {PubKeyBin, SCPid}),
-    ok.
-
--spec delete_handler(PubKeyBin :: binary()) -> ok.
-delete_handler(PubKeyBin) ->
-    true = ets:delete(?ETS, PubKeyBin),
-    ok.
-
--spec lookup_handler(PubKeyBin :: binary()) -> {ok, SCPid :: pid}.
-lookup_handler(PubKeyBin) ->
-    [{_, SCPid}] = ets:lookup(?ETS, PubKeyBin),
-    {ok, SCPid}.
-
-%% Payload Handlers ==================================================
-
--spec handle_packet(net_id(), list(packet())) -> prstart_req().
-handle_packet(NetID, Uplinks) ->
+-spec make_uplink_payload(net_id(), list(packet())) -> prstart_req().
+make_uplink_payload(NetID, Uplinks) ->
     {SCPacket, PacketTime, _} = select_best(Uplinks),
 
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
@@ -122,6 +123,36 @@ handle_packet(NetID, Uplinks) ->
             'GWInfo' => lists:map(fun gw_info/1, Uplinks)
         }
     }.
+
+%% State Channel =====================================================
+
+-spec init_ets() -> ok.
+init_ets() ->
+    ?ETS = ets:new(?ETS, [
+        public,
+        named_table,
+        set,
+        {read_concurrency, true},
+        {write_concurrency, true}
+    ]),
+    ok.
+
+-spec insert_handler(PubKeyBin :: binary(), SCPid :: pid()) -> ok.
+insert_handler(PubKeyBin, SCPid) ->
+    true = ets:insert(?ETS, {PubKeyBin, SCPid}),
+    ok.
+
+-spec delete_handler(PubKeyBin :: binary()) -> ok.
+delete_handler(PubKeyBin) ->
+    true = ets:delete(?ETS, PubKeyBin),
+    ok.
+
+-spec lookup_handler(PubKeyBin :: binary()) -> {ok, SCPid :: pid}.
+lookup_handler(PubKeyBin) ->
+    [{_, SCPid}] = ets:lookup(?ETS, PubKeyBin),
+    {ok, SCPid}.
+
+%% Payload Handlers ==================================================
 
 -spec handle_prstart_ans(prstart_ans()) -> ok | {downlink, downlink()}.
 handle_prstart_ans(#{
