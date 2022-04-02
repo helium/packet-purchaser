@@ -9,8 +9,7 @@
 %% ------------------------------------------------------------------
 -export([
     start_link/1,
-    handle_packet/3,
-    send_data/1
+    handle_packet/3
 ]).
 
 %% ------------------------------------------------------------------
@@ -26,7 +25,7 @@
 ]).
 
 -define(SERVER, ?MODULE).
--define(SEND_DATA_TICK, send_data_tick).
+-define(SEND_DATA, send_data).
 
 -type packet() :: {
     SCPacket :: blockchain_state_channel_packet_v1:packet(),
@@ -56,16 +55,12 @@ start_link(Args) ->
 handle_packet(Pid, SCPacket, PacketTime) ->
     gen_server:cast(Pid, {handle_packet, SCPacket, PacketTime}).
 
--spec send_data(WorkerPid :: pid()) -> ok.
-send_data(Pid) ->
-    gen_server:cast(Pid, send_data).
-
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 init(Args) ->
     #{protocol := {http, Address}, net_id := NetID} = Args,
-    ct:print("~p init with ~p", [?MODULE, Args]),
+    lager:debug("~p init with ~p", [?MODULE, Args]),
     {ok, #state{
         address = Address,
         net_id = pp_utils:binary_to_hexstring(NetID)
@@ -76,48 +71,23 @@ handle_call(_Msg, _From, State) ->
     {reply, ok, State}.
 
 handle_cast(
-    send_data,
-    #state{
-        copies = Copies,
-        address = URL,
-        net_id = NetID
-    } = State0
-) ->
-    Body = pp_http:handle_packet(NetID, Copies),
-    {ok, 200, _Headers, Res} = hackney:post(URL, [], jsx:encode(Body), [with_body]),
-    case pp_http:handle_prstart_ans(jsx:decode(Res)) of
-        ok ->
-            ok;
-        {downlink, {SCPid, SCResp}} ->
-            ok = blockchain_state_channel_common:send_response(SCPid, SCResp)
-    end,
-
-    {stop, data_sent, State0};
-handle_cast(
     {handle_packet, SCPacket, PacketTime},
-    #state{send_data_timer = Timer, copies = []} = State0
+    #state{send_data_timer = Timeout, copies = []} = State0
 ) ->
-    ct:print("first copy"),
-    PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
-    State1 = State0#state{
-        copies = [{SCPacket, PacketTime, pp_location:get_hotspot_location(PubKeyBin)}]
-    },
-    schedule_send_data(Timer),
+    State1 = collect_packet(SCPacket, PacketTime, State0),
+    schedule_send_data(Timeout),
     {noreply, State1};
-handle_cast(
-    {handle_packet, SCPacket, PacketTime},
-    #state{copies = Copies} = State0
-) ->
-    ct:print("collecting another packet"),
-    PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
-    State1 = State0#state{
-        copies = [{SCPacket, PacketTime, pp_location:get_hotspot_location(PubKeyBin)} | Copies]
-    },
+handle_cast({handle_packet, SCPacket, PacketTime}, #state{} = State0) ->
+    State1 = collect_packet(SCPacket, PacketTime, State0),
     {noreply, State1};
 handle_cast(_Msg, State) ->
     lager:warning("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
 
+handle_info(?SEND_DATA, #state{copies = Copies, address = URL, net_id = NetID} = State0) ->
+    Body = pp_http:make_uplink_payload(NetID, Copies),
+    ok = pp_http:send_data(URL, Body),
+    {stop, data_sent, State0};
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p, ~p", [_Msg, State]),
     {noreply, State}.
@@ -134,4 +104,22 @@ terminate(_Reason, #state{}) ->
 %% ------------------------------------------------------------------
 
 schedule_send_data(Timeout) ->
-    timer:apply_after(Timeout, ?MODULE, send_data, [self()]).
+    erlang:send_after(Timeout, self(), ?SEND_DATA).
+
+-spec collect_packet(
+    SCPacket :: blockchain_state_channel_packet_v1:packet(),
+    PacketTime :: non_neg_integer(),
+    #state{}
+) -> #state{}.
+collect_packet(SCPacket, PacketTime, #state{copies = Copies} = State0) ->
+    PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
+    State0#state{
+        copies = [
+            {
+                SCPacket,
+                PacketTime,
+                pp_location:get_hotspot_location(PubKeyBin)
+            }
+            | Copies
+        ]
+    }.
