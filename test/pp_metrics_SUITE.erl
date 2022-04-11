@@ -7,6 +7,7 @@
 ]).
 
 -export([
+    net_id_offer_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -44,6 +45,7 @@
 %%--------------------------------------------------------------------
 all() ->
     [
+        net_id_offer_test
     ].
 
 %%--------------------------------------------------------------------
@@ -58,3 +60,60 @@ init_per_testcase(TestCase, Config) ->
 end_per_testcase(TestCase, Config) ->
     test_utils:end_per_testcase(TestCase, Config).
 
+%%--------------------------------------------------------------------
+%% TESTS
+%%--------------------------------------------------------------------
+net_id_offer_test(_Config) ->
+    UnusedNetID = 16#5FFFFF,
+    DevaddrWithUnassignedNetID = <<UnusedNetID:7/integer, 0:25/integer-unsigned-little>>,
+
+    lists:foreach(fun send_offer/1, [
+        ?DEVADDR_ACTILITY,
+        ?DEVADDR_COMCAST,
+        ?DEVADDR_EXPERIMENTAL,
+        ?DEVADDR_ORANGE,
+        ?DEVADDR_TEKTELIC,
+        DevaddrWithUnassignedNetID
+    ]),
+
+    %% give some time for metrics to process
+    timer:sleep(100),
+
+    OfferCountForNetID = fun(NetID) ->
+        prometheus_counter:value(packet_purchaser_offer_count, [NetID, packet, rejected])
+    end,
+
+    %% 1 offer provided
+    ?assertEqual(1, OfferCountForNetID(?NET_ID_ACTILITY)),
+    ?assertEqual(1, OfferCountForNetID(?NET_ID_COMCAST)),
+    ?assertEqual(1, OfferCountForNetID(?NET_ID_ORANGE)),
+    ?assertEqual(1, OfferCountForNetID(?NET_ID_TEKTELIC)),
+    ?assertEqual(1, OfferCountForNetID(unofficial_net_id)),
+
+    ok.
+
+%% -------------------------------------------------------------------
+%% Utils
+%% -------------------------------------------------------------------
+
+make_offer(DevAddr) ->
+    #{public := PubKey, secret := PrivKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+    SigFun = libp2p_crypto:mk_sig_fun(PrivKey),
+    <<DevNum:32/integer-unsigned>> = DevAddr,
+    Packet = blockchain_helium_packet_v1:new(
+        lorawan,
+        crypto:strong_rand_bytes(20),
+        erlang:system_time(millisecond),
+        -100.0,
+        915.2,
+        "SF8BW125",
+        -12.0,
+        {devaddr, DevNum}
+    ),
+    Offer0 = blockchain_state_channel_offer_v1:from_packet(Packet, PubKeyBin, 'US915'),
+    Offer1 = blockchain_state_channel_offer_v1:sign(Offer0, SigFun),
+    Offer1.
+
+send_offer(DevAddr) ->
+    _ = pp_sc_packet_handler:handle_offer(make_offer(DevAddr), self()).
