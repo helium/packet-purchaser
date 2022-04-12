@@ -201,7 +201,6 @@ init(Args) ->
 
     ok = init_ets(),
     ok = declare_metrics(),
-    _ = schedule_next_tick(),
 
     _ = erlang:send_after(500, self(), post_init),
 
