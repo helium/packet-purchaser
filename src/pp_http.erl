@@ -34,6 +34,7 @@
 ]).
 
 -define(ETS, pp_http_ets).
+-define(TRANSACTION_ID_ETS, pp_http_transaction_id_ets).
 -define(TOKEN_SEP, <<":">>).
 
 %% Roaming MessageTypes
@@ -65,6 +66,7 @@
 -record(state, {
     net_id :: net_id(),
     address :: address(),
+    transaction_id :: integer(),
     packets = [] :: list(packet())
 }).
 
@@ -73,7 +75,11 @@
 
 -spec new(net_id(), address()) -> http().
 new(NetID, Address) ->
-    #state{net_id = NetID, address = Address}.
+    #state{
+        net_id = NetID,
+        address = Address,
+        transaction_id = next_transaction_id()
+    }.
 
 -spec handle_packet(sc_packet(), packet_time(), #state{}) -> {ok, #state{}}.
 handle_packet(SCPacket, PacketTime, #state{packets = Packets} = State) ->
@@ -91,8 +97,13 @@ handle_packet(SCPacket, PacketTime, #state{packets = Packets} = State) ->
     {ok, State1}.
 
 -spec send_data(#state{}) -> ok.
-send_data(#state{net_id = NetID, address = Address, packets = Packets}) ->
-    Data = make_uplink_payload(NetID, Packets),
+send_data(#state{
+    net_id = NetID,
+    address = Address,
+    packets = Packets,
+    transaction_id = TransactionID
+}) ->
+    Data = make_uplink_payload(NetID, Packets, TransactionID),
     send_data(Address, Data).
 
 %% Downlink Handler ==================================================
@@ -124,8 +135,8 @@ send_data(URL, Data) ->
     end,
     ok.
 
--spec make_uplink_payload(net_id(), list(packet())) -> prstart_req().
-make_uplink_payload(NetID, Uplinks) ->
+-spec make_uplink_payload(net_id(), list(packet()), integer()) -> prstart_req().
+make_uplink_payload(NetID, Uplinks, TransactionID) ->
     {SCPacket, PacketTime, _} = select_best(Uplinks),
 
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
@@ -149,7 +160,7 @@ make_uplink_payload(NetID, Uplinks) ->
         'ProtocolVersion' => <<"1.0">>,
         'SenderID' => <<"0xC00053">>,
         'ReceiverID' => NetID,
-        'TransactionID' => 3,
+        'TransactionID' => TransactionID,
         'MessageType' => <<"PRStartReq">>,
         'PHYPayload' => pp_utils:binary_to_hexstring(Payload),
         'ULMetaData' => #{
@@ -163,11 +174,21 @@ make_uplink_payload(NetID, Uplinks) ->
         }
     }.
 
+-spec next_transaction_id() -> integer().
+next_transaction_id() ->
+    ets:update_counter(?TRANSACTION_ID_ETS, counter, 1).
+
 %% State Channel =====================================================
 
 -spec init_ets() -> ok.
 init_ets() ->
-    ?ETS = ets:new(?ETS, [
+    ?TRANSACTION_ID_ETS = ets:new(?TRANSACTION_ID_ETS, [
+        public,
+        named_table,
+        {write_concurrency, true}
+    ]),
+    ets:insert(?TRANSACTION_ID_ETS, {counter, erlang:system_time(millisecond)}),
+    ?SC_HANDLER_ETS = ets:new(?SC_HANDLER_ETS, [
         public,
         named_table,
         set,
