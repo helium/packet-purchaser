@@ -246,8 +246,7 @@ handle_prstart_ans(#{
     {downlink, {SCPid, SCResp}};
 handle_prstart_ans(#{
     <<"MessageType">> := <<"PRStartAns">>,
-    <<"Result">> := #{<<"ResultCode">> := <<"Success">>},
-    <<"DevAddr">> := _
+    <<"Result">> := #{<<"ResultCode">> := <<"Success">>}
 }) ->
     ok;
 handle_prstart_ans(Res) ->
