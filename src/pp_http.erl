@@ -207,14 +207,16 @@ delete_handler(PubKeyBin) ->
     true = ets:delete(?SC_HANDLER_ETS, PubKeyBin),
     ok.
 
--spec lookup_handler(PubKeyBin :: binary()) -> {ok, SCPid :: pid()}.
+-spec lookup_handler(PubKeyBin :: binary()) -> {ok, SCPid :: pid()} | {error, any()}.
 lookup_handler(PubKeyBin) ->
-    [{_, SCPid}] = ets:lookup(?SC_HANDLER_ETS, PubKeyBin),
-    {ok, SCPid}.
+    case ets:lookup(?SC_HANDLER_ETS, PubKeyBin) of
+        [{_, SCPid}] -> {ok, SCPid};
+        [] -> {error, {not_found, PubKeyBin}}
+    end.
 
 %% Payload Handlers ==================================================
 
--spec handle_prstart_ans(prstart_ans()) -> ok | {downlink, downlink()}.
+-spec handle_prstart_ans(prstart_ans()) -> ok | {downlink, downlink()} | {error, any()}.
 handle_prstart_ans(#{
     <<"Result">> := #{<<"ResultCode">> := <<"Success">>},
     <<"MessageType">> := <<"PRStartAns">>,
@@ -224,7 +226,6 @@ handle_prstart_ans(#{
     <<"DevEUI">> := _DevEUI
 }) ->
     {ok, PubKeyBin, Region, PacketTime} = pp_http:parse_uplink_token(Token),
-    {ok, SCPid} = pp_http:lookup_handler(PubKeyBin),
 
     %% NOTE: May need to get DR from response
     DR = 0,
@@ -243,7 +244,10 @@ handle_prstart_ans(#{
 
     SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
 
-    {downlink, {SCPid, SCResp}};
+    case pp_http:lookup_handler(PubKeyBin) of
+        {error, _} = Err -> Err;
+        {ok, SCPid} -> {downlink, {SCPid, SCResp}}
+    end;
 handle_prstart_ans(#{
     <<"MessageType">> := <<"PRStartAns">>,
     <<"Result">> := #{<<"ResultCode">> := <<"Success">>}
@@ -252,7 +256,7 @@ handle_prstart_ans(#{
 handle_prstart_ans(Res) ->
     throw({bad_response, Res}).
 
--spec handle_xmitdata_req(xmitdata_req()) -> {ok, xmitdata_ans(), downlink()}.
+-spec handle_xmitdata_req(xmitdata_req()) -> {ok, xmitdata_ans(), downlink()} | {error, any()}.
 handle_xmitdata_req(XmitDataReq) ->
     #{
         <<"MessageType">> := <<"XmitDataReq">>,
@@ -279,7 +283,7 @@ handle_xmitdata_req(XmitDataReq) ->
 
     %% Make downlink packet
     {ok, PubKeyBin, Region, PacketTime} = ?MODULE:parse_uplink_token(Token),
-    {ok, SCPid} = ?MODULE:lookup_handler(PubKeyBin),
+
     DataRate = pp_lorawan:dr_to_datar(Region, DR),
     DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
         base64:decode(pp_utils:hexstring_to_binary(Payload)),
@@ -292,7 +296,10 @@ handle_xmitdata_req(XmitDataReq) ->
     ),
     SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
 
-    {ok, PayloadResponse, {SCPid, SCResp}}.
+    case ?MODULE:lookup_handler(PubKeyBin) of
+        {error, _} = Err -> Err;
+        {ok, SCPid} -> {ok, PayloadResponse, {SCPid, SCResp}}
+    end.
 
 %% Uplinking Helpers =================================================
 
