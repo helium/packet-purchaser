@@ -126,14 +126,22 @@ handle_event(_Event, _Data, _Args) ->
 
 -spec send_data(binary(), map()) -> ok.
 send_data(URL, Data) ->
-    {ok, 200, _Headers, Res} = hackney:post(URL, [], jsx:encode(Data), [with_body]),
-    case handle_prstart_ans(jsx:decode(Res)) of
-        {downlink, {SCPid, SCResp}} ->
-            ok = blockchain_state_channel_common:send_response(SCPid, SCResp);
-        ok ->
+    case hackney:post(URL, [], jsx:encode(Data), [with_body]) of
+        {ok, 200, _Headers, Res} ->
+            Decoded = jsx:decode(Res),
+            case handle_prstart_ans(Decoded) of
+                {error, Err} ->
+                    lager:error("error handling response: ~p", [Err]),
+                    ok;
+                {downlink, {SCPid, SCResp}} ->
+                    ok = blockchain_state_channel_common:send_response(SCPid, SCResp);
+                ok ->
+                    ok
+            end;
+        {ok, Code, _Headers, Resp} ->
+            lager:error("bad response: [code: ~p] [res: ~p]", [Code, Resp]),
             ok
-    end,
-    ok.
+    end.
 
 -spec make_uplink_payload(net_id(), list(packet()), integer()) -> prstart_req().
 make_uplink_payload(NetID, Uplinks, TransactionID) ->
