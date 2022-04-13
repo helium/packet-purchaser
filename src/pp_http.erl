@@ -2,8 +2,9 @@
 
 %% Uplinking API
 -export([
-    send_data/2,
-    make_uplink_payload/2
+    new/2,
+    handle_packet/3,
+    send_data/1
 ]).
 
 %% Downlink API
@@ -41,20 +42,58 @@
 -type prstart_req() :: map().
 -type prstart_ans() :: map().
 
--type net_id() :: non_neg_integer().
+-type net_id() :: binary().
+-type address() :: binary().
+-type sc_packet() :: blockchain_state_channel_packet_v1:packet().
+-type packet_time() :: non_neg_integer().
 -type packet() :: {
-    SCPacket :: blockchain_state_channel_packet_v1:packet(),
-    PacketTime :: non_neg_integer(),
+    SCPacket :: sc_packet(),
+    PacketTime :: packet_time(),
     Location :: pp_location:location()
 }.
+
 -type downlink() :: {
     SCPid :: pid(),
-    SCResp :: blockchain_state_channel_packet_v1:response()
+    SCResp :: any()
 }.
+%% -type downlink() :: tuple().
 
 -type pubkeybin() :: libp2p_crypto:pubkey_bin().
 -type region() :: atom().
 -type token() :: binary().
+
+-record(state, {
+    net_id :: net_id(),
+    address :: address(),
+    packets = [] :: list(packet())
+}).
+
+-type http() :: #state{}.
+-export_type([http/0]).
+
+-spec new(net_id(), address()) -> http().
+new(NetID, Address) ->
+    #state{net_id = NetID, address = Address}.
+
+-spec handle_packet(sc_packet(), packet_time(), #state{}) -> {ok, #state{}}.
+handle_packet(SCPacket, PacketTime, #state{packets = Packets} = State) ->
+    PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
+    State1 = State#state{
+        packets = [
+            {
+                SCPacket,
+                PacketTime,
+                pp_location:get_hotspot_location(PubKeyBin)
+            }
+            | Packets
+        ]
+    },
+    {ok, State1}.
+
+-spec send_data(#state{}) -> ok.
+send_data(#state{net_id = NetID, address = Address, packets = Packets}) ->
+    Data = make_uplink_payload(NetID, Packets),
+    send_data(Address, Data).
 
 %% Downlink Handler ==================================================
 
@@ -64,7 +103,7 @@ handle(Req, Args) ->
 
     Body = elli_request:body(Req),
     Decoded = jsx:decode(Body),
-    {ok, Response, {SCPid, SCResp}} = pp_http:handle_xmitdata_req(Decoded),
+    {ok, Response, {SCPid, SCResp}} = handle_xmitdata_req(Decoded),
     ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
 
     {200, [], jsx:encode(Response)}.
@@ -77,11 +116,11 @@ handle_event(_Event, _Data, _Args) ->
 -spec send_data(binary(), map()) -> ok.
 send_data(URL, Data) ->
     {ok, 200, _Headers, Res} = hackney:post(URL, [], jsx:encode(Data), [with_body]),
-    case pp_http:handle_prstart_ans(jsx:decode(Res)) of
-        ok ->
-            ok;
+    case handle_prstart_ans(jsx:decode(Res)) of
         {downlink, {SCPid, SCResp}} ->
-            ok = blockchain_state_channel_common:send_response(SCPid, SCResp)
+            ok = blockchain_state_channel_common:send_response(SCPid, SCResp);
+        ok ->
+            ok
     end,
     ok.
 
@@ -147,7 +186,7 @@ delete_handler(PubKeyBin) ->
     true = ets:delete(?ETS, PubKeyBin),
     ok.
 
--spec lookup_handler(PubKeyBin :: binary()) -> {ok, SCPid :: pid}.
+-spec lookup_handler(PubKeyBin :: binary()) -> {ok, SCPid :: pid()}.
 lookup_handler(PubKeyBin) ->
     [{_, SCPid}] = ets:lookup(?ETS, PubKeyBin),
     {ok, SCPid}.

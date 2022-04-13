@@ -2,8 +2,6 @@
 
 -behavior(gen_server).
 
--include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
-
 %% ------------------------------------------------------------------
 %% API Function Exports
 %% ------------------------------------------------------------------
@@ -27,17 +25,10 @@
 -define(SERVER, ?MODULE).
 -define(SEND_DATA, send_data).
 
--type packet() :: {
-    SCPacket :: blockchain_state_channel_packet_v1:packet(),
-    PacketTime :: non_neg_integer(),
-    Location :: pp_location:location()
-}.
-
 -record(state, {
-    copies = [] :: list(packet()),
+    http :: pp_http:http(),
     send_data_timer = 200 :: non_neg_integer(),
-    address :: binary(),
-    net_id :: binary()
+    send_data_timer_ref :: undefined | reference()
 }).
 
 %% ------------------------------------------------------------------
@@ -61,10 +52,7 @@ handle_packet(Pid, SCPacket, PacketTime) ->
 init(Args) ->
     #{protocol := {http, Address}, net_id := NetID} = Args,
     lager:debug("~p init with ~p", [?MODULE, Args]),
-    {ok, #state{
-        address = Address,
-        net_id = pp_utils:binary_to_hexstring(NetID)
-    }}.
+    {ok, #state{http = pp_http:new(pp_utils:binary_to_hexstring(NetID), Address)}}.
 
 handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
@@ -72,21 +60,17 @@ handle_call(_Msg, _From, State) ->
 
 handle_cast(
     {handle_packet, SCPacket, PacketTime},
-    #state{send_data_timer = Timeout, copies = []} = State0
+    #state{send_data_timer = Timeout, send_data_timer_ref = TimerRef0, http = Http0} = State
 ) ->
-    State1 = collect_packet(SCPacket, PacketTime, State0),
-    schedule_send_data(Timeout),
-    {noreply, State1};
-handle_cast({handle_packet, SCPacket, PacketTime}, #state{} = State0) ->
-    State1 = collect_packet(SCPacket, PacketTime, State0),
-    {noreply, State1};
+    {ok, Http1} = pp_http:handle_packet(SCPacket, PacketTime, Http0),
+    {ok, TimerRef1} = maybe_schedule_send_data(Timeout, TimerRef0),
+    {noreply, State#state{http = Http1, send_data_timer_ref = TimerRef1}};
 handle_cast(_Msg, State) ->
     lager:warning("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
 
-handle_info(?SEND_DATA, #state{copies = Copies, address = URL, net_id = NetID} = State0) ->
-    Body = pp_http:make_uplink_payload(NetID, Copies),
-    ok = pp_http:send_data(URL, Body),
+handle_info(?SEND_DATA, #state{http = Http} = State0) ->
+    ok = pp_http:send_data(Http),
     {stop, data_sent, State0};
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p, ~p", [_Msg, State]),
@@ -103,23 +87,7 @@ terminate(_Reason, #state{}) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-schedule_send_data(Timeout) ->
-    erlang:send_after(Timeout, self(), ?SEND_DATA).
-
--spec collect_packet(
-    SCPacket :: blockchain_state_channel_packet_v1:packet(),
-    PacketTime :: non_neg_integer(),
-    #state{}
-) -> #state{}.
-collect_packet(SCPacket, PacketTime, #state{copies = Copies} = State0) ->
-    PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
-    State0#state{
-        copies = [
-            {
-                SCPacket,
-                PacketTime,
-                pp_location:get_hotspot_location(PubKeyBin)
-            }
-            | Copies
-        ]
-    }.
+maybe_schedule_send_data(Timeout, undefined) ->
+    {ok, erlang:send_after(Timeout, self(), ?SEND_DATA)};
+maybe_schedule_send_data(_, Ref) ->
+    {ok, Ref}.
