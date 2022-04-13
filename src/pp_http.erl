@@ -33,7 +33,7 @@
     parse_uplink_token/1
 ]).
 
--define(ETS, pp_http_ets).
+-define(SC_HANDLER_ETS, pp_http_sc_handler_ets).
 -define(TRANSACTION_ID_ETS, pp_http_transaction_id_ets).
 -define(TOKEN_SEP, <<":">>).
 
@@ -199,17 +199,17 @@ init_ets() ->
 
 -spec insert_handler(PubKeyBin :: binary(), SCPid :: pid()) -> ok.
 insert_handler(PubKeyBin, SCPid) ->
-    true = ets:insert(?ETS, {PubKeyBin, SCPid}),
+    true = ets:insert(?SC_HANDLER_ETS, {PubKeyBin, SCPid}),
     ok.
 
 -spec delete_handler(PubKeyBin :: binary()) -> ok.
 delete_handler(PubKeyBin) ->
-    true = ets:delete(?ETS, PubKeyBin),
+    true = ets:delete(?SC_HANDLER_ETS, PubKeyBin),
     ok.
 
 -spec lookup_handler(PubKeyBin :: binary()) -> {ok, SCPid :: pid()}.
 lookup_handler(PubKeyBin) ->
-    [{_, SCPid}] = ets:lookup(?ETS, PubKeyBin),
+    [{_, SCPid}] = ets:lookup(?SC_HANDLER_ETS, PubKeyBin),
     {ok, SCPid}.
 
 %% Payload Handlers ==================================================
