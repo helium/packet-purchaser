@@ -132,12 +132,13 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
             }
             | _PotentiallIgnoredSecondNetID
         ] ->
-            {element(1, Protocol), #{
-                protocol => Protocol,
-                net_id => NetID,
-                multi_buy => MultiBuy,
-                disable_pull_data => DisablePullData
-            }}
+            {element(1, Protocol),
+                maybe_clean_udp(#{
+                    protocol => Protocol,
+                    net_id => NetID,
+                    multi_buy => MultiBuy,
+                    disable_pull_data => DisablePullData
+                })}
     end.
 
 -spec lookup_devaddr({devaddr, non_neg_integer()}) ->
@@ -161,12 +162,13 @@ lookup_devaddr({devaddr, DevAddr}) ->
                         disable_pull_data = DisablePullData
                     }
                 ] ->
-                    {element(1, Protocol), #{
-                        protocol => Protocol,
-                        net_id => NetID,
-                        multi_buy => MultiBuy,
-                        disable_pull_data => DisablePullData
-                    }}
+                    {element(1, Protocol),
+                        maybe_clean_udp(#{
+                            protocol => Protocol,
+                            net_id => NetID,
+                            multi_buy => MultiBuy,
+                            disable_pull_data => DisablePullData
+                        })}
             end;
         Err ->
             Err
@@ -456,6 +458,21 @@ clean_config_value(Bin) ->
             Bin
     end.
 %% clean_base16(_) -> throw(malformed_base16).
+
+
+%%--------------------------------------------------------------------
+%% @doc
+%% The storage of protocols was changed in ets.
+%% Here we honor the original expectation of pp_udp_worker
+%% in having the address and port broken out.
+%% @end
+%%--------------------------------------------------------------------
+-spec maybe_clean_udp(map()) -> map().
+maybe_clean_udp(#{protocol := {udp, Address, Port}} = Args) ->
+    Args#{address => Address, port => Port};
+maybe_clean_udp(Args) ->
+    Args.
+
 
 -ifdef(TEST).
 
