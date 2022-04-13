@@ -54,7 +54,7 @@
     filename :: testing | string()
 }).
 
--type udp_protocol() :: {udp, Address :: binary(), Port :: non_neg_integer()}.
+-type udp_protocol() :: {udp, Address :: string(), Port :: non_neg_integer()}.
 -type http_protocol() :: {http, ConnectionString :: binary()}.
 
 -record(eui, {
@@ -390,9 +390,14 @@ transform_config_entry(Entry) ->
     Protocol0 = maps:get(<<"protocol">>, Entry, ?DEFAULT_PROTOCOL),
     Protocol =
         case erlang:binary_to_existing_atom(Protocol0) of
-            udp -> {udp, maps:get(<<"address">>, Entry), maps:get(<<"port">>, Entry)};
-            http -> {http, maps:get(<<"http_endpoint">>, Entry)};
-            Other -> throw({invalid_protocol_type, Other})
+            udp ->
+                Address = erlang:binary_to_list(maps:get(<<"address">>, Entry)),
+                Port = maps:get(<<"port">>, Entry),
+                {udp, Address, Port};
+            http ->
+                {http, maps:get(<<"http_endpoint">>, Entry)};
+            Other ->
+                throw({invalid_protocol_type, Other})
         end,
 
     JoinRecords = lists:map(
