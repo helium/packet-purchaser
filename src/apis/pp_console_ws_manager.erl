@@ -82,10 +82,15 @@ init(Args) ->
         ws_endpoint = WSEndpoint,
         backoff = Backoff
     },
-    case maps:get(auto_connect, Args, false) of
+    AutoConnect =
+        case maps:get(auto_connect, Args, false) of
+            "true" -> true;
+            V -> V
+        end,
+    case AutoConnect of
         true ->
             {ok, State, {continue, ?GET_TOKEN}};
-        false ->
+        _ ->
             {ok, State}
     end.
 
