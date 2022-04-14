@@ -188,7 +188,7 @@ http_downlink_test(_Config) ->
 
     {ok, 200, _Headers, Resp} = hackney:post(
         <<"http://127.0.0.1:3003/downlink">>,
-        [],
+        [{<<"Host">>, <<"localhost">>}],
         jsx:encode(DownlinkBody),
         [with_body]
     ),

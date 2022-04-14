@@ -114,14 +114,33 @@ send_data(#state{
 
 handle(Req, Args) ->
     Method = elli_request:method(Req),
-    ct:pal("~p", [{Method, elli_request:path(Req), Req, Args}]),
+    Host = elli_request:get_header(<<"Host">>, Req),
+    lager:info("request from [host: ~p]", [Host]),
 
-    Body = elli_request:body(Req),
-    Decoded = jsx:decode(Body),
-    {ok, Response, {SCPid, SCResp}} = handle_xmitdata_req(Decoded),
-    ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
+    case erlang:byte_size(Host) of
+        0 ->
+            {400, [], <<>>};
+        _ ->
+            Allowed = application:get_env(packet_purchaser, http_roaming_ip_list, []),
+            case string:find(Allowed, Host) of
+                nomatch ->
+                    {400, [], <<>>};
+                _ ->
+                    lager:debug("request: ~p", [{Method, elli_request:path(Req), Req, Args}]),
+                    Body = elli_request:body(Req),
+                    Decoded = jsx:decode(Body),
 
-    {200, [], jsx:encode(Response)}.
+                    case handle_xmitdata_req(Decoded) of
+                        {ok, Response, {SCPid, SCResp}} ->
+                            lager:debug("sending downlink [sc_pid: ~p] [response: ~p]", [SCPid, Response]),
+                            ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
+                            {200, [], jsx:encode(Response)};
+                        {error, _} = Err ->
+                            lager:error("~p", [Err]),
+                            {500, [], <<"An error occurred">>}
+                    end
+            end
+    end.
 
 handle_event(_Event, _Data, _Args) ->
     ok.
@@ -294,23 +313,26 @@ handle_xmitdata_req(XmitDataReq) ->
     },
 
     %% Make downlink packet
-    {ok, PubKeyBin, Region, PacketTime} = ?MODULE:parse_uplink_token(Token),
+    case ?MODULE:parse_uplink_token(Token) of
+        {error, _} = Err ->
+            Err;
+        {ok, PubKeyBin, Region, PacketTime} ->
+            DataRate = pp_lorawan:dr_to_datar(Region, DR),
+            DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
+                base64:decode(pp_utils:hexstring_to_binary(Payload)),
+                _SignalStrength = 27,
+                %% FIXME: Make sure this is the correct resolution
+                PacketTime + Delay,
+                Frequency,
+                DataRate,
+                _RX2 = undefined
+            ),
+            SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
 
-    DataRate = pp_lorawan:dr_to_datar(Region, DR),
-    DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
-        base64:decode(pp_utils:hexstring_to_binary(Payload)),
-        _SignalStrength = 27,
-        %% FIXME: Make sure this is the correct resolution
-        PacketTime + Delay,
-        Frequency,
-        DataRate,
-        _RX2 = undefined
-    ),
-    SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
-
-    case ?MODULE:lookup_handler(PubKeyBin) of
-        {error, _} = Err -> Err;
-        {ok, SCPid} -> {ok, PayloadResponse, {SCPid, SCResp}}
+            case ?MODULE:lookup_handler(PubKeyBin) of
+                {error, _} = Err -> Err;
+                {ok, SCPid} -> {ok, PayloadResponse, {SCPid, SCResp}}
+            end
     end.
 
 %% Uplinking Helpers =================================================
@@ -365,11 +387,18 @@ make_uplink_token(PubKeyBin, Region, PacketTime) ->
     Token1 = erlang:iolist_to_binary(Token0),
     pp_utils:binary_to_hexstring(Token1).
 
--spec parse_uplink_token(token()) -> {ok, pubkeybin(), region(), non_neg_integer()}.
+-spec parse_uplink_token(token()) ->
+    {ok, pubkeybin(), region(), non_neg_integer()} | {error, any()}.
 parse_uplink_token(<<"0x", Token/binary>>) ->
     Bin = pp_utils:hex_to_binary(Token),
-    [B58, RegionBin, PacketTimeBin] = binary:split(Bin, ?TOKEN_SEP, [global]),
-    PubKeyBin = libp2p_crypto:b58_to_bin(erlang:binary_to_list(B58)),
-    Region = erlang:binary_to_existing_atom(RegionBin),
-    PacketTime = erlang:binary_to_integer(PacketTimeBin),
-    {ok, PubKeyBin, Region, PacketTime}.
+    case binary:split(Bin, ?TOKEN_SEP, [global]) of
+        [B58, RegionBin, PacketTimeBin] ->
+            PubKeyBin = libp2p_crypto:b58_to_bin(erlang:binary_to_list(B58)),
+            Region = erlang:binary_to_existing_atom(RegionBin),
+            PacketTime = erlang:binary_to_integer(PacketTimeBin),
+            {ok, PubKeyBin, Region, PacketTime};
+        _ ->
+            {error, malformed_token}
+    end;
+parse_uplink_token(_) ->
+    {error, malformed_token}.
