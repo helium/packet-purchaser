@@ -184,7 +184,6 @@ http_downlink_test(_Config) ->
         }
     },
 
-    ok = start_downlink_listener(),
     ok = pp_http:insert_handler(PubKeyBin, self()),
 
     {ok, 200, _Headers, Resp} = hackney:post(
@@ -1537,16 +1536,6 @@ get_udp_worker_address_port(Pid) ->
         _ShutdownTimer
     } = sys:get_state(Pid),
     pp_udp_socket:get_address(Socket).
-
-start_downlink_listener() ->
-    %% Downlinks sent from an LNS whenever they decide
-    {ok, _ElliPid} = elli:start_link([
-        {callback, pp_http},
-        {callback_args, #{forward => self()}},
-        {port, 3003},
-        {min_acceptors, 1}
-    ]),
-    ok.
 
 start_uplink_listener() ->
     %% Uplinks we send to an LNS

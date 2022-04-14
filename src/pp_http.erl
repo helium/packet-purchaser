@@ -1,5 +1,9 @@
 -module(pp_http).
 
+-include_lib("elli/include/elli.hrl").
+
+-behaviour(elli_handler).
+
 %% Uplinking API
 -export([
     new/2,

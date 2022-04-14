@@ -16,7 +16,8 @@
     hexstring_to_binary/1,
     binary_to_hex/1,
     binary_to_hexstring/1,
-    format_time/1
+    format_time/1,
+    get_env_int/2
 ]).
 
 -spec init_ets() -> ok.
@@ -114,6 +115,10 @@ binary_to_hex(ID) ->
 hex_to_binary(ID) ->
     <<<<Z>> || <<X:8, Y:8>> <= ID, Z <- [erlang:binary_to_integer(<<X, Y>>, 16)]>>.
 
-%%--------------------------------------------------------------------
-%% lora mac region
-%%--------------------------------------------------------------------
+-spec get_env_int(atom(), integer()) -> integer().
+get_env_int(Key, Default) ->
+    case application:get_env(packet_purchaser, Key, Default) of
+        [] -> Default;
+        Str when is_list(Str) -> erlang:list_to_integer(Str);
+        I -> I
+    end.
