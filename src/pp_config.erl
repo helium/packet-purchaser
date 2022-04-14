@@ -459,7 +459,6 @@ clean_config_value(Bin) ->
     end.
 %% clean_base16(_) -> throw(malformed_base16).
 
-
 %%--------------------------------------------------------------------
 %% @doc
 %% The storage of protocols was changed in ets.
@@ -472,7 +471,6 @@ maybe_clean_udp(#{protocol := {udp, Address, Port}} = Args) ->
     Args#{address => Address, port => Port};
 maybe_clean_udp(Args) ->
     Args.
-
 
 -ifdef(TEST).
 

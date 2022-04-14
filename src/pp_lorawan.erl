@@ -906,7 +906,7 @@ mk_join_accept_cf_list(_Region) ->
 cflist_for_frequencies(Frequencies) ->
     Channels = <<
         <<X:24/integer-unsigned-little>>
-     || X <- Frequencies
+        || X <- Frequencies
     >>,
     <<Channels/binary, 0:8/integer>>.
 
