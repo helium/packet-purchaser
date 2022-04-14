@@ -103,7 +103,8 @@
         ]},
         {traces, [
             {{lager_file_backend, "packet_purchaser.log"}, [{application, packet_purchaser}], info},
-            {{lager_file_backend, "packet_purchaser.log"}, [{module, pp_sc_packet_handler}], info}
+            {{lager_file_backend, "packet_purchaser.log"}, [{module, pp_sc_packet_handler}], info},
+            {{lager_file_backend, "downlink.log"}, [{module, pp_http}], debug}
         ]}
     ]}
 ].
