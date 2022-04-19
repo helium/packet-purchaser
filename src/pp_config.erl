@@ -389,14 +389,13 @@ transform_config_entry(Entry) ->
     Joins = maps:get(<<"joins">>, Entry, []),
     DisablePullData = maps:get(<<"disable_pull_data">>, Entry, false),
 
-    Protocol0 = maps:get(<<"protocol">>, Entry, ?DEFAULT_PROTOCOL),
     Protocol =
-        case erlang:binary_to_existing_atom(Protocol0) of
-            udp ->
+        case maps:get(<<"protocol">>, Entry, ?DEFAULT_PROTOCOL) of
+            <<"udp">> ->
                 Address = erlang:binary_to_list(maps:get(<<"address">>, Entry)),
                 Port = maps:get(<<"port">>, Entry),
                 {udp, Address, Port};
-            http ->
+            <<"http">> ->
                 {http, maps:get(<<"http_endpoint">>, Entry)};
             Other ->
                 throw({invalid_protocol_type, Other})
