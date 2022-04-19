@@ -1,7 +1,6 @@
 -module(test_utils).
 
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
--include_lib("common_test/include/ct.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
 -include("packet_purchaser.hrl").

@@ -12,7 +12,6 @@
     location_counter_test/1
 ]).
 
--include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
 -include("lorawan_vars.hrl").

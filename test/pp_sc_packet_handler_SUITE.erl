@@ -135,24 +135,8 @@ end_per_testcase(TestCase, Config) ->
 %%--------------------------------------------------------------------
 
 http_downlink_test(_Config) ->
-    %% Two thing need to happen in this test.
-    %% 1. Queue the downlink with the appropriate state channel handler.
-    %% 2. Send an http response to the downlink requester.
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
-
-    %% 'DevEUI'
-    %% 'FPort'
-    %% 'FCntDown'
-    %% 'DLFreq1'
-    %% 'DLFreq2'
-    %% 'RXDelay1'
-    %% 'ClassMode'
-    %% 'DataRate1'
-    %% 'DataRate2'
-    %% 'FNSULToken'
-    %% 'GWInfo'
-    %% 'HiPriorityFlag'
 
     DownlinkPayload = <<"downlink_payload">>,
     DownlinkTimestamp = erlang:system_time(millisecond),
@@ -160,7 +144,6 @@ http_downlink_test(_Config) ->
     DownlinkDatr = <<"SF10BW125">>,
 
     Token = pp_http:make_uplink_token(PubKeyBin, 'US915', DownlinkTimestamp),
-
     RXDelay = 1,
 
     DownlinkBody = #{
@@ -185,7 +168,6 @@ http_downlink_test(_Config) ->
     },
 
     ok = pp_http:insert_handler(PubKeyBin, self()),
-
     {ok, 200, _Headers, Resp} = hackney:post(
         <<"http://127.0.0.1:3003/downlink">>,
         [{<<"Host">>, <<"localhost">>}],
@@ -318,7 +300,6 @@ http_uplink_join_test(_Config) ->
     %% 3. Expect a PRStartAns from the lns
     %%   - With DevEUI
     %%   - With PHyPayload
-    %% Make sure we're mocking things correctly
     case
         test_utils:match_map(
             #{
