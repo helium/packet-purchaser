@@ -183,4 +183,3 @@ datar_to_tuple(DataRate) when is_list(DataRate) ->
 datar_to_tuple(DataRate) when is_integer(DataRate) ->
     %% FSK
     DataRate.
-

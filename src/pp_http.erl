@@ -132,7 +132,10 @@ handle(Req, Args) ->
 
                     case handle_xmitdata_req(Decoded) of
                         {ok, Response, {SCPid, SCResp}} ->
-                            lager:debug("sending downlink [sc_pid: ~p] [response: ~p]", [SCPid, Response]),
+                            lager:debug(
+                                "sending downlink [sc_pid: ~p] [response: ~p]",
+                                [SCPid, Response]
+                            ),
                             ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
                             {200, [], jsx:encode(Response)};
                         {error, _} = Err ->
