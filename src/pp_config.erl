@@ -148,7 +148,7 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
     | {error, routing_not_found}
     | {error, invalid_net_id_type}.
 lookup_devaddr({devaddr, DevAddr}) ->
-    case lorawan_devaddr:net_id(DevAddr) of
+    case lora_subnet:parse_netid(DevAddr) of
         {ok, NetID} ->
             case ets:lookup(?DEVADDR_ETS, NetID) of
                 [] ->

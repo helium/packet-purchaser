@@ -146,7 +146,7 @@ handle_offer_resp(Routing, Offer, Resp) ->
                     {_, #{net_id := NetID0}} -> {ok, NetID0}
                 end;
             {devaddr, DevAddr} ->
-                case lorawan_devaddr:net_id(DevAddr) of
+                case lora_subnet:parse_netid(DevAddr) of
                     {error, Reason} -> {ok, Reason};
                     {_, NetID0} -> {ok, NetID0}
                 end
