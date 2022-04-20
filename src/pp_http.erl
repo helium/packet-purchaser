@@ -53,7 +53,7 @@
 -type packet() :: {
     SCPacket :: sc_packet(),
     PacketTime :: packet_time(),
-    Location :: pp_location:location()
+    Location :: pp_utils:location()
 }.
 
 -type downlink() :: {
@@ -92,7 +92,7 @@ handle_packet(SCPacket, PacketTime, #state{packets = Packets} = State) ->
             {
                 SCPacket,
                 PacketTime,
-                pp_location:get_hotspot_location(PubKeyBin)
+                pp_utils:get_hotspot_location(PubKeyBin)
             }
             | Packets
         ]

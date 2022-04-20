@@ -71,7 +71,6 @@ init([]) ->
 
     ok = pp_config:init_ets(),
     ok = pp_http:init_ets(),
-    ok = pp_location:init_ets(),
     ok = pp_multi_buy:init_ets(),
     ok = pp_utils:init_ets(),
 
@@ -85,7 +84,6 @@ init([]) ->
         ?WORKER(pp_config, [ConfigFilename]),
         ?SUP(blockchain_sup, [BlockchainOpts]),
         ?WORKER(pp_sc_worker, [#{}]),
-        ?WORKER(pp_location, []),
         ?SUP(pp_udp_sup, []),
         ?SUP(pp_http_sup, []),
         ?SUP(pp_console_sup, []),

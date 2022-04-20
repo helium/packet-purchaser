@@ -4,6 +4,12 @@
 
 -define(ETS, pp_utils_ets).
 
+-define(LOCATION_NONE, no_location).
+-define(LOCATION_UNKNOWN, unknown).
+
+-type location() :: ?LOCATION_NONE | {Index :: pos_integer(), Lat :: float(), Long :: float()}.
+-export_type([location/0]).
+
 -export([
     init_ets/0,
     get_chain/0,
@@ -17,7 +23,8 @@
     binary_to_hex/1,
     binary_to_hexstring/1,
     format_time/1,
-    get_env_int/2
+    get_env_int/2,
+    get_hotspot_location/1
 ]).
 
 -spec init_ets() -> ok.
@@ -116,4 +123,28 @@ get_env_int(Key, Default) ->
         [] -> Default;
         Str when is_list(Str) -> erlang:list_to_integer(Str);
         I -> I
+    end.
+
+-spec get_hotspot_location(PubKeyBin :: binary()) ->
+    ?LOCATION_UNKNOWN
+    | ?LOCATION_NONE
+    | {Index :: pos_integer(), Lat :: float(), Long :: float()}.
+get_hotspot_location(PubKeyBin) ->
+    case ?MODULE:get_chain() of
+        fetching ->
+            ?LOCATION_UNKNOWN;
+        Chain ->
+            Ledger = blockchain:ledger(Chain),
+            case blockchain_ledger_v1:find_gateway_info(PubKeyBin, Ledger) of
+                {error, _} ->
+                    ?LOCATION_NONE;
+                {ok, Hotspot} ->
+                    case blockchain_ledger_gateway_v2:location(Hotspot) of
+                        undefined ->
+                            ?LOCATION_NONE;
+                        Index ->
+                            {Lat, Long} = h3:to_geo(Index),
+                            {Index, Lat, Long}
+                    end
+            end
     end.
