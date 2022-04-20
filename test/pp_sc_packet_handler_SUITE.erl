@@ -143,7 +143,7 @@ http_downlink_test(_Config) ->
     DownlinkFreq = 915.0,
     DownlinkDatr = <<"SF10BW125">>,
 
-    Token = pp_http:make_uplink_token(PubKeyBin, 'US915', DownlinkTimestamp),
+    Token = pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', DownlinkTimestamp),
     RXDelay = 1,
 
     DownlinkBody = #{
@@ -167,7 +167,7 @@ http_downlink_test(_Config) ->
         }
     },
 
-    ok = pp_http:insert_handler(PubKeyBin, self()),
+    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
     {ok, 200, _Headers, Resp} = hackney:post(
         <<"http://127.0.0.1:3003/downlink">>,
         [{<<"Host">>, <<"localhost">>}],
@@ -217,7 +217,7 @@ http_uplink_join_test(_Config) ->
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
-    ok = pp_http:insert_handler(PubKeyBin, self()),
+    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
     ok = start_uplink_listener(),
 
     DevEUI = <<0, 0, 0, 0, 0, 0, 0, 1>>,
@@ -258,7 +258,7 @@ http_uplink_join_test(_Config) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
 
-    Token = pp_http:make_uplink_token(PubKeyBin, 'US915', PacketTime),
+    Token = pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', PacketTime),
 
     %% 2. Expect a PRStartReq to the lns
     {ok, #{<<"TransactionID">> := TransactionID}, {200, RespBody}} = pp_lns:http_rcv(
@@ -388,7 +388,7 @@ http_uplink_packet_test(_Config) ->
                 <<"RFRegion">> => erlang:atom_to_binary(Region),
                 <<"RecvTime">> => pp_utils:format_time(PacketTime),
 
-                <<"FNSULToken">> => pp_http:make_uplink_token(PubKeyBin, 'US915', PacketTime),
+                <<"FNSULToken">> => pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', PacketTime),
 
                 <<"GWInfo">> => [
                     #{
@@ -465,7 +465,7 @@ http_multiple_gateways_test(_Config) ->
             <<"RecvTime">> => pp_utils:format_time(PacketTime1),
 
             %% Gateway with better RSSI should be chosen
-            <<"FNSULToken">> => pp_http:make_uplink_token(PubKeyBin1, 'US915', PacketTime1),
+            <<"FNSULToken">> => pp_roaming_protocol:make_uplink_token(PubKeyBin1, 'US915', PacketTime1),
 
             <<"GWInfo">> => [
                 #{

@@ -70,12 +70,12 @@ init([]) ->
     {ok, ConfigFilename} = application:get_env(packet_purchaser, pp_routing_config_filename),
 
     ok = pp_config:init_ets(),
-    ok = pp_http:init_ets(),
+    ok = pp_roaming_downlink:init_ets(),
     ok = pp_multi_buy:init_ets(),
     ok = pp_utils:init_ets(),
 
     ElliConfig = [
-        {callback, pp_http},
+        {callback, pp_roaming_downlink},
         {port, pp_utils:get_env_int(http_roaming_port, 8081)}
     ],
 
@@ -89,7 +89,7 @@ init([]) ->
         ?SUP(pp_console_sup, []),
         ?WORKER(pp_metrics, []),
         #{
-            id => pp_http,
+            id => pp_roaming_downlink,
             start => {elli, start_link, [ElliConfig]},
             restart => permanent,
             shutdown => 5000,

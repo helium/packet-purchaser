@@ -25,8 +25,14 @@
 -define(SERVER, ?MODULE).
 -define(SEND_DATA, send_data).
 
+-type address() :: binary().
+
 -record(state, {
-    http :: pp_http:http(),
+    net_id :: pp_roaming_protocol:net_id(),
+    address :: address(),
+    transaction_id :: integer(),
+    packets = [] :: list(pp_roaming_protocol:packet()),
+
     send_data_timer = 200 :: non_neg_integer(),
     send_data_timer_ref :: undefined | reference()
 }).
@@ -52,7 +58,11 @@ handle_packet(Pid, SCPacket, PacketTime) ->
 init(Args) ->
     #{protocol := {http, Address}, net_id := NetID} = Args,
     lager:debug("~p init with ~p", [?MODULE, Args]),
-    {ok, #state{http = pp_http:new(pp_utils:binary_to_hexstring(NetID), Address)}}.
+    {ok, #state{
+        net_id = pp_utils:binary_to_hexstring(NetID),
+        address = Address,
+        transaction_id = next_transaction_id()
+    }}.
 
 handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
@@ -60,18 +70,18 @@ handle_call(_Msg, _From, State) ->
 
 handle_cast(
     {handle_packet, SCPacket, PacketTime},
-    #state{send_data_timer = Timeout, send_data_timer_ref = TimerRef0, http = Http0} = State
+    #state{send_data_timer = Timeout, send_data_timer_ref = TimerRef0} = State0
 ) ->
-    {ok, Http1} = pp_http:handle_packet(SCPacket, PacketTime, Http0),
+    {ok, State1} = do_handle_packet(SCPacket, PacketTime, State0),
     {ok, TimerRef1} = maybe_schedule_send_data(Timeout, TimerRef0),
-    {noreply, State#state{http = Http1, send_data_timer_ref = TimerRef1}};
+    {noreply, State1#state{send_data_timer_ref = TimerRef1}};
 handle_cast(_Msg, State) ->
     lager:warning("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
 
-handle_info(?SEND_DATA, #state{http = Http} = State0) ->
-    ok = pp_http:send_data(Http),
-    {stop, data_sent, State0};
+handle_info(?SEND_DATA, #state{} = State) ->
+    ok = send_data(State),
+    {stop, data_sent, State};
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p, ~p", [_Msg, State]),
     {noreply, State}.
@@ -91,3 +101,51 @@ maybe_schedule_send_data(Timeout, undefined) ->
     {ok, erlang:send_after(Timeout, self(), ?SEND_DATA)};
 maybe_schedule_send_data(_, Ref) ->
     {ok, Ref}.
+
+-spec next_transaction_id() -> integer().
+next_transaction_id() ->
+    rand:uniform(16#FFFFFFFF).
+
+-spec do_handle_packet(
+    SCPacket :: pp_roaming_protocol:sc_packet(),
+    PacketTime :: pp_roaming_protocol:packet_time(),
+    State :: #state{}
+) -> {ok, #state{}}.
+do_handle_packet(SCPacket, PacketTime, #state{packets = Packets} = State) ->
+    PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
+    State1 = State#state{
+        packets = [
+            {
+                SCPacket,
+                PacketTime,
+                pp_utils:get_hotspot_location(PubKeyBin)
+            }
+            | Packets
+        ]
+    },
+    {ok, State1}.
+
+-spec send_data(#state{}) -> ok.
+send_data(#state{
+    net_id = NetID,
+    address = Address,
+    packets = Packets,
+    transaction_id = TransactionID
+}) ->
+    Data = pp_roaming_protocol:make_uplink_payload(NetID, Packets, TransactionID),
+    case hackney:post(Address, [], jsx:encode(Data), [with_body]) of
+        {ok, 200, _Headers, Res} ->
+            Decoded = jsx:decode(Res),
+            case pp_roaming_protocol:handle_prstart_ans(Decoded) of
+                {error, Err} ->
+                    lager:error("error handling response: ~p", [Err]),
+                    ok;
+                {downlink, {SCPid, SCResp}} ->
+                    ok = blockchain_state_channel_common:send_response(SCPid, SCResp);
+                ok ->
+                    ok
+            end;
+        {ok, Code, _Headers, Resp} ->
+            lager:error("bad response: [code: ~p] [res: ~p]", [Code, Resp]),
+            ok
+    end.
