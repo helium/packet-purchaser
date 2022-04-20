@@ -38,7 +38,6 @@
 ]).
 
 -define(SC_HANDLER_ETS, pp_http_sc_handler_ets).
--define(TRANSACTION_ID_ETS, pp_http_transaction_id_ets).
 -define(TOKEN_SEP, <<":">>).
 
 %% Roaming MessageTypes
@@ -210,18 +209,12 @@ make_uplink_payload(NetID, Uplinks, TransactionID) ->
 
 -spec next_transaction_id() -> integer().
 next_transaction_id() ->
-    ets:update_counter(?TRANSACTION_ID_ETS, counter, 1).
+    rand:uniform(16#FFFFFFFF).
 
 %% State Channel =====================================================
 
 -spec init_ets() -> ok.
 init_ets() ->
-    ?TRANSACTION_ID_ETS = ets:new(?TRANSACTION_ID_ETS, [
-        public,
-        named_table,
-        {write_concurrency, true}
-    ]),
-    ets:insert(?TRANSACTION_ID_ETS, {counter, erlang:system_time(millisecond)}),
     ?SC_HANDLER_ETS = ets:new(?SC_HANDLER_ETS, [
         public,
         named_table,
