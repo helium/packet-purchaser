@@ -43,16 +43,11 @@ get_chain() ->
             Chain
     end.
 
--spec get_ledger() -> blockchain_ledger_v1:ledger().
+-spec get_ledger() -> fetching | blockchain_ledger_v1:ledger().
 get_ledger() ->
-    Key = blockchain_ledger,
-    case ets:lookup(?ETS, Key) of
-        [] ->
-            Ledger = blockchain:ledger(),
-            true = ets:insert(?ETS, {Key, Ledger}),
-            Ledger;
-        [{Key, Ledger}] ->
-            Ledger
+    case get_chain() of
+        fetching -> fetching;
+        Chain -> blockchain:ledger(Chain)
     end.
 
 format_time(Time) ->
