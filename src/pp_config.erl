@@ -132,7 +132,7 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
             }
             | _PotentiallIgnoredSecondNetID
         ] ->
-            {element(1, Protocol),
+            {erlang:element(1, Protocol),
                 maybe_clean_udp(#{
                     protocol => Protocol,
                     net_id => NetID,
@@ -162,7 +162,7 @@ lookup_devaddr({devaddr, DevAddr}) ->
                         disable_pull_data = DisablePullData
                     }
                 ] ->
-                    {element(1, Protocol),
+                    {erlang:element(1, Protocol),
                         maybe_clean_udp(#{
                             protocol => Protocol,
                             net_id => NetID,
