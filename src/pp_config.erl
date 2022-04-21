@@ -386,6 +386,7 @@ transform_config_entry(Entry) ->
     MultiBuy =
         case maps:get(<<"multi_buy">>, Entry, null) of
             null -> unlimited;
+            <<"unlimited">> -> unlimited;
             Val -> Val
         end,
     Joins = maps:get(<<"joins">>, Entry, []),
