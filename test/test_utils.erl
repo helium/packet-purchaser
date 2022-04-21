@@ -146,6 +146,7 @@ end_per_testcase(TestCase, Config) ->
     ok = ResetEnvFun(),
     ok = gen_server:stop(FakeLNSPid),
     ok = application:stop(?APP),
+    ok = application:stop(ranch),
     ok = application:stop(lager),
     ok.
 
