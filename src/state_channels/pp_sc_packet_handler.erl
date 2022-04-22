@@ -50,25 +50,29 @@ handle_packet(SCPacket, PacketTime, Pid) ->
     case pp_config:lookup(RoutingInfo) of
         {error, {buying_inactive, NetID}} ->
             lager:debug(
+                [{packet_type, PacketType}, {net_id, NetID}, {error, buying_inactive}],
                 "~s: buying disabled for ~p in net_id ~p",
                 [PacketType, RoutingInfo, NetID]
             ),
             {error, buying_inactive};
         {error, routing_not_found} = Err ->
             lager:debug(
+                [{packet_type, PacketType}, Err],
                 "~s: routing information not found [routing_info: ~p]",
                 [PacketType, RoutingInfo]
             ),
             Err;
         {error, unmapped_eui} = Err ->
             lager:debug(
+                [{packet_type, PacketType}, Err],
                 "~s: no mapping for [routing_info: ~p]",
                 [PacketType, RoutingInfo]
             ),
             Err;
         {error, invalid_net_id_type} = Err ->
             lager:debug(
-                "~s: inavlid net id type [routing_info: ~p]",
+                [{packet_type, PacketType}, Err],
+                "~s: invalid net id type [routing_info: ~p]",
                 [PacketType, RoutingInfo]
             ),
             Err;
@@ -76,6 +80,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
             case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs) of
                 {ok, WorkerPid} ->
                     lager:debug(
+                        [{packet_type, PacketType}, {net_id, NetID}, {protocol, udp}],
                         "~s: [routing_info: ~p] [net_id: ~p]",
                         [PacketType, RoutingInfo, NetID]
                     ),
@@ -84,21 +89,28 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                     pp_udp_worker:push_data(WorkerPid, SCPacket, PacketTime, Pid);
                 {error, worker_not_started} = Err ->
                     lager:error(
+                        [{packet_type, PacketType}, {net_id, NetID}],
                         "failed to start udp connector for ~p: ~p",
                         [blockchain_utils:addr2name(PubKeyBin)]
                     ),
                     Err
             end;
-        {http, #{} = Args} ->
+        {http, #{net_id := NetID} = Args} ->
             PHash = blockchain_helium_packet_v1:packet_hash(Packet),
             case pp_http_sup:maybe_start_worker(PHash, Args) of
                 {error, worker_not_started, _} = Err ->
-                    lager:error("failed to start http connector for ~p: ~p", [
-                        blockchain_utils:addr2name(PubKeyBin),
-                        Err
-                    ]),
+                    lager:error(
+                        [{packet_type, PacketType}, {net_id, NetID}],
+                        "failed to start http connector for ~p: ~p",
+                        [blockchain_utils:addr2name(PubKeyBin), Err]
+                    ),
                     Err;
                 {ok, WorkerPid} ->
+                    lager:debug(
+                        [{packet_type, PacketType}, {net_id, NetID}, {protocol, http}],
+                        "~s: [routing_info: ~p] [net_id: ~p]",
+                        [PacketType, RoutingInfo, NetID]
+                    ),
                     pp_http_worker:handle_packet(WorkerPid, SCPacket, PacketTime)
             end
     end.
@@ -166,10 +178,8 @@ handle_offer_resp(Routing, Offer, Resp) ->
     PayloadSize = blockchain_state_channel_offer_v1:payload_size(Offer),
     ok = pp_metrics:handle_offer(PubKeyBin, NetID, OfferType, Action, PayloadSize),
 
-    lager:debug("offer: ~s ~s [net_id: ~p] [routing: ~p] [resp: ~p]", [
-        Action,
-        OfferType,
-        NetID,
-        Routing,
-        Resp
-    ]).
+    lager:debug(
+        [{action, Action}, {offer_type, OfferType}, {net_id, NetID}],
+        "offer: ~s ~s [net_id: ~p] [routing: ~p] [resp: ~p]",
+        [Action, OfferType, NetID, Routing, Resp]
+    ).
