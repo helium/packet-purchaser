@@ -24,7 +24,8 @@
         websocket_client,
         prometheus,
         hackney,
-        clique
+        clique,
+        lorawan
     ]},
     {included_applications, [blockchain]},
     {env, []},
