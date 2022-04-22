@@ -1,11 +1,15 @@
 -module(pp_roaming_protocol).
 
 %% Uplinking
--export ([make_uplink_payload/3]).
+-export([
+    make_uplink_payload/3
+]).
 
 %% Downlinking
--export([handle_prstart_ans/1,
-    handle_xmitdata_req/1]).
+-export([
+    handle_prstart_ans/1,
+    handle_xmitdata_req/1
+]).
 
 %% Tokens
 -export([

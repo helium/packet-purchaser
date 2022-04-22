@@ -97,6 +97,7 @@ terminate(_Reason, #state{}) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
+-spec maybe_schedule_send_data(integer(), undefined | reference()) -> {ok, reference()}.
 maybe_schedule_send_data(Timeout, undefined) ->
     {ok, erlang:send_after(Timeout, self(), ?SEND_DATA)};
 maybe_schedule_send_data(_, Ref) ->
