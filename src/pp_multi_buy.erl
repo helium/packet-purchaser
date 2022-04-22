@@ -67,11 +67,11 @@ maybe_buy(PHash, MultiBuyMax) ->
         ets:update_counter(
             ?MB_ETS,
             PHash,
-            {2, 1, MultiBuyMax, ?MB_MAX_BUY_RESET_VALUE},
+            {2, 1},
             {default, 0, erlang:system_time(millisecond)}
         )
     of
-        Count when Count =< 0 -> {error, ?MB_MAX_PACKET};
+        Count when Count > MultiBuyMax -> {error, ?MB_MAX_PACKET};
         _Count -> ok
     end.
 
