@@ -41,6 +41,14 @@
     code_change/3
 ]).
 
+%% Record accessors
+-export([
+    net_id/1,
+    name/1,
+    multi_buy/1,
+    buying_active/1
+]).
+
 %% Websocket API
 -export([ws_update_config/1]).
 
@@ -296,6 +304,25 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+%% -------------------------------------------------------------------
+%% Accessing Functions
+%% -------------------------------------------------------------------
+-spec net_id(#devaddr{}) -> non_neg_integer().
+net_id(#devaddr{net_id = NetID}) ->
+    NetID.
+
+-spec name(#devaddr{}) -> binary().
+name(#devaddr{name = Name}) ->
+    Name.
+
+-spec multi_buy(#devaddr{}) -> unlimited | non_neg_integer().
+multi_buy(#devaddr{multi_buy = MB}) ->
+    MB.
+
+-spec buying_active(#devaddr{}) -> boolean().
+buying_active(#devaddr{buying_active = Active}) ->
+    Active.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
