@@ -745,7 +745,6 @@ multi_buy_eviction_test(_Config) ->
             ]
         }
     ]),
-    application:set_env(packet_purchaser, multi_buy_eviction_timeout, Timeout),
 
     ErrMaxPacket = {error, multi_buy_max_packet},
     lists:foreach(
@@ -758,6 +757,8 @@ multi_buy_eviction_test(_Config) ->
 
             %% Wait out the eviction, we're attempting a replay
             timer:sleep(round(Timeout * 1.3)),
+            %% MB does bulk cleanup on large intervals, manually trigger
+            ok = pp_multi_buy:cleanup(Timeout),
             ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer, self())),
             ?assertMatch(ErrMaxPacket, pp_sc_packet_handler:handle_offer(Offer, self())),
             ?assertMatch(ErrMaxPacket, pp_sc_packet_handler:handle_offer(Offer, self()))
