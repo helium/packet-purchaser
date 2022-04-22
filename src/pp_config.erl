@@ -48,15 +48,19 @@
 -define(DEVADDR_ETS, pp_config_routing_ets).
 -define(UDP_WORKER_ETS, pp_config_udp_worker_ets).
 
+-define(DEFAULT_PROTOCOL, <<"udp">>).
+
 -record(state, {
     filename :: testing | string()
 }).
 
+-type udp_protocol() :: {udp, Address :: string(), Port :: non_neg_integer()}.
+-type http_protocol() :: {http, ConnectionString :: binary()}.
+
 -record(eui, {
     name :: undefined | binary(),
     net_id :: non_neg_integer(),
-    address :: binary(),
-    port :: non_neg_integer(),
+    protocol :: udp_protocol() | http_protocol(),
     multi_buy :: unlimited | non_neg_integer(),
     disable_pull_data :: boolean(),
     dev_eui :: '*' | non_neg_integer(),
@@ -67,8 +71,7 @@
 -record(devaddr, {
     name :: undefined | binary(),
     net_id :: non_neg_integer(),
-    address :: binary(),
-    port :: non_neg_integer(),
+    protocol :: udp_protocol() | http_protocol(),
     multi_buy :: unlimited | non_neg_integer(),
     disable_pull_data :: boolean(),
     buying_active = true :: boolean()
@@ -90,7 +93,8 @@ start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [Args], []).
 
 -spec lookup(eui() | devaddr()) ->
-    {ok, map()}
+    {udp, map()}
+    | {http, map()}
     | {error, {buying_inactive, NetID :: integer()}}
     | {error, unmapped_eui}
     | {error, routing_not_found}
@@ -99,7 +103,8 @@ lookup({devaddr, _} = DevAddr) -> lookup_devaddr(DevAddr);
 lookup(EUI) -> lookup_eui(EUI).
 
 -spec lookup_eui(eui()) ->
-    {ok, map()}
+    {udp, map()}
+    | {http, map()}
     | {error, {buying_inactive, NetID :: integer()}}
     | {error, unmapped_eui}.
 lookup_eui({eui, #eui_pb{deveui = DevEUI, appeui = AppEUI}}) ->
@@ -120,30 +125,30 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
             {error, {buying_inactive, NetID}};
         [
             #eui{
-                address = Address,
-                port = Port,
+                protocol = Protocol,
                 net_id = NetID,
                 multi_buy = MultiBuy,
                 disable_pull_data = DisablePullData
             }
             | _PotentiallIgnoredSecondNetID
         ] ->
-            {ok, #{
-                net_id => NetID,
-                address => erlang:binary_to_list(Address),
-                port => Port,
-                multi_buy => MultiBuy,
-                disable_pull_data => DisablePullData
-            }}
+            {erlang:element(1, Protocol),
+                maybe_clean_udp(#{
+                    protocol => Protocol,
+                    net_id => NetID,
+                    multi_buy => MultiBuy,
+                    disable_pull_data => DisablePullData
+                })}
     end.
 
 -spec lookup_devaddr({devaddr, non_neg_integer()}) ->
-    {ok, map()}
+    {udp, map()}
+    | {http, map()}
     | {error, {buying_inactive, NetID :: integer()}}
     | {error, routing_not_found}
     | {error, invalid_net_id_type}.
 lookup_devaddr({devaddr, DevAddr}) ->
-    case lorawan_devaddr:net_id(DevAddr) of
+    case lora_subnet:parse_netid(DevAddr) of
         {ok, NetID} ->
             case ets:lookup(?DEVADDR_ETS, NetID) of
                 [] ->
@@ -152,19 +157,18 @@ lookup_devaddr({devaddr, DevAddr}) ->
                     {error, {buying_inactive, NetID}};
                 [
                     #devaddr{
-                        address = Address,
-                        port = Port,
+                        protocol = Protocol,
                         multi_buy = MultiBuy,
                         disable_pull_data = DisablePullData
                     }
                 ] ->
-                    {ok, #{
-                        net_id => NetID,
-                        address => erlang:binary_to_list(Address),
-                        port => Port,
-                        multi_buy => MultiBuy,
-                        disable_pull_data => DisablePullData
-                    }}
+                    {erlang:element(1, Protocol),
+                        maybe_clean_udp(#{
+                            protocol => Protocol,
+                            net_id => NetID,
+                            multi_buy => MultiBuy,
+                            disable_pull_data => DisablePullData
+                        })}
             end;
         Err ->
             Err
@@ -188,7 +192,7 @@ load_config(ConfigList) ->
     #{routing := CurrRouting} = Config,
 
     ok = lists:foreach(
-        fun(#devaddr{net_id = NetID, address = Address0, port = Port} = CurrEntry) ->
+        fun(#devaddr{net_id = NetID, protocol = Protocol} = CurrEntry) ->
             case lists:keyfind(NetID, #devaddr.net_id, PrevRouting) of
                 %% Added
                 false ->
@@ -198,8 +202,7 @@ load_config(ConfigList) ->
                     ok;
                 _ExistingEntry ->
                     %% Updated
-                    Address1 = erlang:binary_to_list(Address0),
-                    ok = update_udp_workers(NetID, Address1, Port)
+                    ok = update_udp_workers(NetID, Protocol)
             end
         end,
         CurrRouting
@@ -239,10 +242,10 @@ delete_udp_worker(Pid) ->
 lookup_udp_workers_for_net_id(NetID) ->
     [P || {_, P} <- ets:lookup(?UDP_WORKER_ETS, NetID)].
 
--spec update_udp_workers(NetID :: integer(), Address :: string(), Port :: integer()) -> ok.
-update_udp_workers(NetID, Address, Port) ->
+-spec update_udp_workers(NetID :: integer(), Protocol :: udp_protocol() | http_protocol()) -> ok.
+update_udp_workers(NetID, Protocol) ->
     [
-        pp_udp_worker:update_address(WorkerPid, Address, Port)
+        pp_udp_worker:update_address(WorkerPid, Protocol)
         || WorkerPid <- lookup_udp_workers_for_net_id(NetID)
     ],
     ok.
@@ -377,12 +380,7 @@ transform_config(ConfigList0) ->
 
 -spec transform_config_entry(Entry :: map()) -> proplists:proplist().
 transform_config_entry(Entry) ->
-    #{
-        <<"net_id">> := NetID,
-        <<"address">> := Address,
-        <<"port">> := Port
-    } = Entry,
-    Name = maps:get(<<"name">>, Entry, <<"no_name">>),
+    #{<<"name">> := Name, <<"net_id">> := NetID} = Entry,
     MultiBuy =
         case maps:get(<<"multi_buy">>, Entry, null) of
             null -> unlimited;
@@ -391,13 +389,25 @@ transform_config_entry(Entry) ->
         end,
     Joins = maps:get(<<"joins">>, Entry, []),
     DisablePullData = maps:get(<<"disable_pull_data">>, Entry, false),
+
+    Protocol =
+        case maps:get(<<"protocol">>, Entry, ?DEFAULT_PROTOCOL) of
+            <<"udp">> ->
+                Address = erlang:binary_to_list(maps:get(<<"address">>, Entry)),
+                Port = maps:get(<<"port">>, Entry),
+                {udp, Address, Port};
+            <<"http">> ->
+                {http, maps:get(<<"http_endpoint">>, Entry)};
+            Other ->
+                throw({invalid_protocol_type, Other})
+        end,
+
     JoinRecords = lists:map(
         fun(#{<<"dev_eui">> := DevEUI, <<"app_eui">> := AppEUI}) ->
             #eui{
                 name = Name,
                 net_id = clean_config_value(NetID),
-                address = Address,
-                port = Port,
+                protocol = Protocol,
                 multi_buy = MultiBuy,
                 disable_pull_data = DisablePullData,
                 dev_eui = clean_config_value(DevEUI),
@@ -409,8 +419,7 @@ transform_config_entry(Entry) ->
     Routing = #devaddr{
         name = Name,
         net_id = clean_config_value(NetID),
-        address = Address,
-        port = Port,
+        protocol = Protocol,
         multi_buy = MultiBuy,
         disable_pull_data = DisablePullData
     },
@@ -449,6 +458,19 @@ clean_config_value(Bin) ->
             Bin
     end.
 %% clean_base16(_) -> throw(malformed_base16).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% The storage of protocols was changed in ets.
+%% Here we honor the original expectation of pp_udp_worker
+%% in having the address and port broken out.
+%% @end
+%%--------------------------------------------------------------------
+-spec maybe_clean_udp(map()) -> map().
+maybe_clean_udp(#{protocol := {udp, Address, Port}} = Args) ->
+    Args#{address => Address, port => Port};
+maybe_clean_udp(Args) ->
+    Args.
 
 -ifdef(TEST).
 
@@ -525,17 +547,17 @@ join_eui_to_net_id_test() ->
     ?assertMatch({error, _}, ?MODULE:lookup_eui(EUI1), "Empty mapping, no joins"),
 
     ok = pp_config:load_config(OneMapped),
-    ?assertMatch({ok, _}, ?MODULE:lookup_eui(EUI1), "One EUI mapping, this one"),
+    ?assertMatch({udp, _}, ?MODULE:lookup_eui(EUI1), "One EUI mapping, this one"),
     ?assertMatch({error, _}, ?MODULE:lookup_eui(EUI2), "One EUI mapping, not this one"),
 
     ok = pp_config:load_config(BothMapped),
-    ?assertMatch({ok, _}, ?MODULE:lookup_eui(EUI1), "All EUI Mapped 1"),
-    ?assertMatch({ok, _}, ?MODULE:lookup_eui(EUI2), "All EUI Mapped 2"),
+    ?assertMatch({udp, _}, ?MODULE:lookup_eui(EUI1), "All EUI Mapped 1"),
+    ?assertMatch({udp, _}, ?MODULE:lookup_eui(EUI2), "All EUI Mapped 2"),
 
     ok = pp_config:load_config(WildcardMapped),
-    ?assertMatch({ok, _}, ?MODULE:lookup_eui(EUI1), "Wildcard EUI Mapped 1"),
+    ?assertMatch({udp, _}, ?MODULE:lookup_eui(EUI1), "Wildcard EUI Mapped 1"),
     ?assertMatch(
-        {ok, _},
+        {udp, _},
         ?MODULE:lookup_eui(
             #eui_pb{
                 deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
@@ -544,9 +566,9 @@ join_eui_to_net_id_test() ->
         ),
         "Wildcard random device EUI Mapped 1"
     ),
-    ?assertMatch({ok, _}, ?MODULE:lookup_eui(EUI2), "Wildcard EUI Mapped 2"),
+    ?assertMatch({udp, _}, ?MODULE:lookup_eui(EUI2), "Wildcard EUI Mapped 2"),
     ?assertMatch(
-        {ok, _},
+        {udp, _},
         ?MODULE:lookup_eui(
             #eui_pb{
                 deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),

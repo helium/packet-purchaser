@@ -7,8 +7,6 @@
 
 -behaviour(supervisor).
 
--include("packet_purchaser.hrl").
-
 %% API
 -export([start_link/0]).
 
@@ -73,14 +71,30 @@ init([]) ->
 
     ok = pp_multi_buy:init(),
     ok = pp_config:init_ets(),
+    ok = pp_roaming_downlink:init_ets(),
+    ok = pp_utils:init_ets(),
+
+    ElliConfig = [
+        {callback, pp_roaming_downlink},
+        {port, pp_utils:get_env_int(http_roaming_port, 8081)}
+    ],
 
     ChildSpecs = [
         ?WORKER(pp_config, [ConfigFilename]),
         ?SUP(blockchain_sup, [BlockchainOpts]),
         ?WORKER(pp_sc_worker, [#{}]),
         ?SUP(pp_udp_sup, []),
+        ?SUP(pp_http_sup, []),
         ?SUP(pp_console_sup, []),
-        ?WORKER(pp_metrics, [])
+        ?WORKER(pp_metrics, []),
+        #{
+            id => pp_roaming_downlink,
+            start => {elli, start_link, [ElliConfig]},
+            restart => permanent,
+            shutdown => 5000,
+            type => worker,
+            modules => [elli]
+        }
     ],
     {ok, {?FLAGS, ChildSpecs}}.
 

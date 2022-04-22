@@ -11,7 +11,7 @@
 -export([
     start_link/1,
     push_data/4,
-    update_address/3
+    update_address/2
 ]).
 
 %% ------------------------------------------------------------------
@@ -39,8 +39,7 @@
 -define(SHUTDOWN_TIMER, timer:minutes(5)).
 
 -record(state, {
-    blockchain :: blockchain:blockchain() | undefined,
-    location :: {pos_integer(), float(), float()} | undefined,
+    location :: no_location | {pos_integer(), float(), float()} | undefined,
     pubkeybin :: libp2p_crypto:pubkey_bin(),
     net_id :: non_neg_integer(),
     socket :: pp_udp_socket:socket(),
@@ -65,10 +64,10 @@ push_data(WorkerPid, SCPacket, PacketTime, HandlerPid) ->
 
 -spec update_address(
     WorkerPid :: pid(),
-    Address :: pp_udp_socket:socket_address(),
-    Port :: pp_udp_socket:socket_port()
+    Protocol ::
+        {udp, Address :: pp_udp_socket:socket_address(), Port :: pp_udp_socket:socket_port()}
 ) -> ok.
-update_address(WorkerPid, Address, Port) ->
+update_address(WorkerPid, {udp, Address, Port}) ->
     gen_server:call(WorkerPid, {update_address, Address, Port}).
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -109,15 +108,14 @@ init(Args) ->
         pull_data_timer = PullDataTimer,
         shutdown_timer = {ShutdownTimeout, ShutdownRef}
     },
-    case blockchain_worker:blockchain() of
-        undefined ->
-            lager:warning("failed to get chain"),
+    case pp_utils:get_hotspot_location(PubKeyBin) of
+        unknown ->
+            lager:warning("failed to get location"),
             erlang:send_after(500, self(), get_hotspot_location),
             {ok, State};
-        Chain ->
-            Loc = get_hotspot_location(PubKeyBin, Chain),
-            lager:info("got location ~p for hotspot", [Loc]),
-            {ok, State#state{blockchain = Chain, location = Loc}}
+        Location ->
+            lager:info("got location ~p for hotspot", [Location]),
+            {ok, State#state{location = Location}}
     end.
 
 handle_call(
@@ -154,15 +152,14 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info(get_hotspot_location, #state{pubkeybin = PubKeyBin} = State) ->
-    case blockchain_worker:blockchain() of
-        undefined ->
-            lager:warning("failed to get chain"),
+    case pp_utils:get_hotspot_location(PubKeyBin) of
+        unknown ->
+            lager:warning("failed to get location"),
             erlang:send_after(500, self(), get_hotspot_location),
-            {ok, State};
-        Chain ->
-            Loc = get_hotspot_location(PubKeyBin, Chain),
-            lager:info("got location ~p for hotspot", [Loc]),
-            {ok, State#state{blockchain = Chain, location = Loc}}
+            {noreply, State};
+        Location ->
+            lager:info("got location ~p for hotspot", [Location]),
+            {noreply, State#state{location = Location}}
     end;
 handle_info(
     {udp, Socket, _Address, Port, Data},
@@ -227,7 +224,7 @@ terminate(_Reason, #state{socket = Socket}) ->
 -spec handle_data(
     SCPacket :: blockchain_state_channel_packet_v1:packet(),
     PacketTime :: pos_integer(),
-    Location :: {pos_integer(), float(), float()} | undefined
+    Location :: {pos_integer(), float(), float()} | no_location | undefined
 ) -> {binary(), binary()}.
 handle_data(SCPacket, PacketTime, Location) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
@@ -240,6 +237,7 @@ handle_data(SCPacket, PacketTime, Location) ->
     {Index, Lat, Long} =
         case Location of
             undefined -> {undefined, undefined, undefined};
+            no_location -> {undefined, undefined, undefined};
             {_, _, _} = L -> L
         end,
     Data = semtech_udp:push_data(
@@ -271,25 +269,6 @@ handle_data(SCPacket, PacketTime, Location) ->
         }
     ),
     {Token, Data}.
-
--spec get_hotspot_location(
-    PubKeyBin :: libp2p_crypto:pubkey_bin(),
-    Blockchain :: blockchain:blockchain()
-) -> {pos_integer(), float(), float()} | undefined.
-get_hotspot_location(PubKeyBin, Blockchain) ->
-    Ledger = blockchain:ledger(Blockchain),
-    case blockchain_ledger_v1:find_gateway_info(PubKeyBin, Ledger) of
-        {error, _} ->
-            undefined;
-        {ok, Hotspot} ->
-            case blockchain_ledger_gateway_v2:location(Hotspot) of
-                undefined ->
-                    undefined;
-                Index ->
-                    {Lat, Long} = h3:to_geo(Index),
-                    {Index, Lat, Long}
-            end
-    end.
 
 -spec handle_udp(binary(), #state{}) -> {noreply, #state{}}.
 handle_udp(Data, State) ->

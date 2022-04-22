@@ -17,6 +17,11 @@
     send_packet/2
 ]).
 
+-export([
+    http_rcv/0,
+    http_rcv/1
+]).
+
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
 %% ------------------------------------------------------------------
@@ -27,6 +32,11 @@
     handle_info/2,
     terminate/2,
     code_change/3
+]).
+
+-export([
+    handle/2,
+    handle_event/3
 ]).
 
 -define(SERVER, ?MODULE).
@@ -61,6 +71,25 @@ rcv(Pid, Type, Delay) ->
     receive
         {?MODULE, Pid, Type, Data} -> {ok, Data}
     after Delay -> ct:fail("pp_lns rcv timeout")
+    end.
+
+-spec http_rcv() -> {ok, any()}.
+http_rcv() ->
+    receive
+        {http_msg, Payload, {StatusCode, [], RespBody}} ->
+            {ok, jsx:decode(Payload), {StatusCode, jsx:decode(RespBody)}}
+    after 2500 -> ct:fail(http_msg_timeout)
+    end.
+
+-spec http_rcv(map()) -> {ok, any(), any()}.
+http_rcv(Expected) ->
+    {ok, Got, Response} = ?MODULE:http_rcv(),
+    case test_utils:match_map(Expected, Got) of
+        true ->
+            {ok, Got, Response};
+        {false, Reason} ->
+            ct:pal("FAILED got: ~n~p~n expected: ~n~p", [Got, Expected]),
+            ct:fail({http_rcv, Reason})
     end.
 
 not_rcv(Pid, Type, Delay) ->
@@ -207,3 +236,72 @@ handle_udp(
 ) ->
     lager:warning("got an unkown udp packet: ~p  from ~p", [_UnkownUDPPacket, {_IP, _Port}]),
     ok.
+
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
+
+handle(Req, Args) ->
+    Method =
+        case elli_request:get_header(<<"Upgrade">>, Req) of
+            <<"websocket">> ->
+                websocket;
+            _ ->
+                elli_request:method(Req)
+        end,
+    ct:pal("~p", [{Method, elli_request:path(Req), Req, Args}]),
+    Forward = maps:get(forward, Args),
+    Body = elli_request:body(Req),
+
+    ResponseBody = make_response_body(jsx:decode(Body)),
+    Response = {200, [], jsx:encode(ResponseBody)},
+    Forward ! {http_msg, Body, Response},
+
+    Response.
+
+handle_event(_Event, _Data, _Args) ->
+    %% uncomment for Elli errors.
+    %% ct:print("Elli Event (~p):~nData~n~p~nArgs~n~p", [_Event, _Data, _Args]),
+    ok.
+
+make_response_body(#{
+    <<"MessageType">> := <<"PRStartReq">>,
+    <<"ReceiverID">> := ReceiverID,
+    <<"SenderID">> := SenderID,
+    <<"TransactionID">> := TransactionID,
+    <<"ULMetaData">> := #{
+        <<"ULFreq">> := Freq,
+        <<"DevEUI">> := DevEUI,
+        <<"FNSULToken">> := Token
+    }
+}) ->
+    %% Join Response
+    %% includes similar information from XmitDataReq
+    #{
+        'ProtocolVersion' => <<"1.0">>,
+        'SenderID' => ReceiverID,
+        'ReceiverID' => SenderID,
+        'TransactionID' => TransactionID,
+        'MessageType' => <<"PRStartAns">>,
+        'Result' => #{'ResultCode' => <<"Success">>},
+        %% 11.3.1 Passive Roaming Start
+        %% Step 6: stateless fNS operation
+        'Lifetime' => 0,
+        'DLFreq1' => Freq,
+        'DevEUI' => DevEUI,
+        'FNSULToken' => Token,
+        'PHYPayload' => pp_utils:binary_to_hex(<<"join_accept_payload">>)
+    };
+make_response_body(#{<<"ReceiverID">> := ReceiverID}) ->
+    %% Ack to regular uplink
+    #{
+        'ProtocolVersion' => <<"1.0">>,
+        'SenderID' => ReceiverID,
+        'ReceiverID' => <<"0xC00053">>,
+        'TransactionID' => 45,
+        'MessageType' => <<"PRStartAns">>,
+        'Result' => #{'ResultCode' => <<"Success">>},
+        %% 11.3.1 Passive Roaming Start
+        %% Step 6: stateless fNS operation
+        'Lifetime' => 0
+    }.

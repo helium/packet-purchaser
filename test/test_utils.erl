@@ -1,7 +1,6 @@
 -module(test_utils).
 
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
--include_lib("common_test/include/ct.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
 -include("packet_purchaser.hrl").
@@ -152,9 +151,16 @@ end_per_testcase(TestCase, Config) ->
 
 -spec match_map(map(), any()) -> true | {false, term()}.
 match_map(Expected, Got) when is_map(Got) ->
-    case maps:size(Expected) == maps:size(Got) of
+    ESize = maps:size(Expected),
+    GSize = maps:size(Got),
+    case ESize == GSize of
         false ->
-            {false, {size_mismatch, maps:size(Expected), maps:size(Got)}};
+            Flavor =
+                case ESize > GSize of
+                    true -> {missing_keys, maps:keys(Expected) -- maps:keys(Got)};
+                    false -> {extra_keys, maps:keys(Got) -- maps:keys(Expected)}
+                end,
+            {false, {size_mismatch, {expected, ESize}, {got, GSize}, Flavor}};
         true ->
             maps:fold(
                 fun
@@ -272,7 +278,7 @@ start_gateway(GatewayConfig) ->
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
     %% NetID to ensure sending packets from pp_lns get routed to this worker
-    {ok, NetID} = lorawan_devaddr:net_id(16#deadbeef),
+    {ok, NetID} = lora_subnet:parse_netid(16#deadbeef),
     {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, GatewayConfig),
     {PubKeyBin, WorkerPid}.
 

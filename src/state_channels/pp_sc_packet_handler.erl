@@ -72,7 +72,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 [PacketType, RoutingInfo]
             ),
             Err;
-        {ok, #{net_id := NetID} = WorkerArgs} ->
+        {udp, #{net_id := NetID} = WorkerArgs} ->
             case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs) of
                 {ok, WorkerPid} ->
                     lager:debug(
@@ -88,6 +88,18 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                         [blockchain_utils:addr2name(PubKeyBin)]
                     ),
                     Err
+            end;
+        {http, #{} = Args} ->
+            PHash = blockchain_helium_packet_v1:packet_hash(Packet),
+            case pp_http_sup:maybe_start_worker(PHash, Args) of
+                {error, worker_not_started, _} = Err ->
+                    lager:error("failed to start http connector for ~p: ~p", [
+                        blockchain_utils:addr2name(PubKeyBin),
+                        Err
+                    ]),
+                    Err;
+                {ok, WorkerPid} ->
+                    pp_http_worker:handle_packet(WorkerPid, SCPacket, PacketTime)
             end
     end.
 
@@ -97,7 +109,9 @@ handle_packet(SCPacket, PacketTime, Pid) ->
 
 handle_join_offer(EUI, Offer) ->
     case pp_config:lookup_eui(EUI) of
-        {ok, #{multi_buy := MultiBuyMax}} ->
+        {udp, #{multi_buy := MultiBuyMax}} ->
+            pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
+        {http, #{multi_buy := MultiBuyMax}} ->
             pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
         Err ->
             Err
@@ -105,7 +119,9 @@ handle_join_offer(EUI, Offer) ->
 
 handle_packet_offer(DevAddr, Offer) ->
     case pp_config:lookup_devaddr(DevAddr) of
-        {ok, #{multi_buy := MultiBuyMax}} ->
+        {udp, #{multi_buy := MultiBuyMax}} ->
+            pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
+        {http, #{multi_buy := MultiBuyMax}} ->
             pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
         Err ->
             Err
@@ -127,12 +143,12 @@ handle_offer_resp(Routing, Offer, Resp) ->
             {eui, _} = EUI ->
                 case pp_config:lookup_eui(EUI) of
                     {error, Reason} -> {ok, Reason};
-                    {ok, #{net_id := NetID0}} -> {ok, NetID0}
+                    {_, #{net_id := NetID0}} -> {ok, NetID0}
                 end;
             {devaddr, DevAddr} ->
-                case lorawan_devaddr:net_id(DevAddr) of
+                case lora_subnet:parse_netid(DevAddr) of
                     {error, Reason} -> {ok, Reason};
-                    {ok, NetID0} -> {ok, NetID0}
+                    {_, NetID0} -> {ok, NetID0}
                 end
         end,
 
