@@ -69,7 +69,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 [PacketType, RoutingInfo]
             ),
             Err;
-        {error, invalid_net_id_type} = Err ->
+        {error, invalid_netid_type} = Err ->
             lager:debug(
                 [{packet_type, PacketType}, Err],
                 "~s: invalid net id type [routing_info: ~p]",

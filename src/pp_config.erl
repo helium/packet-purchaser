@@ -106,7 +106,7 @@ start_link(Args) ->
     | {error, {buying_inactive, NetID :: integer()}}
     | {error, unmapped_eui}
     | {error, routing_not_found}
-    | {error, invalid_net_id_type}.
+    | {error, invalid_netid_type}.
 lookup({devaddr, _} = DevAddr) -> lookup_devaddr(DevAddr);
 lookup(EUI) -> lookup_eui(EUI).
 
@@ -154,7 +154,7 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
     | {http, map()}
     | {error, {buying_inactive, NetID :: integer()}}
     | {error, routing_not_found}
-    | {error, invalid_net_id_type}.
+    | {error, invalid_netid_type}.
 lookup_devaddr({devaddr, DevAddr}) ->
     case lora_subnet:parse_netid(DevAddr) of
         {ok, NetID} ->
