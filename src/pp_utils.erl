@@ -30,7 +30,6 @@
 -spec init_ets() -> ok.
 init_ets() ->
     ?ETS = ets:new(?ETS, [public, named_table, set]),
-    _ = ?MODULE:get_chain(),
     ok.
 
 -spec get_chain() -> fetching | blockchain:blockchain().
