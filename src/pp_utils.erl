@@ -37,12 +37,11 @@ get_chain() ->
     Key = blockchain_chain,
     case ets:lookup(?ETS, Key) of
         [] ->
-            spawn(fun() ->
-                Chain = blockchain_worker:blockchain(),
-                true = ets:insert(?ETS, {Key, Chain})
-            end),
-            true = ets:insert(?ETS, {Key, fetching}),
-            fetching;
+            Chain = blockchain_worker:blockchain(),
+            true = ets:insert(?ETS, {Key, Chain}),
+            Chain;
+        %% true = ets:insert(?ETS, {Key, fetching}),
+        %% fetching;
         [{Key, fetching}] ->
             fetching;
         [{Key, Chain}] ->
