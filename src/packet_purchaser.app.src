@@ -25,7 +25,8 @@
         prometheus,
         hackney,
         clique,
-        erlang_lorawan
+        erlang_lorawan,
+        cowboy
     ]},
     {included_applications, [blockchain]},
     {env, []},
