@@ -87,4 +87,3 @@ lookup_handler(PubKeyBin) ->
         [{_, SCPid}] -> {ok, SCPid};
         [] -> {error, {not_found, PubKeyBin}}
     end.
-

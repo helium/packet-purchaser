@@ -30,7 +30,6 @@
 -spec init_ets() -> ok.
 init_ets() ->
     ?ETS = ets:new(?ETS, [public, named_table, set]),
-    _ = ?MODULE:get_chain(),
     ok.
 
 -spec get_chain() -> fetching | blockchain:blockchain().
@@ -38,12 +37,11 @@ get_chain() ->
     Key = blockchain_chain,
     case ets:lookup(?ETS, Key) of
         [] ->
-            spawn(fun() ->
-                Chain = blockchain_worker:blockchain(),
-                true = ets:insert(?ETS, {Key, Chain})
-            end),
-            true = ets:insert(?ETS, {Key, fetching}),
-            fetching;
+            Chain = blockchain_worker:blockchain(),
+            true = ets:insert(?ETS, {Key, Chain}),
+            Chain;
+        %% true = ets:insert(?ETS, {Key, fetching}),
+        %% fetching;
         [{Key, fetching}] ->
             fetching;
         [{Key, Chain}] ->

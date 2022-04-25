@@ -388,7 +388,11 @@ http_uplink_packet_test(_Config) ->
                 <<"RFRegion">> => erlang:atom_to_binary(Region),
                 <<"RecvTime">> => pp_utils:format_time(PacketTime),
 
-                <<"FNSULToken">> => pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', PacketTime),
+                <<"FNSULToken">> => pp_roaming_protocol:make_uplink_token(
+                    PubKeyBin,
+                    'US915',
+                    PacketTime
+                ),
 
                 <<"GWInfo">> => [
                     #{
@@ -465,7 +469,11 @@ http_multiple_gateways_test(_Config) ->
             <<"RecvTime">> => pp_utils:format_time(PacketTime1),
 
             %% Gateway with better RSSI should be chosen
-            <<"FNSULToken">> => pp_roaming_protocol:make_uplink_token(PubKeyBin1, 'US915', PacketTime1),
+            <<"FNSULToken">> => pp_roaming_protocol:make_uplink_token(
+                PubKeyBin1,
+                'US915',
+                PacketTime1
+            ),
 
             <<"GWInfo">> => [
                 #{
