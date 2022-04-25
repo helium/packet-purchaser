@@ -24,6 +24,7 @@
 
 -define(SERVER, ?MODULE).
 -define(SEND_DATA, send_data).
+-define(SHUTDOWN, shutdown).
 
 -type address() :: binary().
 
@@ -34,7 +35,10 @@
     packets = [] :: list(pp_roaming_protocol:packet()),
 
     send_data_timer = 200 :: non_neg_integer(),
-    send_data_timer_ref :: undefined | reference()
+    send_data_timer_ref :: undefined | reference(),
+
+    should_shutdown = false :: boolean(),
+    shutdown_timer_ref :: undefined | reference()
 }).
 
 %% ------------------------------------------------------------------
@@ -72,18 +76,36 @@ handle_call(_Msg, _From, State) ->
 
 handle_cast(
     {handle_packet, SCPacket, PacketTime},
-    #state{send_data_timer = Timeout, send_data_timer_ref = TimerRef0} = State0
+    #state{
+        should_shutdown = false,
+        send_data_timer = Timeout,
+        send_data_timer_ref = TimerRef0
+    } = State0
 ) ->
     {ok, State1} = do_handle_packet(SCPacket, PacketTime, State0),
     {ok, TimerRef1} = maybe_schedule_send_data(Timeout, TimerRef0),
     {noreply, State1#state{send_data_timer_ref = TimerRef1}};
+handle_cast(
+    {handle_packet, _SCPacket, _PacketTime},
+    #state{
+        should_shutdown = true,
+        shutdown_timer_ref = ShutdownTimerRef0,
+        send_data_timer = DataTimeout
+    } = State0
+) ->
+    lager:info("packet delivery after data sent [send_data_timer: ~p]", [DataTimeout]),
+    {ok, ShutdownTimerRef1} = maybe_schedule_shutdown(ShutdownTimerRef0),
+    {noreply, State0#state{shutdown_timer_ref = ShutdownTimerRef1}};
 handle_cast(_Msg, State) ->
     lager:warning("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
 
 handle_info(?SEND_DATA, #state{} = State) ->
     ok = send_data(State),
-    {stop, data_sent, State};
+    {ok, ShutdownTimerRef} = maybe_schedule_shutdown(undefined),
+    {noreply, State#state{should_shutdown = true, shutdown_timer_ref = ShutdownTimerRef}};
+handle_info(?SHUTDOWN, #state{} = State) ->
+    {stop, normal, State};
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p, ~p", [_Msg, State]),
     {noreply, State}.
@@ -104,6 +126,13 @@ maybe_schedule_send_data(Timeout, undefined) ->
     {ok, erlang:send_after(Timeout, self(), ?SEND_DATA)};
 maybe_schedule_send_data(_, Ref) ->
     {ok, Ref}.
+
+-spec maybe_schedule_shutdown(undefined | reference()) -> {ok, reference()}.
+maybe_schedule_shutdown(undefined) ->
+    {ok, erlang:send_after(1000, self(), ?SHUTDOWN)};
+maybe_schedule_shutdown(CurrTimer) ->
+    _ = (catch erlang:cancel_timer(CurrTimer)),
+    {ok, erlang:send_after(1000, self(), ?SHUTDOWN)}.
 
 -spec next_transaction_id() -> integer().
 next_transaction_id() ->

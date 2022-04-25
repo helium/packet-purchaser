@@ -19,7 +19,8 @@
 
 -export([
     http_rcv/0,
-    http_rcv/1
+    http_rcv/1,
+    not_http_rcv/1
 ]).
 
 %% ------------------------------------------------------------------
@@ -90,6 +91,14 @@ http_rcv(Expected) ->
         {false, Reason} ->
             ct:pal("FAILED got: ~n~p~n expected: ~n~p", [Got, Expected]),
             ct:fail({http_rcv, Reason})
+    end.
+
+-spec not_http_rcv(Delay :: integer()) -> ok.
+not_http_rcv(Delay) ->
+    receive
+        {http_msg, _, _} ->
+            ct:fail(expected_no_more_http)
+    after Delay -> ok
     end.
 
 not_rcv(Pid, Type, Delay) ->
