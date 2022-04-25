@@ -108,6 +108,21 @@ jobs:
         run: |
           mkdir _build
           tar -xvf build.tar.gz -C _build
+      - name: set rebar.lock hash
+        id: set_vars
+	run: |
+	  rebar_hash="${{hashFiles(format('{0}{1}', github.workspace, '/rebar.lock'))}}"
+	  echo "::set-output name=rebar_hash::$rebar_hash"
+      - name: cache PLT files
+        id: cache-plt
+	uses: actions/cache@v2
+	with:
+	  path: |
+	    _build/default/*.plt
+	    _build/default/*.plt.hash
+	  key: plt-cache-${{ steps.set_vars.outputs.rebar_hash }}
+	  restore-keys: |
+	    plt-cache-
       - name: dialyzer
         run: ./rebar3 dialyzer
   ct:
