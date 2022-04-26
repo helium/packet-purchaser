@@ -22,6 +22,7 @@
     hexstring_to_binary/1,
     binary_to_hex/1,
     binary_to_hexstring/1,
+    hexstring/1,
     format_time/1,
     get_env_int/2,
     get_hotspot_location/1
@@ -94,6 +95,15 @@ calculate_dc_amount(PayloadSize) ->
             blockchain_utils:calculate_dc_amount(Ledger, PayloadSize)
         end
     ).
+
+-spec hexstring(number()) -> binary().
+hexstring(Num) when erlang:is_number(Num) ->
+    Inter0 = erlang:integer_to_binary(Num, 16),
+    Inter1 = string:pad(Inter0, 6, leading, $0),
+    Inter = erlang:iolist_to_binary(Inter1),
+    <<"0x", Inter/binary>>;
+hexstring(Other) ->
+    throw({unknown_hexstring_conversion, Other}).
 
 -spec binary_to_hexstring(number() | binary()) -> binary().
 binary_to_hexstring(ID) when erlang:is_number(ID) ->

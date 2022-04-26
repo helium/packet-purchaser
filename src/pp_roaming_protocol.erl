@@ -79,7 +79,7 @@ make_uplink_payload(NetID, Uplinks, TransactionID) ->
     #{
         'ProtocolVersion' => <<"1.0">>,
         'SenderID' => <<"0xC00053">>,
-        'ReceiverID' => NetID,
+        'ReceiverID' => pp_utils:hexstring(NetID),
         'TransactionID' => TransactionID,
         'MessageType' => <<"PRStartReq">>,
         'PHYPayload' => pp_utils:binary_to_hexstring(Payload),

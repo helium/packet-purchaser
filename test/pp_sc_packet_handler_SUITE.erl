@@ -44,6 +44,8 @@
 -define(NET_ID_ORANGE, 16#00000F).
 -define(NET_ID_TEKTELIC, 16#000037).
 
+-define(NET_ID_ACTILITY_BIN, <<"0x000002">>).
+
 %% DevAddrs
 
 % pp_utils:hex_to_binary(<<"04ABCDEF">>)
@@ -269,7 +271,7 @@ http_uplink_join_test(_Config) ->
             <<"ProtocolVersion">> => <<"1.0">>,
             <<"TransactionID">> => fun erlang:is_number/1,
             <<"SenderID">> => <<"0xC00053">>,
-            <<"ReceiverID">> => pp_utils:binary_to_hexstring(?NET_ID_ACTILITY),
+            <<"ReceiverID">> => ?NET_ID_ACTILITY_BIN,
             <<"MessageType">> => <<"PRStartReq">>,
             <<"PHYPayload">> => pp_utils:binary_to_hexstring(
                 blockchain_helium_packet_v1:payload(Packet)
@@ -308,7 +310,7 @@ http_uplink_join_test(_Config) ->
             #{
                 <<"ProtocolVersion">> => <<"1.0">>,
                 <<"TransactionID">> => TransactionID,
-                <<"SenderID">> => pp_utils:binary_to_hexstring(?NET_ID_ACTILITY),
+                <<"SenderID">> => ?NET_ID_ACTILITY_BIN,
                 <<"ReceiverID">> => <<"0xC00053">>,
                 <<"MessageType">> => <<"PRStartAns">>,
                 <<"Result">> => #{
@@ -376,7 +378,7 @@ http_uplink_packet_test(_Config) ->
             <<"ProtocolVersion">> => <<"1.0">>,
             <<"TransactionID">> => fun erlang:is_number/1,
             <<"SenderID">> => <<"0xC00053">>,
-            <<"ReceiverID">> => pp_utils:binary_to_hexstring(?NET_ID_ACTILITY),
+            <<"ReceiverID">> => ?NET_ID_ACTILITY_BIN,
             <<"MessageType">> => <<"PRStartReq">>,
             <<"PHYPayload">> => pp_utils:binary_to_hexstring(
                 blockchain_helium_packet_v1:payload(Packet)
@@ -464,7 +466,7 @@ http_uplink_packet_late_test(_Config) ->
             <<"ProtocolVersion">> => <<"1.0">>,
             <<"TransactionID">> => fun erlang:is_number/1,
             <<"SenderID">> => <<"0xC00053">>,
-            <<"ReceiverID">> => pp_utils:binary_to_hexstring(?NET_ID_ACTILITY),
+            <<"ReceiverID">> => ?NET_ID_ACTILITY_BIN,
             <<"MessageType">> => <<"PRStartReq">>,
             <<"PHYPayload">> => pp_utils:binary_to_hexstring(
                 blockchain_helium_packet_v1:payload(Packet)
@@ -547,7 +549,7 @@ http_multiple_gateways_test(_Config) ->
         <<"ProtocolVersion">> => <<"1.0">>,
         <<"TransactionID">> => fun erlang:is_number/1,
         <<"SenderID">> => <<"0xC00053">>,
-        <<"ReceiverID">> => pp_utils:binary_to_hexstring(?NET_ID_ACTILITY),
+        <<"ReceiverID">> => ?NET_ID_ACTILITY_BIN,
         <<"MessageType">> => <<"PRStartReq">>,
         <<"PHYPayload">> => pp_utils:binary_to_hexstring(
             blockchain_helium_packet_v1:payload(Packet1)
