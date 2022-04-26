@@ -480,7 +480,7 @@ http_uplink_packet_late_test(_Config) ->
                 blockchain_helium_packet_v1:payload(Packet)
             ),
             <<"ULMetaData">> => #{
-                <<"DevAddr">> => pp_utils:binary_to_hexstring(?DEVADDR_ACTILITY),
+                <<"DevAddr">> => ?DEVADDR_ACTILITY_BIN,
                 <<"DataRate">> => pp_lorawan:datar_to_dr(
                     Region,
                     blockchain_helium_packet_v1:datarate(Packet)
