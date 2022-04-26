@@ -38,18 +38,20 @@
 
 %% NetIDs
 -define(NET_ID_ACTILITY, 16#000002).
+-define(NET_ID_ACTILITY_BIN, <<"0x000002">>).
+
 -define(NET_ID_COMCAST, 16#000022).
 -define(NET_ID_COMCAST_2, 16#60001C).
 -define(NET_ID_EXPERIMENTAL, 16#000000).
 -define(NET_ID_ORANGE, 16#00000F).
 -define(NET_ID_TEKTELIC, 16#000037).
 
--define(NET_ID_ACTILITY_BIN, <<"0x000002">>).
-
 %% DevAddrs
 
 % pp_utils:hex_to_binary(<<"04ABCDEF">>)
 -define(DEVADDR_ACTILITY, <<4, 171, 205, 239>>).
+-define(DEVADDR_ACTILITY_BIN, <<"0x04ABCDEF">>).
+
 % pp_utils:hex_to_binary(<<"45000042">>)
 -define(DEVADDR_COMCAST, <<69, 0, 0, 66>>).
 % pp_utils:hex_to_binary(<<"0000041">>)
@@ -225,11 +227,17 @@ http_uplink_join_test(_Config) ->
     ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
     ok = start_uplink_listener(),
 
-    DevEUI = <<0, 0, 0, 0, 0, 0, 0, 1>>,
-    AppEUI = <<0, 0, 0, 2, 0, 0, 0, 1>>,
+    DevEUI = <<"AABBCCDDEEFF0011">>,
+    AppEUI = <<"1122334455667788">>,
 
     SendPacketFun = fun(DevAddr) ->
-        Routing = blockchain_helium_packet_v1:make_routing_info({eui, DevEUI, AppEUI}),
+        Routing = blockchain_helium_packet_v1:make_routing_info(
+            {
+                eui,
+                erlang:binary_to_integer(DevEUI, 16),
+                erlang:binary_to_integer(AppEUI, 16)
+            }
+        ),
         Packet = test_utils:frame_packet(
             ?UNCONFIRMED_UP,
             PubKeyBin,
@@ -277,7 +285,7 @@ http_uplink_join_test(_Config) ->
                 blockchain_helium_packet_v1:payload(Packet)
             ),
             <<"ULMetaData">> => #{
-                <<"DevEUI">> => pp_utils:binary_to_hexstring(DevEUI),
+                <<"DevEUI">> => <<"0x", DevEUI/binary>>,
                 <<"DataRate">> => pp_lorawan:datar_to_dr(
                     Region,
                     blockchain_helium_packet_v1:datarate(Packet)
@@ -319,7 +327,7 @@ http_uplink_join_test(_Config) ->
                 <<"DLFreq1">> => blockchain_helium_packet_v1:frequency(Packet),
                 <<"PHYPayload">> => pp_utils:binary_to_hex(<<"join_accept_payload">>),
                 <<"FNSULToken">> => Token,
-                <<"DevEUI">> => pp_utils:binary_to_hexstring(DevEUI),
+                <<"DevEUI">> => <<"0x", DevEUI/binary>>,
                 <<"Lifetime">> => 0
             },
             RespBody
@@ -384,7 +392,7 @@ http_uplink_packet_test(_Config) ->
                 blockchain_helium_packet_v1:payload(Packet)
             ),
             <<"ULMetaData">> => #{
-                <<"DevAddr">> => pp_utils:binary_to_hexstring(?DEVADDR_ACTILITY),
+                <<"DevAddr">> => ?DEVADDR_ACTILITY_BIN,
                 <<"DataRate">> => pp_lorawan:datar_to_dr(
                     Region,
                     blockchain_helium_packet_v1:datarate(Packet)
