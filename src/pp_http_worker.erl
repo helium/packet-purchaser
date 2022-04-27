@@ -165,7 +165,12 @@ send_data(#state{
     transaction_id = TransactionID
 }) ->
     Data = pp_roaming_protocol:make_uplink_payload(NetID, Packets, TransactionID),
-    case hackney:post(Address, [], jsx:encode(Data), [with_body]) of
+    case
+        hackney:post(Address, [], jsx:encode(Data), [
+            with_body,
+            {float_formatter, fun round_to_fourth_decimal/1}
+        ])
+    of
         {ok, 200, _Headers, Res} ->
             Decoded = jsx:decode(Res),
             case pp_roaming_protocol:handle_prstart_ans(Decoded) of
@@ -181,3 +186,6 @@ send_data(#state{
             lager:error("bad response: [code: ~p] [res: ~p]", [Code, Resp]),
             ok
     end.
+
+round_to_fourth_decimal(Float) ->
+    io_lib:format("~.4f", [Float]).
