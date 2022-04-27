@@ -73,7 +73,9 @@
     disable_pull_data :: boolean(),
     dev_eui :: '*' | non_neg_integer(),
     app_eui :: non_neg_integer(),
-    buying_active = true :: boolean()
+    buying_active = true :: boolean(),
+    %% TODO
+    ignore_disable = false :: boolean()
 }).
 
 -record(devaddr, {
@@ -379,6 +381,8 @@ update_buying_eui(NetID, BuyingActive) ->
     true = ets:delete_all_objects(?EUI_ETS),
     NewEUIs = lists:map(
         fun
+            %% TODO
+            (#eui{ignore_disable = true} = Val) -> Val;
             (#eui{net_id = Key} = Val) when Key == NetID -> Val#eui{buying_active = BuyingActive};
             (Val) -> Val
         end,
