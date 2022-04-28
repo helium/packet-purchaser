@@ -29,7 +29,8 @@
     http_async_uplink_join_test/1,
     http_uplink_packet_test/1,
     http_multiple_gateways_test/1,
-    http_downlink_test/1,
+    http_sync_downlink_test/1,
+    http_async_downlink_test/1,
     http_uplink_packet_late_test/1
 ]).
 
@@ -101,7 +102,8 @@ all() ->
         http_uplink_packet_late_test,
         %%
         http_multiple_gateways_test,
-        http_downlink_test
+        http_sync_downlink_test,
+        http_async_downlink_test
     ].
 
 groups() ->
@@ -112,7 +114,8 @@ groups() ->
             http_uplink_packet_test,
             http_uplink_packet_late_test,
             http_multiple_gateways_test,
-            http_downlink_test
+            http_sync_downlink_test,
+            http_async_downlink_test
         ]}
     ].
 
@@ -256,7 +259,11 @@ http_async_uplink_join_test(_Config) ->
     ok = roamer_expect_response(200),
 
     %% 8. Gateway receive queued sc downlink
-    ok = gateway_expect_downlink(),
+    ok = gateway_expect_downlink(fun(SCResp) ->
+        Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
+        ?assertEqual(27, blockchain_helium_packet_v1:signal_strength(Downlink)),
+        ok
+    end),
 
     ok.
 
@@ -329,14 +336,129 @@ roamer_expect_response(Code) ->
     after 1000 -> ct:fail(http_downlink_data_200_response_timeout)
     end.
 
-gateway_expect_downlink() ->
+gateway_expect_downlink(ExpectFn) ->
     receive
-        {send_response, _SCResp} ->
-            ok
+        {send_response, SCResp} ->
+            ExpectFn(SCResp)
     after 1000 -> ct:fail(gateway_expect_downlink_timeout)
     end.
 
-http_downlink_test(_Config) ->
+http_async_downlink_test(_Config) ->
+    %%
+    %% Forwarder : packet-purchaser
+    %% Roamer    : partner-lns
+    %%
+    ok = start_forwarder_listener(async),
+    ok = start_roamer_listener(async),
+
+    %% 1. Get a gateway to send from
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    %% 2. insert sc handler and config
+    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => <<"test">>,
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"protocol">> => <<"http">>,
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>
+        }
+    ]),
+
+    %% 3. send downlink
+    DownlinkPayload = <<"downlink_payload">>,
+    DownlinkTimestamp = erlang:system_time(millisecond),
+    DownlinkFreq = 915.0,
+    DownlinkDatr = <<"SF10BW125">>,
+
+    Token = pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', DownlinkTimestamp),
+    RXDelay = 1,
+
+    DownlinkBody = #{
+        'ProtocolVersion' => <<"1.0">>,
+        'SenderID' => pp_utils:hexstring(?NET_ID_ACTILITY),
+        'ReceiverID' => <<"0xC00053">>,
+        'TransactionID' => 23,
+        'MessageType' => <<"XmitDataReq">>,
+        'PHYPayload' => pp_utils:binary_to_hexstring(base64:encode(DownlinkPayload)),
+        'DLMetaData' => #{
+            'DevEUI' => <<"0xaabbffccfeeff001">>,
+            'DLFreq1' => DownlinkFreq,
+            'DataRate1' => 0,
+            'RXDelay1' => RXDelay,
+            'FNSULToken' => Token,
+            'GWInfo' => [
+                #{'ULToken' => libp2p_crypto:bin_to_b58(PubKeyBin)}
+            ],
+            'ClassMode' => <<"A">>,
+            'HiPriorityFlag' => false
+        }
+    },
+
+    _ = hackney:post(
+        <<"http://127.0.0.1:3003/downlink">>,
+        [{<<"Host">>, <<"localhost">>}],
+        jsx:encode(DownlinkBody),
+        [with_body]
+    ),
+
+    %% 4. forwarder receive http downlink
+    {ok, #{<<"TransactionID">> := TransactionID}} = forwarder_expect_downlink_data(#{
+        <<"ProtocolVersion">> => <<"1.0">>,
+        <<"SenderID">> => pp_utils:hexstring(?NET_ID_ACTILITY),
+        <<"ReceiverID">> => <<"0xC00053">>,
+        <<"TransactionID">> => 23,
+        <<"MessageType">> => <<"XmitDataReq">>,
+        <<"PHYPayload">> => pp_utils:binary_to_hexstring(base64:encode(DownlinkPayload)),
+        <<"DLMetaData">> => #{
+            <<"DevEUI">> => <<"0xaabbffccfeeff001">>,
+            <<"DLFreq1">> => DownlinkFreq,
+            <<"DataRate1">> => 0,
+            <<"RXDelay1">> => RXDelay,
+            <<"FNSULToken">> => Token,
+            <<"GWInfo">> => [
+                #{<<"ULToken">> => libp2p_crypto:bin_to_b58(PubKeyBin)}
+            ],
+            <<"ClassMode">> => <<"A">>,
+            <<"HiPriorityFlag">> => false
+        }
+    }),
+
+    %% 5. roamer expect 200 response
+    ok = roamer_expect_response(200),
+
+    %% 6. roamer receives http downlink ack (xmitdata_ans)
+    {ok, _Data} = roamer_expect_uplink_data(#{
+        <<"DLFreq1">> => DownlinkFreq,
+        <<"MessageType">> => <<"XmitDataAns">>,
+        <<"ProtocolVersion">> => <<"1.0">>,
+        <<"ReceiverID">> => pp_utils:hexstring(?NET_ID_ACTILITY),
+        <<"SenderID">> => <<"0xC00053">>,
+        <<"Result">> => #{<<"ResultCode">> => <<"Success">>},
+        <<"TransactionID">> => TransactionID
+    }),
+
+    %% 7. forwarder expects 200 response
+    ok = forwarder_expect_response(200),
+
+    %% 8. gateway receve quued sc downlink
+    ok = gateway_expect_downlink(fun(SCResp) ->
+        Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
+        ?assertEqual(DownlinkPayload, blockchain_helium_packet_v1:payload(Downlink)),
+        ?assertEqual(
+            DownlinkTimestamp + RXDelay,
+            blockchain_helium_packet_v1:timestamp(Downlink)
+        ),
+        ?assertEqual(DownlinkFreq, blockchain_helium_packet_v1:frequency(Downlink)),
+        ?assertEqual(27, blockchain_helium_packet_v1:signal_strength(Downlink)),
+        ?assertEqual(DownlinkDatr, blockchain_helium_packet_v1:datarate(Downlink)),
+        ok
+    end),
+
+    ok.
+
+http_sync_downlink_test(_Config) ->
     ok = start_forwarder_listener(sync),
 
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),

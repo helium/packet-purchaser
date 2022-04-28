@@ -11,6 +11,8 @@
     lookup/1,
     lookup_eui/1,
     lookup_devaddr/1,
+    %% http
+    lookup_netid/1,
     %% UDP Cache
     insert_udp_worker/2,
     delete_udp_worker/1,
@@ -182,6 +184,26 @@ lookup_devaddr({devaddr, DevAddr}) ->
             end;
         Err ->
             Err
+    end.
+
+-spec lookup_netid(NetID :: non_neg_integer()) -> {ok, map()} | {error, routing_not_found}.
+lookup_netid(NetID) ->
+    case ets:lookup(?DEVADDR_ETS, NetID) of
+        [] ->
+            {error, routing_not_found};
+        [
+            #devaddr{
+                protocol = Protocol,
+                multi_buy = MultiBuy,
+                disable_pull_data = DisablePullData
+            }
+        ] ->
+            {ok, #{
+                protocol => Protocol,
+                net_id => NetID,
+                multi_buy => MultiBuy,
+                disable_pull_data => DisablePullData
+            }}
     end.
 
 -spec reset_config() -> ok.
