@@ -521,21 +521,18 @@ http_sync_downlink_test(_Config) ->
         {false, Reason} -> ct:fail({http_response, Reason})
     end,
 
-    ok =
-        receive
-            {send_response, SCResp} ->
-                Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
-                ?assertEqual(DownlinkPayload, blockchain_helium_packet_v1:payload(Downlink)),
-                ?assertEqual(
-                    DownlinkTimestamp + RXDelay,
-                    blockchain_helium_packet_v1:timestamp(Downlink)
-                ),
-                ?assertEqual(DownlinkFreq, blockchain_helium_packet_v1:frequency(Downlink)),
-                ?assertEqual(27, blockchain_helium_packet_v1:signal_strength(Downlink)),
-                ?assertEqual(DownlinkDatr, blockchain_helium_packet_v1:datarate(Downlink)),
-                ok
-        after 3000 -> ct:fail("http state channel response timeout")
-        end,
+    ok = gateway_expect_downlink(fun(SCResp) ->
+        Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
+        ?assertEqual(DownlinkPayload, blockchain_helium_packet_v1:payload(Downlink)),
+        ?assertEqual(
+            DownlinkTimestamp + RXDelay,
+            blockchain_helium_packet_v1:timestamp(Downlink)
+        ),
+        ?assertEqual(DownlinkFreq, blockchain_helium_packet_v1:frequency(Downlink)),
+        ?assertEqual(27, blockchain_helium_packet_v1:signal_strength(Downlink)),
+        ?assertEqual(DownlinkDatr, blockchain_helium_packet_v1:datarate(Downlink)),
+        ok
+    end),
     ok.
 
 http_sync_uplink_join_test(_Config) ->
@@ -657,14 +654,11 @@ http_sync_uplink_join_test(_Config) ->
     end,
 
     %% 4. Expect downlink queued for gateway
-    ok =
-        receive
-            {send_response, SCResp} ->
-                Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
-                ?assertEqual(27, blockchain_helium_packet_v1:signal_strength(Downlink)),
-                ok
-        after 3000 -> ct:fail("http state channel response timeout")
-        end,
+    ok = gateway_expect_downlink(fun(SCResp) ->
+        Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
+        ?assertEqual(27, blockchain_helium_packet_v1:signal_strength(Downlink)),
+        ok
+    end),
 
     ok.
 
