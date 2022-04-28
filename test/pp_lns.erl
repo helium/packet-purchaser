@@ -301,13 +301,13 @@ make_response_body(#{
         'FNSULToken' => Token,
         'PHYPayload' => pp_utils:binary_to_hex(<<"join_accept_payload">>)
     };
-make_response_body(#{<<"ReceiverID">> := ReceiverID}) ->
+make_response_body(#{<<"ReceiverID">> := ReceiverID, <<"TransactionID">> := TransactionID}) ->
     %% Ack to regular uplink
     #{
         'ProtocolVersion' => <<"1.0">>,
         'SenderID' => ReceiverID,
         'ReceiverID' => <<"0xC00053">>,
-        'TransactionID' => 45,
+        'TransactionID' => TransactionID,
         'MessageType' => <<"PRStartAns">>,
         'Result' => #{'ResultCode' => <<"Success">>},
         %% 11.3.1 Passive Roaming Start
