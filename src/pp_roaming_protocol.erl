@@ -7,6 +7,7 @@
 
 %% Downlinking
 -export([
+    handle_message/1,
     handle_prstart_ans/1,
     handle_xmitdata_req/1
 ]).
@@ -98,6 +99,21 @@ make_uplink_payload(NetID, Uplinks, TransactionID) ->
 %% Downlink
 %% ------------------------------------------------------------------
 
+-spec handle_message(prstart_ans() | xmitdata_req()) ->
+    ok
+    | {downlink, xmitdata_ans(), downlink()}
+    | {downlink, downlink()}
+    | {error, any()}.
+handle_message(#{<<"MessageType">> := MT} = M) ->
+    case MT of
+        <<"PRStartAns">> ->
+            handle_prstart_ans(M);
+        <<"XmitDataReq">> ->
+            handle_xmitdata_req(M);
+        _Err ->
+            throw({bad_message, M})
+    end.
+
 -spec handle_prstart_ans(prstart_ans()) -> ok | {downlink, downlink()} | {error, any()}.
 handle_prstart_ans(#{
     <<"Result">> := #{<<"ResultCode">> := <<"Success">>},
@@ -182,7 +198,7 @@ handle_xmitdata_req(XmitDataReq) ->
 
             case pp_roaming_downlink:lookup_handler(PubKeyBin) of
                 {error, _} = Err -> Err;
-                {ok, SCPid} -> {ok, PayloadResponse, {SCPid, SCResp}}
+                {ok, SCPid} -> {downlink, PayloadResponse, {SCPid, SCResp}}
             end
     end.
 

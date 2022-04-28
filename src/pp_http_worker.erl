@@ -168,15 +168,20 @@ send_data(#state{
     Data1 = jsx:encode(Data, [{float_formatter, fun round_to_fourth_decimal/1}]),
     case hackney:post(Address, [], Data1, [with_body]) of
         {ok, 200, _Headers, Res} ->
-            Decoded = jsx:decode(Res),
-            case pp_roaming_protocol:handle_prstart_ans(Decoded) of
-                {error, Err} ->
-                    lager:error("error handling response: ~p", [Err]),
+            case jsx:is_json(Res) of
+                false ->
                     ok;
-                {downlink, {SCPid, SCResp}} ->
-                    ok = blockchain_state_channel_common:send_response(SCPid, SCResp);
-                ok ->
-                    ok
+                true ->
+                    Decoded = jsx:decode(Res),
+                    case pp_roaming_protocol:handle_prstart_ans(Decoded) of
+                        {error, Err} ->
+                            lager:error("error handling response: ~p", [Err]),
+                            ok;
+                        {downlink, {SCPid, SCResp}} ->
+                            ok = blockchain_state_channel_common:send_response(SCPid, SCResp);
+                        ok ->
+                            ok
+                    end
             end;
         {ok, Code, _Headers, Resp} ->
             lager:error("bad response: [code: ~p] [res: ~p]", [Code, Resp]),

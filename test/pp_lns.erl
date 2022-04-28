@@ -259,14 +259,63 @@ handle(Req, Args) ->
                 elli_request:method(Req)
         end,
     ct:pal("~p", [{Method, elli_request:path(Req), Req, Args}]),
+    handle(Method, elli_request:path(Req), Req, Args).
+
+handle('POST', [<<"downlink">>], Req, Args) ->
+    {ok, FlowType} = application:get_env(packet_purchaser, http_downlink_flow_type),
+    %% FlowType = maps:get(flow_type, Args),
     Forward = maps:get(forward, Args),
     Body = elli_request:body(Req),
 
-    ResponseBody = make_response_body(jsx:decode(Body)),
-    Response = {200, [], jsx:encode(ResponseBody)},
-    Forward ! {http_msg, Body, Response},
+    case FlowType of
+        async ->
+            Forward ! {http_downlink_data, Body},
+            Res = pp_roaming_downlink:handle(Req, Args),
+            ct:pal("Downlink handler resp: ~p", [Res]),
+            Forward ! {http_downlink_data_response, 200},
+            {200, [], <<>>};
+        sync ->
+            Decoded = jsx:decode(Body),
+            ct:pal("sync handling downlink:~n~p", [Decoded]),
+            Response = pp_roaming_downlink:handle(Req, Args),
 
-    Response.
+            %% ResponseBody = make_response_body(Decoded),
+            %% Response = {200, [], jsx:encode(ResponseBody)},
+            Forward ! {http_msg, Body, Response},
+            Response
+    end;
+handle('POST', [<<"uplink">>], Req, Args) ->
+    {ok, FlowType} = application:get_env(packet_purchaser, http_downlink_flow_type),
+    %% FlowType = maps:get(flow_type, Args),
+    Forward = maps:get(forward, Args),
+    Body = elli_request:body(Req),
+
+    case FlowType of
+        async ->
+            ResponseBody = make_response_body(jsx:decode(Body)),
+
+            Response = {200, [], <<>>},
+            Forward ! {http_uplink_data, Body},
+            Forward ! {http_uplink_data_response, 200},
+            spawn(fun() ->
+                timer:sleep(250),
+                Res = hackney:post(
+                    <<"http://127.0.0.1:3003/downlink">>,
+                    [{<<"Host">>, <<"localhost">>}],
+                    jsx:encode(ResponseBody),
+                    [with_body]
+                ),
+                ct:pal("Downlink Res: ~p", [Res])
+            end),
+
+            Response;
+        sync ->
+            ResponseBody = make_response_body(jsx:decode(Body)),
+            Response = {200, [], jsx:encode(ResponseBody)},
+            Forward ! {http_msg, Body, Response},
+
+            Response
+    end.
 
 handle_event(_Event, _Data, _Args) ->
     %% uncomment for Elli errors.

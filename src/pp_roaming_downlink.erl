@@ -39,9 +39,12 @@ handle(Req, Args) ->
                     lager:debug("request: ~p", [{Method, elli_request:path(Req), Req, Args}]),
                     Body = elli_request:body(Req),
                     Decoded = jsx:decode(Body),
-
-                    case pp_roaming_protocol:handle_xmitdata_req(Decoded) of
-                        {ok, Response, {SCPid, SCResp}} ->
+                    case pp_roaming_protocol:handle_message(Decoded) of
+                        {downlink, {SCPid, SCResp}} ->
+                            lager:debug("sending downlink [sc_pid: ~p]", [SCPid]),
+                            ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
+                            {200, [], <<>>};
+                        {downlink, Response, {SCPid, SCResp}} ->
                             lager:debug(
                                 "sending downlink [sc_pid: ~p] [response: ~p]",
                                 [SCPid, Response]
@@ -49,7 +52,7 @@ handle(Req, Args) ->
                             ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
                             {200, [], jsx:encode(Response)};
                         {error, _} = Err ->
-                            lager:error("~p", [Err]),
+                            lager:error("dowlink handle message error ~p", [Err]),
                             {500, [], <<"An error occurred">>}
                     end
             end
