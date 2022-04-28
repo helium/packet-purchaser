@@ -267,82 +267,6 @@ http_async_uplink_join_test(_Config) ->
 
     ok.
 
-start_downlink_listener() ->
-    {ok, _ElliPid} = elli:start_link([
-        {callback, pp_lns},
-        {callback_args, #{forward => self()}},
-        {port, 3003},
-        {min_acceptors, 1}
-    ]),
-    ok.
-
-start_forwarder_listener(FlowType) ->
-    application:set_env(packet_purchaser, http_downlink_flow_type, FlowType),
-    start_downlink_listener().
-
-start_roamer_listener(FlowType) ->
-    application:set_env(packet_purchaser, http_downlink_flow_type, FlowType),
-    start_uplink_listener().
-
-roamer_expect_uplink_data(Expected) ->
-    {ok, Got} = roamer_expect_uplink_data(),
-    case test_utils:match_map(Expected, Got) of
-        true ->
-            {ok, Got};
-        {false, Reason} ->
-            ct:pal("FAILED got: ~n~p~n expected: ~n~p", [Got, Expected]),
-            ct:fail({roamer_expect_uplink_data, Reason})
-    end.
-
-roamer_expect_uplink_data() ->
-    receive
-        http_uplink_data -> ct:fail({http_uplink_data_err, no_payload});
-        {http_uplink_data, Payload} -> {ok, jsx:decode(Payload)}
-    after 1000 -> ct:fail(http_uplink_data_timeout)
-    end.
-
-forwarder_expect_response(Code) ->
-    receive
-        {http_uplink_data_response, Code} ->
-            ok;
-        {http_uplink_data_response, OtherCode} ->
-            ct:fail({http_uplink_data_response_err, [{expected, Code}, {got, OtherCode}]})
-    after 1000 -> ct:fail(http_uplink_data_200_response_timeout)
-    end.
-
-forwarder_expect_downlink_data(Expected) ->
-    {ok, Got} = forwarder_expect_downlink_data(),
-    case test_utils:match_map(Expected, Got) of
-        true ->
-            {ok, Got};
-        {false, Reason} ->
-            ct:pal("FAILED got: ~n~p~n expected: ~n~p", [Got, Expected]),
-            ct:fail({forwarder_expect_downlink_data, Reason})
-    end.
-
-forwarder_expect_downlink_data() ->
-    receive
-        http_downlink_data -> ct:fail({http_downlink_data, no_payload});
-        {http_downlink_data, Payload} -> {ok, jsx:decode(Payload)}
-    after 1000 -> ct:fail(http_downlink_data_timeout)
-    end.
-
-roamer_expect_response(Code) ->
-    receive
-        {http_downlink_data_response, Code} ->
-            ok;
-        {http_downlink_data_response, OtherCode} ->
-            ct:fail({http_downlink_data_response_err, [{expected, Code}, {got, OtherCode}]})
-    after 1000 -> ct:fail(http_downlink_data_200_response_timeout)
-    end.
-
-gateway_expect_downlink(ExpectFn) ->
-    receive
-        {send_response, SCResp} ->
-            ExpectFn(SCResp)
-    after 1000 -> ct:fail(gateway_expect_downlink_timeout)
-    end.
-
 http_async_downlink_test(_Config) ->
     %%
     %% Forwarder : packet-purchaser
@@ -1950,3 +1874,79 @@ start_uplink_listener() ->
         {min_acceptors, 1}
     ]),
     ok.
+
+start_downlink_listener() ->
+    {ok, _ElliPid} = elli:start_link([
+        {callback, pp_lns},
+        {callback_args, #{forward => self()}},
+        {port, 3003},
+        {min_acceptors, 1}
+    ]),
+    ok.
+
+start_forwarder_listener(FlowType) ->
+    application:set_env(packet_purchaser, http_downlink_flow_type, FlowType),
+    start_downlink_listener().
+
+start_roamer_listener(FlowType) ->
+    application:set_env(packet_purchaser, http_downlink_flow_type, FlowType),
+    start_uplink_listener().
+
+roamer_expect_uplink_data(Expected) ->
+    {ok, Got} = roamer_expect_uplink_data(),
+    case test_utils:match_map(Expected, Got) of
+        true ->
+            {ok, Got};
+        {false, Reason} ->
+            ct:pal("FAILED got: ~n~p~n expected: ~n~p", [Got, Expected]),
+            ct:fail({roamer_expect_uplink_data, Reason})
+    end.
+
+roamer_expect_uplink_data() ->
+    receive
+        http_uplink_data -> ct:fail({http_uplink_data_err, no_payload});
+        {http_uplink_data, Payload} -> {ok, jsx:decode(Payload)}
+    after 1000 -> ct:fail(http_uplink_data_timeout)
+    end.
+
+forwarder_expect_response(Code) ->
+    receive
+        {http_uplink_data_response, Code} ->
+            ok;
+        {http_uplink_data_response, OtherCode} ->
+            ct:fail({http_uplink_data_response_err, [{expected, Code}, {got, OtherCode}]})
+    after 1000 -> ct:fail(http_uplink_data_200_response_timeout)
+    end.
+
+forwarder_expect_downlink_data(Expected) ->
+    {ok, Got} = forwarder_expect_downlink_data(),
+    case test_utils:match_map(Expected, Got) of
+        true ->
+            {ok, Got};
+        {false, Reason} ->
+            ct:pal("FAILED got: ~n~p~n expected: ~n~p", [Got, Expected]),
+            ct:fail({forwarder_expect_downlink_data, Reason})
+    end.
+
+forwarder_expect_downlink_data() ->
+    receive
+        http_downlink_data -> ct:fail({http_downlink_data, no_payload});
+        {http_downlink_data, Payload} -> {ok, jsx:decode(Payload)}
+    after 1000 -> ct:fail(http_downlink_data_timeout)
+    end.
+
+roamer_expect_response(Code) ->
+    receive
+        {http_downlink_data_response, Code} ->
+            ok;
+        {http_downlink_data_response, OtherCode} ->
+            ct:fail({http_downlink_data_response_err, [{expected, Code}, {got, OtherCode}]})
+    after 1000 -> ct:fail(http_downlink_data_200_response_timeout)
+    end.
+
+gateway_expect_downlink(ExpectFn) ->
+    receive
+        {send_response, SCResp} ->
+            ExpectFn(SCResp)
+    after 1000 -> ct:fail(gateway_expect_downlink_timeout)
+    end.
