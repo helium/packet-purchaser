@@ -103,7 +103,7 @@ make_uplink_payload(NetID, Uplinks, TransactionID) ->
 -spec handle_message(prstart_ans() | xmitdata_req()) ->
     ok
     | {downlink, xmitdata_ans(), downlink()}
-    | {downlink, downlink()}
+    | {join_accept, downlink()}
     | {error, any()}.
 handle_message(#{<<"MessageType">> := MT} = M) ->
     case MT of
@@ -115,7 +115,7 @@ handle_message(#{<<"MessageType">> := MT} = M) ->
             throw({bad_message, M})
     end.
 
--spec handle_prstart_ans(prstart_ans()) -> ok | {downlink, downlink()} | {error, any()}.
+-spec handle_prstart_ans(prstart_ans()) -> ok | {join_accept, downlink()} | {error, any()}.
 handle_prstart_ans(#{
     <<"Result">> := #{<<"ResultCode">> := <<"Success">>},
     <<"MessageType">> := <<"PRStartAns">>,
@@ -145,7 +145,7 @@ handle_prstart_ans(#{
 
     case pp_roaming_downlink:lookup_handler(PubKeyBin) of
         {error, _} = Err -> Err;
-        {ok, SCPid} -> {downlink, {SCPid, SCResp}}
+        {ok, SCPid} -> {join_accept, {SCPid, SCResp}}
     end;
 handle_prstart_ans(#{
     <<"MessageType">> := <<"PRStartAns">>,
@@ -155,7 +155,8 @@ handle_prstart_ans(#{
 handle_prstart_ans(Res) ->
     throw({bad_response, Res}).
 
--spec handle_xmitdata_req(xmitdata_req()) -> {downlink, xmitdata_ans(), downlink()} | {error, any()}.
+-spec handle_xmitdata_req(xmitdata_req()) ->
+    {downlink, xmitdata_ans(), downlink()} | {error, any()}.
 handle_xmitdata_req(XmitDataReq) ->
     #{
         <<"MessageType">> := <<"XmitDataReq">>,

@@ -173,12 +173,15 @@ send_data(#state{
         {ok, 200, _Headers, Res} ->
             case FlowType of
                 sync ->
+                    %% All uplinks are PRStartReq. We will only ever receive a
+                    %% PRStartAns from that. XMitDataReq downlinks come out of
+                    %% band to the HTTP listener.
                     Decoded = jsx:decode(Res),
                     case pp_roaming_protocol:handle_prstart_ans(Decoded) of
                         {error, Err} ->
                             lager:error("error handling response: ~p", [Err]),
                             ok;
-                        {downlink, {SCPid, SCResp}} ->
+                        {join_accept, {SCPid, SCResp}} ->
                             ok = blockchain_state_channel_common:send_response(SCPid, SCResp);
                         ok ->
                             ok
