@@ -27,60 +27,49 @@ handle(Req, Args) ->
     Host = elli_request:get_header(<<"Host">>, Req),
     lager:info("request from [host: ~p]", [Host]),
 
-    case erlang:byte_size(Host) of
-        0 ->
-            {400, [], <<>>};
-        _ ->
-            Allowed = application:get_env(packet_purchaser, http_roaming_ip_list, []),
-            case string:find(Allowed, Host) of
-                nomatch ->
-                    {400, [], <<>>};
-                _ ->
-                    lager:debug("request: ~p", [{Method, elli_request:path(Req), Req, Args}]),
-                    Body = elli_request:body(Req),
-                    Decoded = jsx:decode(Body),
+    lager:debug("request: ~p", [{Method, elli_request:path(Req), Req, Args}]),
+    Body = elli_request:body(Req),
+    Decoded = jsx:decode(Body),
 
-                    case pp_roaming_protocol:handle_message(Decoded) of
-                        {downlink, {SCPid, SCResp}} ->
-                            lager:debug("sending downlink [sc_pid: ~p]", [SCPid]),
-                            ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
-                            {200, [], <<>>};
-                        {downlink, Response, {SCPid, SCResp}} ->
-                            lager:debug(
-                                "sending downlink [sc_pid: ~p] [response: ~p]",
-                                [SCPid, Response]
-                            ),
-                            ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
-                            case application:get_env(packet_purchaser, http_downlink_flow_type) of
-                                {ok, sync} ->
-                                    {200, [], jsx:encode(Response)};
-                                {ok, async} ->
-                                    spawn(fun() ->
-                                        SenderNetIDBin = maps:get(<<"SenderID">>, Decoded),
-                                        SenderNetID = hexstring_to_int(SenderNetIDBin),
-                                        case pp_config:lookup_netid(SenderNetID) of
-                                            {ok, #{protocol := {http, Endpoint}}} ->
-                                                Res = hackney:post(
-                                                    Endpoint,
-                                                    [],
-                                                    jsx:encode(Response),
-                                                    [withjbody]
-                                                ),
-                                                ct:print("~p :: ~p", [?MODULE, Res]);
-                                            {error, routing_not_found} ->
-                                                lager:error(
-                                                    "received message for partner not configured: ~p",
-                                                    [Decoded]
-                                                )
-                                        end
-                                    end),
-                                    {200, [], <<>>}
-                            end;
-                        {error, _} = Err ->
-                            lager:error("dowlink handle message error ~p", [Err]),
-                            {500, [], <<"An error occurred">>}
-                    end
-            end
+    case pp_roaming_protocol:handle_message(Decoded) of
+        {downlink, {SCPid, SCResp}} ->
+            lager:debug("sending downlink [sc_pid: ~p]", [SCPid]),
+            ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
+            {200, [], <<"downlink sent: 1">>};
+        {downlink, Response, {SCPid, SCResp}} ->
+            lager:debug(
+                "sending downlink [sc_pid: ~p] [response: ~p]",
+                [SCPid, Response]
+            ),
+            ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
+            case application:get_env(packet_purchaser, http_downlink_flow_type) of
+                {ok, sync} ->
+                    {200, [], jsx:encode(Response)};
+                {ok, async} ->
+                    spawn(fun() ->
+                        SenderNetIDBin = maps:get(<<"SenderID">>, Decoded),
+                        SenderNetID = hexstring_to_int(SenderNetIDBin),
+                        case pp_config:lookup_netid(SenderNetID) of
+                            {ok, #{protocol := {http, Endpoint}}} ->
+                                Res = hackney:post(
+                                    Endpoint,
+                                    [],
+                                    jsx:encode(Response),
+                                    [withjbody]
+                                ),
+                                ct:print("~p :: ~p", [?MODULE, Res]);
+                            {error, routing_not_found} ->
+                                lager:error(
+                                    "received message for partner not configured: ~p",
+                                    [Decoded]
+                                )
+                        end
+                    end),
+                    {200, [], <<"downlink sent: 2">>}
+            end;
+        {error, _} = Err ->
+            lager:error("dowlink handle message error ~p", [Err]),
+            {500, [], <<"An error occurred">>}
     end.
 
 handle_event(_Event, _Data, _Args) ->
