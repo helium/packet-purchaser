@@ -97,10 +97,7 @@
         ]},
         {traces, [
             {{lager_file_backend, "packet_purchaser.log"}, [{application, packet_purchaser}], info},
-            {{lager_file_backend, "packet_purchaser.log"}, [{module, pp_sc_packet_handler}], info},
-            {{lager_file_backend, "downlink_handler.log"}, [{module, pp_roaming_downlink}], debug},
-            {{lager_file_backend, "protocol.log"}, [{module, pp_roaming_protocola}], debug},
-            {{lager_file_backend, "http_worker.log"}, [{module, pp_http_worker}], debug}
+            {{lager_file_backend, "packet_purchaser.log"}, [{module, pp_sc_packet_handler}], info}
         ]}
     ]}
 ].
