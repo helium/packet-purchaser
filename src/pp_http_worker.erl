@@ -25,6 +25,7 @@
 -define(SERVER, ?MODULE).
 -define(SEND_DATA, send_data).
 -define(SHUTDOWN, shutdown).
+-define(SHUTDOWN_TIMEOUT, timer:seconds(5)).
 
 -type address() :: binary().
 
@@ -131,10 +132,10 @@ maybe_schedule_send_data(_, Ref) ->
 
 -spec maybe_schedule_shutdown(undefined | reference()) -> {ok, reference()}.
 maybe_schedule_shutdown(undefined) ->
-    {ok, erlang:send_after(1000, self(), ?SHUTDOWN)};
+    {ok, erlang:send_after(?SHUTDOWN_TIMEOUT, self(), ?SHUTDOWN)};
 maybe_schedule_shutdown(CurrTimer) ->
     _ = (catch erlang:cancel_timer(CurrTimer)),
-    {ok, erlang:send_after(1000, self(), ?SHUTDOWN)}.
+    {ok, erlang:send_after(?SHUTDOWN_TIMEOUT, self(), ?SHUTDOWN)}.
 
 -spec next_transaction_id() -> integer().
 next_transaction_id() ->
