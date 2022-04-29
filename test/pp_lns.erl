@@ -261,6 +261,21 @@ handle(Req, Args) ->
     ct:pal("~p", [{Method, elli_request:path(Req), Req, Args}]),
     handle(Method, elli_request:path(Req), Req, Args).
 
+%% ------------------------------------------------------------------
+%% NOTE: packet-purchaser starts up with a downlink listener
+%% using `pp_roaming_downlink' as the handler.
+%%
+%% Tests using the HTTP protocol start 2 Elli listeners.
+%%
+%% A forwarding listener :: (fns) Downlink Handler
+%% A roaming listener    :: (sns) Uplink Handler as roaming partner
+%%
+%% The normal downlink listener is started, but ignored.
+%%
+%% The downlink handler in this file delegates to `pp_roaming_downlink' while
+%% sending extra messages to the test running so the production code doesn't
+%% need to know about the tests.
+%% ------------------------------------------------------------------
 handle('POST', [<<"downlink">>], Req, Args) ->
     Forward = maps:get(forward, Args),
     Body = elli_request:body(Req),
