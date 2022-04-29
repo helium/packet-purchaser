@@ -23,6 +23,7 @@
     binary_to_hex/1,
     binary_to_hexstring/1,
     hexstring/1,
+    hexstring_to_int/1,
     format_time/1,
     get_env_int/2,
     get_hotspot_location/1
@@ -104,6 +105,12 @@ hexstring(Num) when erlang:is_number(Num) ->
     <<"0x", Inter/binary>>;
 hexstring(Other) ->
     throw({unknown_hexstring_conversion, Other}).
+
+-spec hexstring_to_int(binary()) -> integer().
+hexstring_to_int(<<"0x", Num/binary>>) ->
+    erlang:binary_to_integer(Num, 16);
+hexstring_to_int(Bin) ->
+    throw({invalid_hexstring_bin, Bin}).
 
 -spec binary_to_hexstring(number() | binary()) -> binary().
 binary_to_hexstring(ID) when erlang:is_number(ID) ->

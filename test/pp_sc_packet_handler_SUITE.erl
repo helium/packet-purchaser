@@ -152,8 +152,8 @@ http_async_uplink_join_test(_Config) ->
     %% Forwarder : packet-purchaser
     %% Roamer    : partner-lns
     %%
-    ok = start_forwarder_listener(async),
-    ok = start_roamer_listener(async),
+    ok = start_forwarder_listener(),
+    ok = start_roamer_listener(),
 
     %% 1. Get a gateway to send from
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
@@ -190,6 +190,7 @@ http_async_uplink_join_test(_Config) ->
             <<"net_id">> => ?NET_ID_ACTILITY,
             <<"protocol">> => <<"http">>,
             <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+            <<"http_flow_type">> => <<"async">>,
             <<"joins">> => [
                 #{<<"dev_eui">> => DevEUI, <<"app_eui">> => AppEUI}
             ]
@@ -272,8 +273,8 @@ http_async_downlink_test(_Config) ->
     %% Forwarder : packet-purchaser
     %% Roamer    : partner-lns
     %%
-    ok = start_forwarder_listener(async),
-    ok = start_roamer_listener(async),
+    ok = start_forwarder_listener(),
+    ok = start_roamer_listener(),
 
     %% 1. Get a gateway to send from
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
@@ -286,7 +287,8 @@ http_async_downlink_test(_Config) ->
             <<"name">> => <<"test">>,
             <<"net_id">> => ?NET_ID_ACTILITY,
             <<"protocol">> => <<"http">>,
-            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+            <<"http_flow_type">> => <<"async">>
         }
     ]),
 
@@ -383,7 +385,7 @@ http_async_downlink_test(_Config) ->
     ok.
 
 http_sync_downlink_test(_Config) ->
-    ok = start_forwarder_listener(sync),
+    ok = start_forwarder_listener(),
 
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
@@ -417,6 +419,15 @@ http_sync_downlink_test(_Config) ->
         }
     },
 
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => <<"test">>,
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"protocol">> => <<"http">>,
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+            <<"http_flow_type">> => <<"sync">>
+        }
+    ]),
     ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
     {ok, 200, _Headers, Resp} = hackney:post(
         <<"http://127.0.0.1:3003/downlink">>,
@@ -497,6 +508,7 @@ http_sync_uplink_join_test(_Config) ->
             <<"net_id">> => ?NET_ID_ACTILITY,
             <<"protocol">> => <<"http">>,
             <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+            <<"http_flow_type">> => <<"sync">>,
             <<"joins">> => [
                 #{<<"dev_eui">> => DevEUI, <<"app_eui">> => AppEUI}
             ]
@@ -1884,12 +1896,10 @@ start_downlink_listener() ->
     ]),
     ok.
 
-start_forwarder_listener(FlowType) ->
-    application:set_env(packet_purchaser, http_downlink_flow_type, FlowType),
+start_forwarder_listener() ->
     start_downlink_listener().
 
-start_roamer_listener(FlowType) ->
-    application:set_env(packet_purchaser, http_downlink_flow_type, FlowType),
+start_roamer_listener() ->
     start_uplink_listener().
 
 roamer_expect_uplink_data(Expected) ->

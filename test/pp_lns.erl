@@ -262,10 +262,14 @@ handle(Req, Args) ->
     handle(Method, elli_request:path(Req), Req, Args).
 
 handle('POST', [<<"downlink">>], Req, Args) ->
-    {ok, FlowType} = application:get_env(packet_purchaser, http_downlink_flow_type),
-    %% FlowType = maps:get(flow_type, Args),
+
     Forward = maps:get(forward, Args),
     Body = elli_request:body(Req),
+    Decoded = jsx:decode(Body),
+
+    SenderNetIDBin = maps:get(<<"SenderID">>, Decoded),
+    SenderNetID = pp_utils:hexstring_to_int(SenderNetIDBin),
+    {ok, #{protocol := {http, _Endpoint, FlowType}}} = pp_config:lookup_netid(SenderNetID),
 
     case FlowType of
         async ->
@@ -285,10 +289,13 @@ handle('POST', [<<"downlink">>], Req, Args) ->
             Response
     end;
 handle('POST', [<<"uplink">>], Req, Args) ->
-    {ok, FlowType} = application:get_env(packet_purchaser, http_downlink_flow_type),
-    %% FlowType = maps:get(flow_type, Args),
     Forward = maps:get(forward, Args),
     Body = elli_request:body(Req),
+    Decoded = jsx:decode(Body),
+
+    ReceiverNetIDBin = maps:get(<<"ReceiverID">>, Decoded),
+    ReceiverNetID = pp_utils:hexstring_to_int(ReceiverNetIDBin),
+    {ok, #{protocol := {http, _Endpoint, FlowType}}} = pp_config:lookup_netid(ReceiverNetID),
 
     case FlowType of
         async ->

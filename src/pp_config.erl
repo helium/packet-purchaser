@@ -59,6 +59,7 @@
 -define(UDP_WORKER_ETS, pp_config_udp_worker_ets).
 
 -define(DEFAULT_PROTOCOL, <<"udp">>).
+-define(DEFAULT_HTTP_FLOW_TYPE, <<"sync">>).
 
 -record(state, {
     filename :: testing | string()
@@ -453,7 +454,9 @@ transform_config_entry(Entry) ->
                 {
                     http,
                     maps:get(<<"http_endpoint">>, Entry),
-                    maps:get(<<"http_flow_type">>, Entry, async)
+                    erlang:binary_to_existing_atom(
+                        maps:get(<<"http_flow_type">>, Entry, ?DEFAULT_HTTP_FLOW_TYPE)
+                    )
                 };
             Other ->
                 throw({invalid_protocol_type, Other})

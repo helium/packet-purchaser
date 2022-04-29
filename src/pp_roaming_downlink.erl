@@ -32,7 +32,7 @@ handle(Req, Args) ->
     Decoded = jsx:decode(Body),
 
     SenderNetIDBin = maps:get(<<"SenderID">>, Decoded),
-    SenderNetID = hexstring_to_int(SenderNetIDBin),
+    SenderNetID = pp_utils:hexstring_to_int(SenderNetIDBin),
     case pp_config:lookup_netid(SenderNetID) of
         {error, routing_not_found} ->
             lager:error("received message for partner not configured: ~p", [Decoded]),
@@ -69,11 +69,6 @@ handle(Req, Args) ->
 
 handle_event(_Event, _Data, _Args) ->
     ok.
-
-hexstring_to_int(<<"0x", Num/binary>>) ->
-    erlang:binary_to_integer(Num, 16);
-hexstring_to_int(Bin) ->
-    throw({invalid_hexstring_bin, Bin}).
 
 %% State Channel =====================================================
 
