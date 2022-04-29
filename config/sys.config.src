@@ -17,8 +17,7 @@
         {sc_expiration_buffer, "${PP_SC_EXPIRATION_BUFFER}"},
         {pp_routing_config_filename, "${PP_BASE_DIR}/${PP_ROUTING_CONFIG_FILE}"},
         {metrics, [{record_queue_min_length, 50}]},
-        {http_roaming_port, "${PP_HTTP_DOWNLINK_PORT}"},
-        {http_roaming_ip_list, "${PP_HTTP_IP_LIST}"},
+        {http_roaming_port, "${PP_HTTP_DOWNLINK_PORT}"}
     ]},
     {blockchain, [
         {port, 2154},
