@@ -62,14 +62,13 @@ handle_packet(Pid, SCPacket, PacketTime) ->
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 init(Args) ->
-    #{protocol := {http, Address, FlowType}, net_id := NetID} = Args,
+    #{protocol := {http, Address, FlowType, DedupeTimeout}, net_id := NetID} = Args,
     lager:debug("~p init with ~p", [?MODULE, Args]),
-    DataTimeout = pp_utils:get_env_int(http_dedupe_timer, 200),
     {ok, #state{
         net_id = NetID,
         address = Address,
         transaction_id = next_transaction_id(),
-        send_data_timer = DataTimeout,
+        send_data_timer = DedupeTimeout,
         flow_type = FlowType
     }}.
 

@@ -108,7 +108,7 @@ all() ->
 groups() ->
     [
         {http, [
-                http_sync_uplink_join_test,
+            http_sync_uplink_join_test,
             http_async_uplink_join_test,
             http_sync_downlink_test,
             http_async_downlink_test,
@@ -684,8 +684,6 @@ http_uplink_packet_late_test(_Config) ->
     #{public := PubKey2} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin2 = libp2p_crypto:pubkey_to_bin(PubKey2),
 
-    application:set_env(packet_purchaser, http_dedupe_timer, 10),
-
     ok = start_uplink_listener(),
 
     SendPacketFun = fun(PubKeyBin, DevAddr) ->
@@ -706,7 +704,8 @@ http_uplink_packet_late_test(_Config) ->
             <<"name">> => <<"test">>,
             <<"net_id">> => ?NET_ID_ACTILITY,
             <<"protocol">> => <<"http">>,
-            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+            <<"http_dedupe_timeout">> => 10
         }
     ]),
     {ok, SCPacket, PacketTime} = SendPacketFun(PubKeyBin1, ?DEVADDR_ACTILITY),

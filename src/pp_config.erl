@@ -60,13 +60,16 @@
 
 -define(DEFAULT_PROTOCOL, <<"udp">>).
 -define(DEFAULT_HTTP_FLOW_TYPE, <<"sync">>).
+-define(DEFAULT_HTTP_DEDUPE_TIMEOUT, 200).
 
 -record(state, {
     filename :: testing | string()
 }).
 
 -type udp_protocol() :: {udp, Address :: string(), Port :: non_neg_integer()}.
--type http_protocol() :: {http, ConnectionString :: binary(), FlowType :: async | sync}.
+-type http_protocol() ::
+    {http, ConnectionString :: binary(), FlowType :: async | sync,
+        DedupeTimer :: non_neg_integer()}.
 
 -record(eui, {
     name :: undefined | binary(),
@@ -456,7 +459,8 @@ transform_config_entry(Entry) ->
                     maps:get(<<"http_endpoint">>, Entry),
                     erlang:binary_to_existing_atom(
                         maps:get(<<"http_flow_type">>, Entry, ?DEFAULT_HTTP_FLOW_TYPE)
-                    )
+                    ),
+                    maps:get(<<"http_dedupe_timeout">>, Entry, ?DEFAULT_HTTP_DEDUPE_TIMEOUT)
                 };
             Other ->
                 throw({invalid_protocol_type, Other})
