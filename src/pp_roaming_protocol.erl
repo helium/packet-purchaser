@@ -24,7 +24,8 @@
 -type xmitdata_req() :: map().
 -type xmitdata_ans() :: map().
 
--type net_id() :: binary().
+-type netid_num() :: non_neg_integer().
+%% -type net_id() :: binary().
 -type sc_packet() :: blockchain_state_channel_packet_v1:packet().
 -type packet_time() :: non_neg_integer().
 -type packet() :: {
@@ -45,7 +46,7 @@
 -define(TOKEN_SEP, <<":">>).
 
 -export_type([
-    net_id/0,
+    netid_num/0,
     packet/0,
     sc_packet/0,
     packet_time/0,
@@ -56,7 +57,7 @@
 %% Uplink
 %% ------------------------------------------------------------------
 
--spec make_uplink_payload(net_id(), list(packet()), integer()) -> prstart_req().
+-spec make_uplink_payload(netid_num(), list(packet()), integer()) -> prstart_req().
 make_uplink_payload(NetID, Uplinks, TransactionID) ->
     {SCPacket, PacketTime, _} = select_best(Uplinks),
 
@@ -154,7 +155,7 @@ handle_prstart_ans(#{
 handle_prstart_ans(Res) ->
     throw({bad_response, Res}).
 
--spec handle_xmitdata_req(xmitdata_req()) -> {ok, xmitdata_ans(), downlink()} | {error, any()}.
+-spec handle_xmitdata_req(xmitdata_req()) -> {downlink, xmitdata_ans(), downlink()} | {error, any()}.
 handle_xmitdata_req(XmitDataReq) ->
     #{
         <<"MessageType">> := <<"XmitDataReq">>,

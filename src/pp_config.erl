@@ -65,7 +65,7 @@
 }).
 
 -type udp_protocol() :: {udp, Address :: string(), Port :: non_neg_integer()}.
--type http_protocol() :: {http, ConnectionString :: binary()}.
+-type http_protocol() :: {http, ConnectionString :: binary(), FlowType :: async | sync}.
 
 -record(eui, {
     name :: undefined | binary(),
@@ -450,7 +450,11 @@ transform_config_entry(Entry) ->
                 Port = maps:get(<<"port">>, Entry),
                 {udp, Address, Port};
             <<"http">> ->
-                {http, maps:get(<<"http_endpoint">>, Entry)};
+                {
+                    http,
+                    maps:get(<<"http_endpoint">>, Entry),
+                    maps:get(<<"http_flow_type">>, Entry, async)
+                };
             Other ->
                 throw({invalid_protocol_type, Other})
         end,

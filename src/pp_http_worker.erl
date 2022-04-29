@@ -29,13 +29,14 @@
 -type address() :: binary().
 
 -record(state, {
-    net_id :: pp_roaming_protocol:net_id(),
+    net_id :: pp_roaming_protocol:netid_num(),
     address :: address(),
     transaction_id :: integer(),
     packets = [] :: list(pp_roaming_protocol:packet()),
 
     send_data_timer = 200 :: non_neg_integer(),
     send_data_timer_ref :: undefined | reference(),
+    flow_type :: async | sync,
 
     should_shutdown = false :: boolean(),
     shutdown_timer_ref :: undefined | reference()
@@ -60,14 +61,15 @@ handle_packet(Pid, SCPacket, PacketTime) ->
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 init(Args) ->
-    #{protocol := {http, Address}, net_id := NetID} = Args,
+    #{protocol := {http, Address, FlowType}, net_id := NetID} = Args,
     lager:debug("~p init with ~p", [?MODULE, Args]),
     DataTimeout = pp_utils:get_env_int(http_dedupe_timer, 200),
     {ok, #state{
         net_id = NetID,
         address = Address,
         transaction_id = next_transaction_id(),
-        send_data_timer = DataTimeout
+        send_data_timer = DataTimeout,
+        flow_type = FlowType
     }}.
 
 handle_call(_Msg, _From, State) ->
@@ -162,16 +164,15 @@ send_data(#state{
     net_id = NetID,
     address = Address,
     packets = Packets,
-    transaction_id = TransactionID
+    transaction_id = TransactionID,
+    flow_type = FlowType
 }) ->
     Data = pp_roaming_protocol:make_uplink_payload(NetID, Packets, TransactionID),
     Data1 = jsx:encode(Data, [{float_formatter, fun round_to_fourth_decimal/1}]),
     case hackney:post(Address, [], Data1, [with_body]) of
         {ok, 200, _Headers, Res} ->
-            case jsx:is_json(Res) of
-                false ->
-                    ok;
-                true ->
+            case FlowType of
+                sync ->
                     Decoded = jsx:decode(Res),
                     case pp_roaming_protocol:handle_prstart_ans(Decoded) of
                         {error, Err} ->
@@ -181,7 +182,9 @@ send_data(#state{
                             ok = blockchain_state_channel_common:send_response(SCPid, SCResp);
                         ok ->
                             ok
-                    end
+                    end;
+                async ->
+                    ok
             end;
         {ok, Code, _Headers, Resp} ->
             lager:error("bad response: [code: ~p] [res: ~p]", [Code, Resp]),
