@@ -24,17 +24,23 @@
 
 -define(SERVER, ?MODULE).
 -define(SEND_DATA, send_data).
+-define(SHUTDOWN, shutdown).
+-define(SHUTDOWN_TIMEOUT, timer:seconds(5)).
 
 -type address() :: binary().
 
 -record(state, {
-    net_id :: pp_roaming_protocol:net_id(),
+    net_id :: pp_roaming_protocol:netid_num(),
     address :: address(),
     transaction_id :: integer(),
     packets = [] :: list(pp_roaming_protocol:packet()),
 
     send_data_timer = 200 :: non_neg_integer(),
-    send_data_timer_ref :: undefined | reference()
+    send_data_timer_ref :: undefined | reference(),
+    flow_type :: async | sync,
+
+    should_shutdown = false :: boolean(),
+    shutdown_timer_ref :: undefined | reference()
 }).
 
 %% ------------------------------------------------------------------
@@ -56,12 +62,14 @@ handle_packet(Pid, SCPacket, PacketTime) ->
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 init(Args) ->
-    #{protocol := {http, Address}, net_id := NetID} = Args,
+    #{protocol := {http, Address, FlowType, DedupeTimeout}, net_id := NetID} = Args,
     lager:debug("~p init with ~p", [?MODULE, Args]),
     {ok, #state{
-        net_id = pp_utils:binary_to_hexstring(NetID),
+        net_id = NetID,
         address = Address,
-        transaction_id = next_transaction_id()
+        transaction_id = next_transaction_id(),
+        send_data_timer = DedupeTimeout,
+        flow_type = FlowType
     }}.
 
 handle_call(_Msg, _From, State) ->
@@ -70,18 +78,36 @@ handle_call(_Msg, _From, State) ->
 
 handle_cast(
     {handle_packet, SCPacket, PacketTime},
-    #state{send_data_timer = Timeout, send_data_timer_ref = TimerRef0} = State0
+    #state{
+        should_shutdown = false,
+        send_data_timer = Timeout,
+        send_data_timer_ref = TimerRef0
+    } = State0
 ) ->
     {ok, State1} = do_handle_packet(SCPacket, PacketTime, State0),
     {ok, TimerRef1} = maybe_schedule_send_data(Timeout, TimerRef0),
     {noreply, State1#state{send_data_timer_ref = TimerRef1}};
+handle_cast(
+    {handle_packet, _SCPacket, _PacketTime},
+    #state{
+        should_shutdown = true,
+        shutdown_timer_ref = ShutdownTimerRef0,
+        send_data_timer = DataTimeout
+    } = State0
+) ->
+    lager:info("packet delivery after data sent [send_data_timer: ~p]", [DataTimeout]),
+    {ok, ShutdownTimerRef1} = maybe_schedule_shutdown(ShutdownTimerRef0),
+    {noreply, State0#state{shutdown_timer_ref = ShutdownTimerRef1}};
 handle_cast(_Msg, State) ->
     lager:warning("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
 
 handle_info(?SEND_DATA, #state{} = State) ->
     ok = send_data(State),
-    {stop, data_sent, State};
+    {ok, ShutdownTimerRef} = maybe_schedule_shutdown(undefined),
+    {noreply, State#state{should_shutdown = true, shutdown_timer_ref = ShutdownTimerRef}};
+handle_info(?SHUTDOWN, #state{} = State) ->
+    {stop, normal, State};
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p, ~p", [_Msg, State]),
     {noreply, State}.
@@ -102,6 +128,13 @@ maybe_schedule_send_data(Timeout, undefined) ->
     {ok, erlang:send_after(Timeout, self(), ?SEND_DATA)};
 maybe_schedule_send_data(_, Ref) ->
     {ok, Ref}.
+
+-spec maybe_schedule_shutdown(undefined | reference()) -> {ok, reference()}.
+maybe_schedule_shutdown(undefined) ->
+    {ok, erlang:send_after(?SHUTDOWN_TIMEOUT, self(), ?SHUTDOWN)};
+maybe_schedule_shutdown(CurrTimer) ->
+    _ = (catch erlang:cancel_timer(CurrTimer)),
+    {ok, erlang:send_after(?SHUTDOWN_TIMEOUT, self(), ?SHUTDOWN)}.
 
 -spec next_transaction_id() -> integer().
 next_transaction_id() ->
@@ -131,22 +164,35 @@ send_data(#state{
     net_id = NetID,
     address = Address,
     packets = Packets,
-    transaction_id = TransactionID
+    transaction_id = TransactionID,
+    flow_type = FlowType
 }) ->
     Data = pp_roaming_protocol:make_uplink_payload(NetID, Packets, TransactionID),
-    case hackney:post(Address, [], jsx:encode(Data), [with_body]) of
+    Data1 = jsx:encode(Data, [{float_formatter, fun round_to_fourth_decimal/1}]),
+    case hackney:post(Address, [], Data1, [with_body]) of
         {ok, 200, _Headers, Res} ->
-            Decoded = jsx:decode(Res),
-            case pp_roaming_protocol:handle_prstart_ans(Decoded) of
-                {error, Err} ->
-                    lager:error("error handling response: ~p", [Err]),
-                    ok;
-                {downlink, {SCPid, SCResp}} ->
-                    ok = blockchain_state_channel_common:send_response(SCPid, SCResp);
-                ok ->
+            case FlowType of
+                sync ->
+                    %% All uplinks are PRStartReq. We will only ever receive a
+                    %% PRStartAns from that. XMitDataReq downlinks come out of
+                    %% band to the HTTP listener.
+                    Decoded = jsx:decode(Res),
+                    case pp_roaming_protocol:handle_prstart_ans(Decoded) of
+                        {error, Err} ->
+                            lager:error("error handling response: ~p", [Err]),
+                            ok;
+                        {join_accept, {SCPid, SCResp}} ->
+                            ok = blockchain_state_channel_common:send_response(SCPid, SCResp);
+                        ok ->
+                            ok
+                    end;
+                async ->
                     ok
             end;
         {ok, Code, _Headers, Resp} ->
             lager:error("bad response: [code: ~p] [res: ~p]", [Code, Resp]),
             ok
     end.
+
+round_to_fourth_decimal(Float) ->
+    io_lib:format("~.4f", [Float]).

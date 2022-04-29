@@ -11,6 +11,8 @@
     lookup/1,
     lookup_eui/1,
     lookup_devaddr/1,
+    %% http
+    lookup_netid/1,
     %% UDP Cache
     insert_udp_worker/2,
     delete_udp_worker/1,
@@ -57,13 +59,17 @@
 -define(UDP_WORKER_ETS, pp_config_udp_worker_ets).
 
 -define(DEFAULT_PROTOCOL, <<"udp">>).
+-define(DEFAULT_HTTP_FLOW_TYPE, <<"sync">>).
+-define(DEFAULT_HTTP_DEDUPE_TIMEOUT, 200).
 
 -record(state, {
     filename :: testing | string()
 }).
 
 -type udp_protocol() :: {udp, Address :: string(), Port :: non_neg_integer()}.
--type http_protocol() :: {http, ConnectionString :: binary()}.
+-type http_protocol() ::
+    {http, ConnectionString :: binary(), FlowType :: async | sync,
+        DedupeTimer :: non_neg_integer()}.
 
 -record(eui, {
     name :: undefined | binary(),
@@ -73,7 +79,9 @@
     disable_pull_data :: boolean(),
     dev_eui :: '*' | non_neg_integer(),
     app_eui :: non_neg_integer(),
-    buying_active = true :: boolean()
+    buying_active = true :: boolean(),
+    %% TODO
+    ignore_disable = false :: boolean()
 }).
 
 -record(devaddr, {
@@ -180,6 +188,26 @@ lookup_devaddr({devaddr, DevAddr}) ->
             end;
         Err ->
             Err
+    end.
+
+-spec lookup_netid(NetID :: non_neg_integer()) -> {ok, map()} | {error, routing_not_found}.
+lookup_netid(NetID) ->
+    case ets:lookup(?DEVADDR_ETS, NetID) of
+        [] ->
+            {error, routing_not_found};
+        [
+            #devaddr{
+                protocol = Protocol,
+                multi_buy = MultiBuy,
+                disable_pull_data = DisablePullData
+            }
+        ] ->
+            {ok, #{
+                protocol => Protocol,
+                net_id => NetID,
+                multi_buy => MultiBuy,
+                disable_pull_data => DisablePullData
+            }}
     end.
 
 -spec reset_config() -> ok.
@@ -379,6 +407,8 @@ update_buying_eui(NetID, BuyingActive) ->
     true = ets:delete_all_objects(?EUI_ETS),
     NewEUIs = lists:map(
         fun
+            %% TODO
+            (#eui{ignore_disable = true} = Val) -> Val;
             (#eui{net_id = Key} = Val) when Key == NetID -> Val#eui{buying_active = BuyingActive};
             (Val) -> Val
         end,
@@ -424,7 +454,14 @@ transform_config_entry(Entry) ->
                 Port = maps:get(<<"port">>, Entry),
                 {udp, Address, Port};
             <<"http">> ->
-                {http, maps:get(<<"http_endpoint">>, Entry)};
+                {
+                    http,
+                    maps:get(<<"http_endpoint">>, Entry),
+                    erlang:binary_to_existing_atom(
+                        maps:get(<<"http_flow_type">>, Entry, ?DEFAULT_HTTP_FLOW_TYPE)
+                    ),
+                    maps:get(<<"http_dedupe_timeout">>, Entry, ?DEFAULT_HTTP_DEDUPE_TIMEOUT)
+                };
             Other ->
                 throw({invalid_protocol_type, Other})
         end,

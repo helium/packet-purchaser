@@ -19,7 +19,8 @@
 
 -export([
     http_rcv/0,
-    http_rcv/1
+    http_rcv/1,
+    not_http_rcv/1
 ]).
 
 %% ------------------------------------------------------------------
@@ -90,6 +91,14 @@ http_rcv(Expected) ->
         {false, Reason} ->
             ct:pal("FAILED got: ~n~p~n expected: ~n~p", [Got, Expected]),
             ct:fail({http_rcv, Reason})
+    end.
+
+-spec not_http_rcv(Delay :: integer()) -> ok.
+not_http_rcv(Delay) ->
+    receive
+        {http_msg, _, _} ->
+            ct:fail(expected_no_more_http)
+    after Delay -> ok
     end.
 
 not_rcv(Pid, Type, Delay) ->
@@ -250,14 +259,88 @@ handle(Req, Args) ->
                 elli_request:method(Req)
         end,
     ct:pal("~p", [{Method, elli_request:path(Req), Req, Args}]),
+    handle(Method, elli_request:path(Req), Req, Args).
+
+%% ------------------------------------------------------------------
+%% NOTE: packet-purchaser starts up with a downlink listener
+%% using `pp_roaming_downlink' as the handler.
+%%
+%% Tests using the HTTP protocol start 2 Elli listeners.
+%%
+%% A forwarding listener :: (fns) Downlink Handler
+%% A roaming listener    :: (sns) Uplink Handler as roaming partner
+%%
+%% The normal downlink listener is started, but ignored.
+%%
+%% The downlink handler in this file delegates to `pp_roaming_downlink' while
+%% sending extra messages to the test running so the production code doesn't
+%% need to know about the tests.
+%% ------------------------------------------------------------------
+handle('POST', [<<"downlink">>], Req, Args) ->
     Forward = maps:get(forward, Args),
     Body = elli_request:body(Req),
+    Decoded = jsx:decode(Body),
 
-    ResponseBody = make_response_body(jsx:decode(Body)),
-    Response = {200, [], jsx:encode(ResponseBody)},
-    Forward ! {http_msg, Body, Response},
+    SenderNetIDBin = maps:get(<<"SenderID">>, Decoded),
+    SenderNetID = pp_utils:hexstring_to_int(SenderNetIDBin),
+    {ok, #{protocol := {http, _Endpoint, FlowType, _DedupeTimout}}} = pp_config:lookup_netid(
+        SenderNetID
+    ),
 
-    Response.
+    case FlowType of
+        async ->
+            Forward ! {http_downlink_data, Body},
+            Res = pp_roaming_downlink:handle(Req, Args),
+            ct:pal("Downlink handler resp: ~p", [Res]),
+            Forward ! {http_downlink_data_response, 200},
+            {200, [], <<>>};
+        sync ->
+            Decoded = jsx:decode(Body),
+            ct:pal("sync handling downlink:~n~p", [Decoded]),
+            Response = pp_roaming_downlink:handle(Req, Args),
+
+            %% ResponseBody = make_response_body(Decoded),
+            %% Response = {200, [], jsx:encode(ResponseBody)},
+            Forward ! {http_msg, Body, Response},
+            Response
+    end;
+handle('POST', [<<"uplink">>], Req, Args) ->
+    Forward = maps:get(forward, Args),
+    Body = elli_request:body(Req),
+    Decoded = jsx:decode(Body),
+
+    ReceiverNetIDBin = maps:get(<<"ReceiverID">>, Decoded),
+    ReceiverNetID = pp_utils:hexstring_to_int(ReceiverNetIDBin),
+    {ok, #{protocol := {http, _Endpoint, FlowType, _DedupeTimeout}}} = pp_config:lookup_netid(
+        ReceiverNetID
+    ),
+
+    case FlowType of
+        async ->
+            ResponseBody = make_response_body(jsx:decode(Body)),
+
+            Response = {200, [], <<>>},
+            Forward ! {http_uplink_data, Body},
+            Forward ! {http_uplink_data_response, 200},
+            spawn(fun() ->
+                timer:sleep(250),
+                Res = hackney:post(
+                    <<"http://127.0.0.1:3003/downlink">>,
+                    [{<<"Host">>, <<"localhost">>}],
+                    jsx:encode(ResponseBody),
+                    [with_body]
+                ),
+                ct:pal("Downlink Res: ~p", [Res])
+            end),
+
+            Response;
+        sync ->
+            ResponseBody = make_response_body(jsx:decode(Body)),
+            Response = {200, [], jsx:encode(ResponseBody)},
+            Forward ! {http_msg, Body, Response},
+
+            Response
+    end.
 
 handle_event(_Event, _Data, _Args) ->
     %% uncomment for Elli errors.
@@ -292,13 +375,13 @@ make_response_body(#{
         'FNSULToken' => Token,
         'PHYPayload' => pp_utils:binary_to_hex(<<"join_accept_payload">>)
     };
-make_response_body(#{<<"ReceiverID">> := ReceiverID}) ->
+make_response_body(#{<<"ReceiverID">> := ReceiverID, <<"TransactionID">> := TransactionID}) ->
     %% Ack to regular uplink
     #{
         'ProtocolVersion' => <<"1.0">>,
         'SenderID' => ReceiverID,
         'ReceiverID' => <<"0xC00053">>,
-        'TransactionID' => 45,
+        'TransactionID' => TransactionID,
         'MessageType' => <<"PRStartAns">>,
         'Result' => #{'ResultCode' => <<"Success">>},
         %% 11.3.1 Passive Roaming Start

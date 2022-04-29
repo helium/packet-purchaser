@@ -7,6 +7,7 @@
 
 %% Downlinking
 -export([
+    handle_message/1,
     handle_prstart_ans/1,
     handle_xmitdata_req/1
 ]).
@@ -23,7 +24,8 @@
 -type xmitdata_req() :: map().
 -type xmitdata_ans() :: map().
 
--type net_id() :: binary().
+-type netid_num() :: non_neg_integer().
+%% -type net_id() :: binary().
 -type sc_packet() :: blockchain_state_channel_packet_v1:packet().
 -type packet_time() :: non_neg_integer().
 -type packet() :: {
@@ -44,7 +46,7 @@
 -define(TOKEN_SEP, <<":">>).
 
 -export_type([
-    net_id/0,
+    netid_num/0,
     packet/0,
     sc_packet/0,
     packet_time/0,
@@ -55,7 +57,7 @@
 %% Uplink
 %% ------------------------------------------------------------------
 
--spec make_uplink_payload(net_id(), list(packet()), integer()) -> prstart_req().
+-spec make_uplink_payload(netid_num(), list(packet()), integer()) -> prstart_req().
 make_uplink_payload(NetID, Uplinks, TransactionID) ->
     {SCPacket, PacketTime, _} = select_best(Uplinks),
 
@@ -71,7 +73,7 @@ make_uplink_payload(NetID, Uplinks, TransactionID) ->
     {RoutingKey, RoutingValue} =
         case RoutingInfo of
             {devaddr, DevAddr} -> {'DevAddr', pp_utils:binary_to_hexstring(DevAddr)};
-            {eui, DevEUI, _AppEUI} -> {'DevEUI', pp_utils:binary_to_hexstring(DevEUI)}
+            {eui, DevEUI, _AppEUI} -> {'DevEUI', pp_utils:hexstring(DevEUI)}
         end,
 
     Token = make_uplink_token(PubKeyBin, Region, PacketTime),
@@ -79,7 +81,7 @@ make_uplink_payload(NetID, Uplinks, TransactionID) ->
     #{
         'ProtocolVersion' => <<"1.0">>,
         'SenderID' => <<"0xC00053">>,
-        'ReceiverID' => NetID,
+        'ReceiverID' => pp_utils:hexstring(NetID),
         'TransactionID' => TransactionID,
         'MessageType' => <<"PRStartReq">>,
         'PHYPayload' => pp_utils:binary_to_hexstring(Payload),
@@ -98,7 +100,22 @@ make_uplink_payload(NetID, Uplinks, TransactionID) ->
 %% Downlink
 %% ------------------------------------------------------------------
 
--spec handle_prstart_ans(prstart_ans()) -> ok | {downlink, downlink()} | {error, any()}.
+-spec handle_message(prstart_ans() | xmitdata_req()) ->
+    ok
+    | {downlink, xmitdata_ans(), downlink()}
+    | {join_accept, downlink()}
+    | {error, any()}.
+handle_message(#{<<"MessageType">> := MT} = M) ->
+    case MT of
+        <<"PRStartAns">> ->
+            handle_prstart_ans(M);
+        <<"XmitDataReq">> ->
+            handle_xmitdata_req(M);
+        _Err ->
+            throw({bad_message, M})
+    end.
+
+-spec handle_prstart_ans(prstart_ans()) -> ok | {join_accept, downlink()} | {error, any()}.
 handle_prstart_ans(#{
     <<"Result">> := #{<<"ResultCode">> := <<"Success">>},
     <<"MessageType">> := <<"PRStartAns">>,
@@ -128,7 +145,7 @@ handle_prstart_ans(#{
 
     case pp_roaming_downlink:lookup_handler(PubKeyBin) of
         {error, _} = Err -> Err;
-        {ok, SCPid} -> {downlink, {SCPid, SCResp}}
+        {ok, SCPid} -> {join_accept, {SCPid, SCResp}}
     end;
 handle_prstart_ans(#{
     <<"MessageType">> := <<"PRStartAns">>,
@@ -138,7 +155,8 @@ handle_prstart_ans(#{
 handle_prstart_ans(Res) ->
     throw({bad_response, Res}).
 
--spec handle_xmitdata_req(xmitdata_req()) -> {ok, xmitdata_ans(), downlink()} | {error, any()}.
+-spec handle_xmitdata_req(xmitdata_req()) ->
+    {downlink, xmitdata_ans(), downlink()} | {error, any()}.
 handle_xmitdata_req(XmitDataReq) ->
     #{
         <<"MessageType">> := <<"XmitDataReq">>,
@@ -182,7 +200,7 @@ handle_xmitdata_req(XmitDataReq) ->
 
             case pp_roaming_downlink:lookup_handler(PubKeyBin) of
                 {error, _} = Err -> Err;
-                {ok, SCPid} -> {ok, PayloadResponse, {SCPid, SCResp}}
+                {ok, SCPid} -> {downlink, PayloadResponse, {SCPid, SCResp}}
             end
     end.
 
