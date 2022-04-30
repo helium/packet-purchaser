@@ -130,8 +130,8 @@ handle_prstart_ans(#{
     DR = 0,
     DataRate = pp_lorawan:dr_to_datar(Region, DR),
     DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
-        %% NOTE: Payload maye need to be decoded
-        Payload,
+        %% NOTE: Testing encoding
+        pp_utils:hexstring_to_binary(Payload),
         _SignalStrength = 27,
         %% FIXME: Make sure this is the correct resolution
         %% JOIN1_WINDOW pulled from lora_mac_region
