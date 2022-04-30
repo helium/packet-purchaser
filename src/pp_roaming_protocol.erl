@@ -121,13 +121,12 @@ handle_prstart_ans(#{
     <<"MessageType">> := <<"PRStartAns">>,
     <<"FNSULToken">> := Token,
     <<"DLFreq1">> := Frequency,
+    <<"DataRate1">> := DR,
     <<"PHYPayload">> := Payload,
     <<"DevEUI">> := _DevEUI
 }) ->
     {ok, PubKeyBin, Region, PacketTime} = parse_uplink_token(Token),
 
-    %% NOTE: May need to get DR from response
-    DR = 0,
     DataRate = pp_lorawan:dr_to_datar(Region, DR),
     DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
         %% NOTE: Testing encoding
