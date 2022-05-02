@@ -72,7 +72,7 @@ make_uplink_payload(NetID, Uplinks, TransactionID) ->
 
     {RoutingKey, RoutingValue} =
         case RoutingInfo of
-            {devaddr, DevAddr} -> {'DevAddr', pp_utils:binary_to_hexstring(DevAddr)};
+            {devaddr, DevAddr} -> {'DevAddr', pp_utils:hexstring(DevAddr)};
             {eui, DevEUI, _AppEUI} -> {'DevEUI', pp_utils:hexstring(DevEUI)}
         end,
 
