@@ -138,7 +138,7 @@ maybe_schedule_shutdown(CurrTimer) ->
 
 -spec next_transaction_id() -> integer().
 next_transaction_id() ->
-    rand:uniform(16#FFFFFFFF).
+    rand:uniform(16#7FFFFFFF).
 
 -spec do_handle_packet(
     SCPacket :: pp_roaming_protocol:sc_packet(),
