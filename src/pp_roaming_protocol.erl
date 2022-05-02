@@ -119,11 +119,15 @@ handle_message(#{<<"MessageType">> := MT} = M) ->
 handle_prstart_ans(#{
     <<"Result">> := #{<<"ResultCode">> := <<"Success">>},
     <<"MessageType">> := <<"PRStartAns">>,
-    <<"FNSULToken">> := Token,
-    <<"DLFreq1">> := Frequency,
-    <<"DataRate1">> := DR,
+
     <<"PHYPayload">> := Payload,
-    <<"DevEUI">> := _DevEUI
+    <<"DevEUI">> := _DevEUI,
+
+    <<"DLMetaData">> := #{
+        <<"DLFreq1">> := Frequency,
+        <<"DataRate1">> := DR,
+        <<"FNSULToken">> := Token
+    }
 }) ->
     {ok, PubKeyBin, Region, PacketTime} = parse_uplink_token(Token),
 
