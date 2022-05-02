@@ -28,10 +28,11 @@
 %% -type net_id() :: binary().
 -type sc_packet() :: blockchain_state_channel_packet_v1:packet().
 -type packet_time() :: non_neg_integer().
+-type gateway_time() :: non_neg_integer().
 -type packet() :: {
     SCPacket :: sc_packet(),
     PacketTime :: packet_time(),
-    Location :: pp_utils:location()
+    Location :: gateway_time()
 }.
 
 -type downlink() :: {
@@ -50,6 +51,7 @@
     packet/0,
     sc_packet/0,
     packet_time/0,
+    gateway_time/0,
     downlink/0
 ]).
 
@@ -59,7 +61,7 @@
 
 -spec make_uplink_payload(netid_num(), list(packet()), integer()) -> prstart_req().
 make_uplink_payload(NetID, Uplinks, TransactionID) ->
-    {SCPacket, PacketTime, _} = select_best(Uplinks),
+    {SCPacket, PacketTime, GatewayTime} = select_best(Uplinks),
 
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
@@ -89,7 +91,7 @@ make_uplink_payload(NetID, Uplinks, TransactionID) ->
             RoutingKey => RoutingValue,
             'DataRate' => pp_lorawan:datar_to_dr(Region, DataRate),
             'ULFreq' => Frequency,
-            'RecvTime' => pp_utils:format_time(PacketTime),
+            'RecvTime' => pp_utils:format_time(GatewayTime),
             'RFRegion' => Region,
             'FNSULToken' => Token,
             'GWInfo' => lists:map(fun gw_info/1, Uplinks)
@@ -133,11 +135,8 @@ handle_prstart_ans(#{
 
     DataRate = pp_lorawan:dr_to_datar(Region, DR),
     DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
-        %% NOTE: Testing encoding
         pp_utils:hexstring_to_binary(Payload),
         _SignalStrength = 27,
-        %% FIXME: Make sure this is the correct resolution
-        %% JOIN1_WINDOW pulled from lora_mac_region
         (PacketTime + 5000000) band 16#FFFFFFFF,
         Frequency,
         erlang:binary_to_list(DataRate)
