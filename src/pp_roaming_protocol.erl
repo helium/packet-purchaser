@@ -138,7 +138,7 @@ handle_prstart_ans(#{
         _SignalStrength = 27,
         %% FIXME: Make sure this is the correct resolution
         %% JOIN1_WINDOW pulled from lora_mac_region
-        PacketTime + 5000000,
+        (PacketTime + 5000000) band 16#FFFFFFFF,
         Frequency,
         DataRate,
         _RX2 = undefined
