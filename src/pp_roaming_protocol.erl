@@ -190,13 +190,11 @@ handle_xmitdata_req(XmitDataReq) ->
         {ok, PubKeyBin, Region, PacketTime} ->
             DataRate = pp_lorawan:dr_to_datar(Region, DR),
             DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
-                base64:decode(pp_utils:hexstring_to_binary(Payload)),
+                pp_utils:hexstring_to_binary(Payload),
                 _SignalStrength = 27,
-                %% FIXME: Make sure this is the correct resolution
-                PacketTime + Delay,
+                (PacketTime + (Delay * 1000000)) band 16#FFFFFFFF,
                 Frequency,
-                DataRate,
-                _RX2 = undefined
+                erlang:binary_to_list(DataRate)
             ),
             SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
 
