@@ -145,13 +145,14 @@ next_transaction_id() ->
     PacketTime :: pp_roaming_protocol:packet_time(),
     State :: #state{}
 ) -> {ok, #state{}}.
-do_handle_packet(SCPacket, PacketTime, #state{packets = Packets} = State) ->
+do_handle_packet(SCPacket, _PacketTime, #state{packets = Packets} = State) ->
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
+    Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     State1 = State#state{
         packets = [
             {
                 SCPacket,
-                PacketTime,
+                blockchain_helium_packet_v1:timestamp(Packet),
                 pp_utils:get_hotspot_location(PubKeyBin)
             }
             | Packets
