@@ -140,8 +140,7 @@ handle_prstart_ans(#{
         %% JOIN1_WINDOW pulled from lora_mac_region
         (PacketTime + 5000000) band 16#FFFFFFFF,
         Frequency,
-        DataRate,
-        _RX2 = undefined
+        erlang:binary_to_list(DataRate)
     ),
 
     SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
