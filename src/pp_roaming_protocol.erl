@@ -139,7 +139,7 @@ handle_prstart_ans(#{
     DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
         pp_utils:hexstring_to_binary(Payload),
         _SignalStrength = 27,
-        (PacketTime + 5000000) band 16#FFFFFFFF,
+        pp_utils:uint32(PacketTime + 5000000),
         Frequency,
         erlang:binary_to_list(DataRate)
     ),
@@ -165,6 +165,7 @@ handle_prstart_ans(#{
     pp_config:stop_buying([NetID]),
     ok;
 handle_prstart_ans(Res) ->
+    lager:error("unrecognized prstart_ans: ~p", [Res]),
     throw({bad_response, Res}).
 
 -spec handle_xmitdata_req(xmitdata_req()) ->
@@ -202,7 +203,7 @@ handle_xmitdata_req(XmitDataReq) ->
             DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
                 pp_utils:hexstring_to_binary(Payload),
                 _SignalStrength = 27,
-                (PacketTime + (Delay * 1000000)) band 16#FFFFFFFF,
+                pp_utils:uint32(PacketTime + (Delay * 1000000)),
                 Frequency,
                 erlang:binary_to_list(DataRate)
             ),

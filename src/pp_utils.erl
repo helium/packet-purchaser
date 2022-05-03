@@ -26,7 +26,8 @@
     hexstring_to_int/1,
     format_time/1,
     get_env_int/2,
-    get_hotspot_location/1
+    get_hotspot_location/1,
+    uint32/1
 ]).
 
 -spec init_ets() -> ok.
@@ -165,3 +166,7 @@ get_hotspot_location(PubKeyBin) ->
                     end
             end
     end.
+
+-spec uint32(number()) -> 0..4294967295.
+uint32(Num) ->
+    Num band 16#FFFF_FFFF.

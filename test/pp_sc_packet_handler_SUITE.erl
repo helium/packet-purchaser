@@ -482,7 +482,7 @@ http_sync_downlink_test(_Config) ->
         Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
         ?assertEqual(DownlinkPayload, blockchain_helium_packet_v1:payload(Downlink)),
         ?assertEqual(
-            (DownlinkTimestamp + (RXDelay * 1_000_000)) band 16#FFFFFFFF,
+            pp_utils:uint32(DownlinkTimestamp + (RXDelay * 1_000_000)),
             blockchain_helium_packet_v1:timestamp(Downlink)
         ),
         ?assertEqual(DownlinkFreq, blockchain_helium_packet_v1:frequency(Downlink)),
@@ -597,7 +597,7 @@ http_async_downlink_test(_Config) ->
         Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
         ?assertEqual(DownlinkPayload, blockchain_helium_packet_v1:payload(Downlink)),
         ?assertEqual(
-            (DownlinkTimestamp + (RXDelay * 1_000_000)) band 16#FFFFFFFF,
+            pp_utils:uint32(DownlinkTimestamp + (RXDelay * 1_000_000)),
             blockchain_helium_packet_v1:timestamp(Downlink)
         ),
         ?assertEqual(DownlinkFreq, blockchain_helium_packet_v1:frequency(Downlink)),
