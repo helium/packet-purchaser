@@ -146,16 +146,8 @@ next_transaction_id() ->
     State :: #state{}
 ) -> {ok, #state{}}.
 do_handle_packet(SCPacket, GatewayTime, #state{packets = Packets} = State) ->
-    Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     State1 = State#state{
-        packets = [
-            {
-                SCPacket,
-                blockchain_helium_packet_v1:timestamp(Packet),
-                GatewayTime
-            }
-            | Packets
-        ]
+        packets = [pp_roaming_protocol:new_packet(SCPacket, GatewayTime) | Packets]
     },
     {ok, State1}.
 

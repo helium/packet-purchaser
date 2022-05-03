@@ -18,6 +18,8 @@
     parse_uplink_token/1
 ]).
 
+-export([new_packet/2]).
+
 -define(NO_ROAMING_AGREEMENT, <<"NoRoamingAgreement">>).
 
 %% Roaming MessageTypes
@@ -27,15 +29,8 @@
 -type xmitdata_ans() :: map().
 
 -type netid_num() :: non_neg_integer().
-%% -type net_id() :: binary().
 -type sc_packet() :: blockchain_state_channel_packet_v1:packet().
--type packet_time() :: non_neg_integer().
 -type gateway_time() :: non_neg_integer().
--type packet() :: {
-    SCPacket :: sc_packet(),
-    PacketTime :: packet_time(),
-    Location :: gateway_time()
-}.
 
 -type downlink() :: {
     SCPid :: pid(),
@@ -48,11 +43,17 @@
 
 -define(TOKEN_SEP, <<":">>).
 
+-record(packet, {
+    sc_packet :: sc_packet(),
+    gateway_time :: gateway_time(),
+    location :: pp_utils:location()
+}).
+-type packet() :: #packet{}.
+
 -export_type([
     netid_num/0,
     packet/0,
     sc_packet/0,
-    packet_time/0,
     gateway_time/0,
     downlink/0
 ]).
@@ -61,12 +62,22 @@
 %% Uplink
 %% ------------------------------------------------------------------
 
+-spec new_packet(SCPacket :: sc_packet(), GatewayTime :: gateway_time()) -> #packet{}.
+new_packet(SCPacket, GatewayTime) ->
+    PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
+    #packet{
+        sc_packet = SCPacket,
+        gateway_time = GatewayTime,
+        location = pp_utils:get_hotspot_location(PubKeyBin)
+    }.
+
 -spec make_uplink_payload(netid_num(), list(packet()), integer()) -> prstart_req().
 make_uplink_payload(NetID, Uplinks, TransactionID) ->
-    {SCPacket, PacketTime, GatewayTime} = select_best(Uplinks),
+    #packet{sc_packet = SCPacket, gateway_time = GatewayTime} = select_best(Uplinks),
+    Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
+    PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
 
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
-    Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     RoutingInfo = blockchain_helium_packet_v1:routing_info(Packet),
 
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
@@ -253,7 +264,7 @@ parse_uplink_token(_) ->
 -spec select_best(list(packet())) -> packet().
 select_best(Copies) ->
     [Best | _] = lists:sort(
-        fun({SCPacketA, _, _}, {SCPacketB, _, _}) ->
+        fun(#packet{sc_packet = SCPacketA}, #packet{sc_packet = SCPacketB}) ->
             PacketA = blockchain_state_channel_packet_v1:packet(SCPacketA),
             PacketB = blockchain_state_channel_packet_v1:packet(SCPacketB),
             RSSIA = blockchain_helium_packet_v1:signal_strength(PacketA),
@@ -265,7 +276,7 @@ select_best(Copies) ->
     Best.
 
 -spec gw_info(packet()) -> map().
-gw_info({SCPacket, _PacketTime, Location}) ->
+gw_info(#packet{sc_packet = SCPacket, location = Location}) ->
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
