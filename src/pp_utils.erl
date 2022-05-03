@@ -98,6 +98,8 @@ calculate_dc_amount(PayloadSize) ->
     ).
 
 -spec hexstring(number()) -> binary().
+hexstring(Bin) when erlang:is_binary(Bin) ->
+    binary_to_hexstring(Bin);
 hexstring(Num) when erlang:is_number(Num) ->
     Inter0 = erlang:integer_to_binary(Num, 16),
     Inter1 = string:pad(Inter0, 6, leading, $0),
