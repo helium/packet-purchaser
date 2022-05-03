@@ -112,7 +112,7 @@ hexstring(Other) ->
 hexstring_to_int(<<"0x", Num/binary>>) ->
     erlang:binary_to_integer(Num, 16);
 hexstring_to_int(Bin) ->
-    throw({invalid_hexstring_bin, Bin}).
+    erlang:binary_to_integer(Bin, 16).
 
 -spec binary_to_hexstring(number() | binary()) -> binary().
 binary_to_hexstring(ID) when erlang:is_number(ID) ->

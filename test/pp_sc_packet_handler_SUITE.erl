@@ -28,6 +28,7 @@
     http_sync_uplink_join_test/1,
     http_async_uplink_join_test/1,
     http_uplink_packet_test/1,
+    http_uplink_packet_no_roaming_agreement_test/1,
     http_multiple_gateways_test/1,
     http_sync_downlink_test/1,
     http_async_downlink_test/1,
@@ -101,6 +102,7 @@ all() ->
         http_sync_downlink_test,
         http_async_downlink_test,
         http_uplink_packet_test,
+        http_uplink_packet_no_roaming_agreement_test,
         http_uplink_packet_late_test,
         http_multiple_gateways_test
     ].
@@ -113,6 +115,7 @@ groups() ->
             http_sync_downlink_test,
             http_async_downlink_test,
             http_uplink_packet_test,
+            http_uplink_packet_no_roaming_agreement_test,
             http_uplink_packet_late_test,
             http_multiple_gateways_test
         ]}
@@ -602,6 +605,101 @@ http_async_downlink_test(_Config) ->
         ?assertEqual(DownlinkDatr, blockchain_helium_packet_v1:datarate(Downlink)),
         ok
     end),
+
+    ok.
+
+http_uplink_packet_no_roaming_agreement_test(_Config) ->
+    %% When receiving a response that there is no roaming agreement for a NetID,
+    %% we should stop purchasing for that NetID.
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    ok = start_uplink_listener(#{
+        response => #{
+            <<"SenderID">> => <<"000002">>,
+            <<"ReceiverID">> => <<"C00053">>,
+            <<"ProtocolVersion">> => <<"1.0">>,
+            <<"TransactionID">> => 601913476,
+            <<"MessageType">> => <<"PRStartAns">>,
+            <<"Result">> => #{
+                <<"ResultCode">> => <<"NoRoamingAgreement">>,
+                <<"Description">> => <<"There is no roaming agreement between the operators">>
+            }
+        }
+    }),
+
+    SendPacketFun = fun(DevAddr, FrameCount) ->
+        Packet = test_utils:frame_packet(
+            ?UNCONFIRMED_UP,
+            PubKeyBin,
+            DevAddr,
+            FrameCount,
+            #{dont_encode => true}
+        ),
+        GatewayTime = erlang:system_time(millisecond),
+        pp_sc_packet_handler:handle_packet(Packet, GatewayTime, self()),
+        {ok, Packet, GatewayTime}
+    end,
+
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => <<"test">>,
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"protocol">> => <<"http">>,
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>
+        }
+    ]),
+    {ok, SCPacket, GatewayTime} = SendPacketFun(?DEVADDR_ACTILITY, 0),
+    Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
+    Region = blockchain_state_channel_packet_v1:region(SCPacket),
+    PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
+
+    %% First packet is purchased and sent to Roamer
+    {ok, _Data, {200, _RespBody}} = pp_lns:http_rcv(
+        #{
+            <<"ProtocolVersion">> => <<"1.0">>,
+            <<"TransactionID">> => fun erlang:is_number/1,
+            <<"SenderID">> => <<"0xC00053">>,
+            <<"ReceiverID">> => ?NET_ID_ACTILITY_BIN,
+            <<"MessageType">> => <<"PRStartReq">>,
+            <<"PHYPayload">> => pp_utils:binary_to_hexstring(
+                blockchain_helium_packet_v1:payload(Packet)
+            ),
+            <<"ULMetaData">> => #{
+                <<"DevAddr">> => ?DEVADDR_ACTILITY_BIN,
+                <<"DataRate">> => pp_lorawan:datar_to_dr(
+                    Region,
+                    blockchain_helium_packet_v1:datarate(Packet)
+                ),
+                <<"ULFreq">> => blockchain_helium_packet_v1:frequency(Packet),
+                <<"RFRegion">> => erlang:atom_to_binary(Region),
+                <<"RecvTime">> => pp_utils:format_time(GatewayTime),
+
+                <<"FNSULToken">> => pp_roaming_protocol:make_uplink_token(
+                    PubKeyBin,
+                    'US915',
+                    PacketTime
+                ),
+
+                <<"GWInfo">> => [
+                    #{
+                        <<"RFRegion">> => erlang:atom_to_binary(Region),
+                        <<"RSSI">> => blockchain_helium_packet_v1:signal_strength(Packet),
+                        <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
+                        <<"DLAllowed">> => true,
+                        <<"ID">> => pp_utils:binary_to_hexstring(
+                            pp_utils:pubkeybin_to_mac(PubKeyBin)
+                        )
+                    }
+                ]
+            }
+        }
+    ),
+
+    timer:sleep(500),
+    %% Second packet is not forwarded
+    {ok, _SCPacket, _GatewayTime} = SendPacketFun(?DEVADDR_ACTILITY, 1),
+    ok = pp_lns:not_http_rcv(1000),
 
     ok.
 
@@ -1887,10 +1985,13 @@ get_udp_worker_address_port(Pid) ->
     pp_udp_socket:get_address(Socket).
 
 start_uplink_listener() ->
+    start_uplink_listener(#{}).
+
+start_uplink_listener(CallbackArgs) ->
     %% Uplinks we send to an LNS
     {ok, _ElliPid} = elli:start_link([
         {callback, pp_lns},
-        {callback_args, #{forward => self()}},
+        {callback_args, maps:merge(#{forward => self()}, CallbackArgs)},
         {port, 3002},
         {min_acceptors, 1}
     ]),

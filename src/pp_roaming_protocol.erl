@@ -18,6 +18,8 @@
     parse_uplink_token/1
 ]).
 
+-define(NO_ROAMING_AGREEMENT, <<"NoRoamingAgreement">>).
+
 %% Roaming MessageTypes
 -type prstart_req() :: map().
 -type prstart_ans() :: map().
@@ -152,6 +154,15 @@ handle_prstart_ans(#{
     <<"MessageType">> := <<"PRStartAns">>,
     <<"Result">> := #{<<"ResultCode">> := <<"Success">>}
 }) ->
+    ok;
+handle_prstart_ans(#{
+    <<"MessageType">> := <<"PRStartAns">>,
+    <<"Result">> := #{<<"ResultCode">> := ?NO_ROAMING_AGREEMENT},
+    <<"SenderID">> := SenderID
+}) ->
+    NetID = pp_utils:hexstring_to_int(SenderID),
+    lager:info("stop buying [net_id: ~p] [reason: no roaming agreement]", [NetID]),
+    pp_config:stop_buying([NetID]),
     ok;
 handle_prstart_ans(Res) ->
     throw({bad_response, Res}).
