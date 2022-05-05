@@ -35,7 +35,7 @@
 %% Prometheus API
 -export([
     handle_offer/5,
-    handle_packet/3,
+    handle_packet/4,
     %% GWMP
     pull_ack/2,
     pull_ack_missed/2,
@@ -127,10 +127,11 @@ handle_offer(_PubKeyBin, NetID, OfferType, Action, _PayloadSize) ->
 -spec handle_packet(
     PubKeyBin :: libp2p_crypto:pubkey_bin(),
     NetID :: non_neg_integer(),
-    PacketType :: join | packet
+        PacketType :: join | packet,
+        ProtocolType :: udp | http_sync | http_async
 ) -> ok.
-handle_packet(_PubKeyBin, NetID, PacketType) ->
-    prometheus_counter:inc(?METRICS_PACKET_COUNT, [clean_net_id(NetID), PacketType]).
+handle_packet(_PubKeyBin, NetID, PacketType, ProtocolType) ->
+    prometheus_counter:inc(?METRICS_PACKET_COUNT, [clean_net_id(NetID), PacketType, ProtocolType]).
 
 -spec push_ack(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
 push_ack(_PubKeyBin, NetID) ->
@@ -288,10 +289,11 @@ declare_metrics() ->
     ]),
 
     %% type = frame type :: join | packet
+    %% protocol :: udp | http_sync | http_async
     prometheus_counter:declare([
         {name, ?METRICS_PACKET_COUNT},
         {help, "Packet count for NetID"},
-        {labels, [net_id, type]}
+        {labels, [net_id, type, protocol]}
     ]),
 
     %% type = gwmp packet type :: push_ack | pull_ack
