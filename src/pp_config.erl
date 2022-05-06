@@ -30,7 +30,9 @@
     transform_config/1,
     load_config/1,
     get_config/0,
-    reload_config_from_file/0
+    reload_config_from_file/1,
+    reload_config_from_file/0,
+    write_config_to_disk/1
 ]).
 
 %% gen_server callbacks
@@ -246,6 +248,11 @@ load_config(ConfigList) ->
 
     ok.
 
+-spec reload_config_from_file(Filename :: string()) -> ok.
+reload_config_from_file(Filename) ->
+    NewConfig = ?MODULE:read_config(Filename),
+    ?MODULE:load_config(NewConfig).
+
 -spec reload_config_from_file() -> ok.
 reload_config_from_file() ->
     gen_server:call(?MODULE, reload_config_from_file).
@@ -315,8 +322,7 @@ init([Filename]) ->
     {ok, #state{filename = Filename}}.
 
 handle_call(reload_config_from_file, _From, #state{filename = Filename} = State) ->
-    NewConfig = ?MODULE:read_config(Filename),
-    ok = ?MODULE:load_config(NewConfig),
+    ok = reload_config_from_file(Filename),
     {reply, ok, State};
 handle_call(_Request, _From, State) ->
     {reply, ignored, State}.
@@ -495,6 +501,52 @@ write_config_to_ets(Config) ->
     true = ets:insert(?EUI_ETS, Joins),
     true = ets:insert(?DEVADDR_ETS, Routing),
     ok.
+
+-spec write_config_to_disk(string()) -> ok.
+write_config_to_disk(Filename) ->
+    %% NOTE: Filename is fully qualified /var/data/temp_config.json
+    {ok, #{joins := Joins, routing := Routing}} = pp_config:get_config(),
+
+    CleanEUI = fun
+        ('*') -> '*';
+        (Num) -> pp_utils:hexstring(Num)
+    end,
+
+    MakeJoinMap = fun(#eui{app_eui = App, dev_eui = Dev}) ->
+        #{app_eui => CleanEUI(App), dev_eui => CleanEUI(Dev)}
+    end,
+
+    Config = lists:map(
+        fun(#devaddr{name = Name, net_id = NetID, multi_buy = MultiBuy, protocol = Protocol}) ->
+            BaseMap = #{
+                name => Name,
+                net_id => pp_utils:hexstring(NetID),
+                multi_buy => MultiBuy,
+                joins => [MakeJoinMap(Join) || Join <- Joins, Join#eui.net_id == NetID]
+            },
+            ProtocolMap =
+                case Protocol of
+                    {udp, Address, Port} ->
+                        #{
+                            protocol => udp,
+                            address => erlang:list_to_binary(Address),
+                            port => Port
+                        };
+                    {http, Endpoint, Flow, Dedupe} ->
+                        #{
+                            protocol => http,
+                            http_endpoint => Endpoint,
+                            http_flow_type => Flow,
+                            http_dedupe_timeout => Dedupe
+                        }
+                end,
+            maps:merge(BaseMap, ProtocolMap)
+        end,
+        Routing
+    ),
+
+    Bytes = jsx:encode(Config),
+    file:write_file(Filename, Bytes).
 
 %%--------------------------------------------------------------------
 %% @doc
