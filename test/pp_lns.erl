@@ -315,10 +315,17 @@ handle('POST', [<<"uplink">>], Req, Args) ->
         ReceiverNetID
     ),
 
+    ResponseBody =
+        case maps:get(response, Args, undefined) of
+            undefined ->
+                make_response_body(jsx:decode(Body));
+            Resp ->
+                ct:pal("Using canned response: ~p", [Resp]),
+                Resp
+        end,
+
     case FlowType of
         async ->
-            ResponseBody = make_response_body(jsx:decode(Body)),
-
             Response = {200, [], <<>>},
             Forward ! {http_uplink_data, Body},
             Forward ! {http_uplink_data_response, 200},
@@ -335,7 +342,6 @@ handle('POST', [<<"uplink">>], Req, Args) ->
 
             Response;
         sync ->
-            ResponseBody = make_response_body(jsx:decode(Body)),
             Response = {200, [], jsx:encode(ResponseBody)},
             Forward ! {http_msg, Body, Response},
 
@@ -367,13 +373,17 @@ make_response_body(#{
         'TransactionID' => TransactionID,
         'MessageType' => <<"PRStartAns">>,
         'Result' => #{'ResultCode' => <<"Success">>},
+        'PHYPayload' => pp_utils:binary_to_hexstring(<<"join_accept_payload">>),
+        'DevEUI' => DevEUI,
+
         %% 11.3.1 Passive Roaming Start
         %% Step 6: stateless fNS operation
-        'Lifetime' => 0,
-        'DLFreq1' => Freq,
-        'DevEUI' => DevEUI,
-        'FNSULToken' => Token,
-        'PHYPayload' => pp_utils:binary_to_hex(<<"join_accept_payload">>)
+        'DLMetaData' => #{
+            'DLFreq1' => Freq,
+            'DataRate1' => 1,
+            'FNSULToken' => Token,
+            'Lifetime' => 0
+        }
     };
 make_response_body(#{<<"ReceiverID">> := ReceiverID, <<"TransactionID">> := TransactionID}) ->
     %% Ack to regular uplink

@@ -26,7 +26,8 @@
     hexstring_to_int/1,
     format_time/1,
     get_env_int/2,
-    get_hotspot_location/1
+    get_hotspot_location/1,
+    uint32/1
 ]).
 
 -spec init_ets() -> ok.
@@ -98,6 +99,8 @@ calculate_dc_amount(PayloadSize) ->
     ).
 
 -spec hexstring(number()) -> binary().
+hexstring(Bin) when erlang:is_binary(Bin) ->
+    binary_to_hexstring(Bin);
 hexstring(Num) when erlang:is_number(Num) ->
     Inter0 = erlang:integer_to_binary(Num, 16),
     Inter1 = string:pad(Inter0, 6, leading, $0),
@@ -110,7 +113,7 @@ hexstring(Other) ->
 hexstring_to_int(<<"0x", Num/binary>>) ->
     erlang:binary_to_integer(Num, 16);
 hexstring_to_int(Bin) ->
-    throw({invalid_hexstring_bin, Bin}).
+    erlang:binary_to_integer(Bin, 16).
 
 -spec binary_to_hexstring(number() | binary()) -> binary().
 binary_to_hexstring(ID) when erlang:is_number(ID) ->
@@ -163,3 +166,7 @@ get_hotspot_location(PubKeyBin) ->
                     end
             end
     end.
+
+-spec uint32(number()) -> 0..4294967295.
+uint32(Num) ->
+    Num band 16#FFFF_FFFF.

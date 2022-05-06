@@ -67,7 +67,28 @@ handle(Req, Args) ->
             end
     end.
 
-handle_event(_Event, _Data, _Args) ->
+handle_event(Event, _Data, _Args) ->
+    case
+        lists:member(Event, [
+            bad_request,
+            %% chunk_complete,
+            %% client_closed,
+            %% client_timeout,
+            %% file_error,
+            invalid_return,
+            %% request_closed,
+            %% request_complete,
+            request_error,
+            request_exit,
+            request_parse_error,
+            request_throw
+            %% elli_startup
+        ])
+    of
+        true -> lager:error("~p ~p ~p", [Event, _Data, _Args]);
+        false -> lager:debug("~p ~p ~p", [Event, _Data, _Args])
+    end,
+
     ok.
 
 %% State Channel =====================================================

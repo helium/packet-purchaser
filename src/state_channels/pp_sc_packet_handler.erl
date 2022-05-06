@@ -86,7 +86,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                         "~s: [routing_info: ~p] [net_id: ~p]",
                         [PacketType, RoutingInfo, NetID]
                     ),
-                    ok = pp_metrics:handle_packet(PubKeyBin, NetID, PacketType),
+                    ok = pp_metrics:handle_packet(PubKeyBin, NetID, PacketType, udp),
                     ok = pp_console_ws_worker:handle_packet(NetID, Packet, PacketTime, PacketType),
                     pp_udp_worker:push_data(WorkerPid, SCPacket, PacketTime, Pid);
                 {error, worker_not_started} = Err ->
@@ -97,7 +97,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                     ),
                     Err
             end;
-        {http, #{net_id := NetID} = Args} ->
+        {http, #{net_id := NetID, protocol := {http, _, FlowType, _}} = Args} ->
             PHash = blockchain_helium_packet_v1:packet_hash(Packet),
             case pp_http_sup:maybe_start_worker(PHash, Args) of
                 {error, worker_not_started, _} = Err ->
@@ -113,6 +113,13 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                         "~s: [routing_info: ~p] [net_id: ~p]",
                         [PacketType, RoutingInfo, NetID]
                     ),
+                    ProtocolType =
+                        case FlowType of
+                            sync -> http_sync;
+                            async -> http_async
+                        end,
+                    ok = pp_metrics:handle_packet(PubKeyBin, NetID, PacketType, ProtocolType),
+                    ok = pp_console_ws_worker:handle_packet(NetID, Packet, PacketTime, PacketType),
                     pp_http_worker:handle_packet(WorkerPid, SCPacket, PacketTime)
             end
     end.

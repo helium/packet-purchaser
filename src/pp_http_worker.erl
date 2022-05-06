@@ -53,10 +53,10 @@ start_link(Args) ->
 -spec handle_packet(
     WorkerPid :: pid(),
     SCPacket :: blockchain_state_channel_packet_v1:packet(),
-    PacketTime :: pos_integer()
+    GatewayTime :: pp_roaming_protocol:gateway_time()
 ) -> ok | {error, any()}.
-handle_packet(Pid, SCPacket, PacketTime) ->
-    gen_server:cast(Pid, {handle_packet, SCPacket, PacketTime}).
+handle_packet(Pid, SCPacket, GatewayTime) ->
+    gen_server:cast(Pid, {handle_packet, SCPacket, GatewayTime}).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -77,14 +77,14 @@ handle_call(_Msg, _From, State) ->
     {reply, ok, State}.
 
 handle_cast(
-    {handle_packet, SCPacket, PacketTime},
+    {handle_packet, SCPacket, GatewayTime},
     #state{
         should_shutdown = false,
         send_data_timer = Timeout,
         send_data_timer_ref = TimerRef0
     } = State0
 ) ->
-    {ok, State1} = do_handle_packet(SCPacket, PacketTime, State0),
+    {ok, State1} = do_handle_packet(SCPacket, GatewayTime, State0),
     {ok, TimerRef1} = maybe_schedule_send_data(Timeout, TimerRef0),
     {noreply, State1#state{send_data_timer_ref = TimerRef1}};
 handle_cast(
@@ -138,24 +138,16 @@ maybe_schedule_shutdown(CurrTimer) ->
 
 -spec next_transaction_id() -> integer().
 next_transaction_id() ->
-    rand:uniform(16#FFFFFFFF).
+    rand:uniform(16#7FFFFFFF).
 
 -spec do_handle_packet(
     SCPacket :: pp_roaming_protocol:sc_packet(),
-    PacketTime :: pp_roaming_protocol:packet_time(),
+    GatewayTime :: pp_roaming_protocol:gateway_time(),
     State :: #state{}
 ) -> {ok, #state{}}.
-do_handle_packet(SCPacket, PacketTime, #state{packets = Packets} = State) ->
-    PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
+do_handle_packet(SCPacket, GatewayTime, #state{packets = Packets} = State) ->
     State1 = State#state{
-        packets = [
-            {
-                SCPacket,
-                PacketTime,
-                pp_utils:get_hotspot_location(PubKeyBin)
-            }
-            | Packets
-        ]
+        packets = [pp_roaming_protocol:new_packet(SCPacket, GatewayTime) | Packets]
     },
     {ok, State1}.
 
