@@ -127,8 +127,8 @@ handle_offer(_PubKeyBin, NetID, OfferType, Action, _PayloadSize) ->
 -spec handle_packet(
     PubKeyBin :: libp2p_crypto:pubkey_bin(),
     NetID :: non_neg_integer(),
-        PacketType :: join | packet,
-        ProtocolType :: udp | http_sync | http_async
+    PacketType :: join | packet,
+    ProtocolType :: udp | http_sync | http_async
 ) -> ok.
 handle_packet(_PubKeyBin, NetID, PacketType, ProtocolType) ->
     prometheus_counter:inc(?METRICS_PACKET_COUNT, [clean_net_id(NetID), PacketType, ProtocolType]).
