@@ -30,7 +30,7 @@
 %% ------------------------------------------------------------------
 
 %%        <<"SFxxBWxxx">> | FSK
--type datar() :: string() | binary() | non_neg_integer().
+-type datar() :: string() | non_neg_integer().
 -type dr() :: non_neg_integer().
 -type datarate() :: {Spreading :: non_neg_integer(), Bandwidth :: non_neg_integer()}.
 
@@ -46,7 +46,8 @@ datar_to_dr(Region, DataRate) ->
 -spec dr_to_datar(atom(), dr()) -> datar().
 dr_to_datar(Region, DR) ->
     TopLevelRegion = top_level_region(Region),
-    dr_to_datar_(TopLevelRegion, DR).
+    Datar = dr_to_datar_(TopLevelRegion, DR),
+    erlang:binary_to_list(Datar).
 
 -spec datars(atom()) -> list({dr(), datarate(), up | down | updown}).
 datars(Region) ->

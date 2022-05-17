@@ -189,11 +189,13 @@ handle_xmitdata_req(XmitDataReq) ->
         <<"PHYPayload">> := Payload,
         <<"DLMetaData">> := #{
             <<"FNSULToken">> := Token,
-            <<"DataRate1">> := DR,
-            <<"DLFreq1">> := Frequency,
+            <<"DataRate1">> := DR1,
+            <<"DLFreq1">> := Frequency1,
             <<"RXDelay1">> := Delay
             %% <<"GWInfo">> := [#{<<"ULToken">> := _ULToken}]
-        }
+            %% <<"DataRate2">> := DR2,
+            %% <<"DLFreq2">> := Frequency2
+        } = DLMeta
     } = XmitDataReq,
     PayloadResponse = #{
         'ProtocolVersion' => <<"1.0">>,
@@ -202,7 +204,7 @@ handle_xmitdata_req(XmitDataReq) ->
         'SenderID' => <<"0xC00053">>,
         'Result' => #{'ResultCode' => <<"Success">>},
         'TransactionID' => TransactionID,
-        'DLFreq1' => Frequency
+        'DLFreq1' => Frequency1
     },
 
     %% Make downlink packet
@@ -210,14 +212,30 @@ handle_xmitdata_req(XmitDataReq) ->
         {error, _} = Err ->
             Err;
         {ok, PubKeyBin, Region, PacketTime} ->
-            DataRate = pp_lorawan:dr_to_datar(Region, DR),
+            DataRate1 = pp_lorawan:dr_to_datar(Region, DR1),
+
+            Rx2 =
+                case DLMeta of
+                    #{<<"DataRate2">> := DR2, <<"DLFreq2">> := Frequency2} ->
+                        DataRate2 = pp_lorawan:dr_to_datar(Region, DR2),
+                        blockchain_helium_packet_v1:window(
+                            pp_utils:uint32(PacketTime + 2_000_000),
+                            Frequency2,
+                            DataRate2
+                        );
+                    _ ->
+                        undefined
+                end,
+
             DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
                 pp_utils:hexstring_to_binary(Payload),
                 _SignalStrength = 27,
-                pp_utils:uint32(PacketTime + (Delay * 1000000)),
-                Frequency,
-                erlang:binary_to_list(DataRate)
+                pp_utils:uint32(PacketTime + (Delay * 1_000_000)),
+                Frequency1,
+                DataRate1,
+                Rx2
             ),
+
             SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
 
             case pp_roaming_downlink:lookup_handler(PubKeyBin) of
@@ -248,7 +266,7 @@ parse_uplink_token(<<"0x", Token/binary>>) ->
     case binary:split(Bin, ?TOKEN_SEP, [global]) of
         [B58, RegionBin, PacketTimeBin] ->
             PubKeyBin = libp2p_crypto:b58_to_bin(erlang:binary_to_list(B58)),
-            Region = erlang:binary_to_existing_atom(RegionBin),
+            Region = erlang:binary_to_atom(RegionBin),
             PacketTime = erlang:binary_to_integer(PacketTimeBin),
             {ok, PubKeyBin, Region, PacketTime};
         _ ->
