@@ -22,6 +22,9 @@
 
 -define(NO_ROAMING_AGREEMENT, <<"NoRoamingAgreement">>).
 
+-define(RX2_DELAY, 2_000_000).
+-define(RX1_DELAY, 1_000_000).
+
 %% Roaming MessageTypes
 -type prstart_req() :: map().
 -type prstart_ans() :: map().
@@ -191,7 +194,7 @@ handle_xmitdata_req(XmitDataReq) ->
             <<"FNSULToken">> := Token,
             <<"DataRate1">> := DR1,
             <<"DLFreq1">> := Frequency1,
-            <<"RXDelay1">> := Delay
+            <<"RXDelay1">> := Delay0
             %% <<"GWInfo">> := [#{<<"ULToken">> := _ULToken}]
             %% <<"DataRate2">> := DR2,
             %% <<"DLFreq2">> := Frequency2
@@ -214,26 +217,19 @@ handle_xmitdata_req(XmitDataReq) ->
         {ok, PubKeyBin, Region, PacketTime} ->
             DataRate1 = pp_lorawan:dr_to_datar(Region, DR1),
 
-            Rx2 =
-                case DLMeta of
-                    #{<<"DataRate2">> := DR2, <<"DLFreq2">> := Frequency2} ->
-                        DataRate2 = pp_lorawan:dr_to_datar(Region, DR2),
-                        blockchain_helium_packet_v1:window(
-                            pp_utils:uint32(PacketTime + 2_000_000),
-                            Frequency2,
-                            DataRate2
-                        );
-                    _ ->
-                        undefined
+            Delay1 =
+                case Delay0 of
+                    N when N < 2 -> 1;
+                    N -> N
                 end,
 
             DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
                 pp_utils:hexstring_to_binary(Payload),
                 _SignalStrength = 27,
-                pp_utils:uint32(PacketTime + (Delay * 1_000_000)),
+                pp_utils:uint32(PacketTime + (Delay1 * ?RX1_DELAY)),
                 Frequency1,
                 DataRate1,
-                Rx2
+                rx2_from_dlmetadata(DLMeta, PacketTime, Region)
             ),
 
             SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
@@ -243,6 +239,30 @@ handle_xmitdata_req(XmitDataReq) ->
                 {ok, SCPid} -> {downlink, PayloadResponse, {SCPid, SCResp}}
             end
     end.
+
+rx2_from_dlmetadata(
+    #{
+        <<"DataRate2">> := DR,
+        <<"DLFreq2">> := Frequency
+    },
+    PacketTime,
+    Region
+) ->
+    try pp_lorawan:dr_to_datar(Region, DR) of
+        DataRate ->
+            blockchain_helium_packet_v1:window(
+                pp_utils:uint32(PacketTime + ?RX2_DELAY),
+                Frequency,
+                DataRate
+            )
+    catch
+        Err ->
+            lager:warning("skipping rx2, bad dr_to_datar(~p, ~p) [err: ~p]", [Region, DR, Err]),
+            undefined
+    end;
+rx2_from_dlmetadata(_, _, _) ->
+    lager:debug("skipping rx2, no details"),
+    undefined.
 
 %% ------------------------------------------------------------------
 %% Tokens
