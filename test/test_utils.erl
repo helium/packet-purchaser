@@ -278,7 +278,7 @@ start_gateway(GatewayConfig) ->
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
     %% NetID to ensure sending packets from pp_lns get routed to this worker
-    {ok, NetID} = lora_subnet:parse_netid(16#deadbeef),
+    {ok, NetID} = pp_lorawan:parse_netid(16#deadbeef),
     {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, GatewayConfig),
     {PubKeyBin, WorkerPid}.
 

@@ -145,7 +145,7 @@ rx1_downlink_test(_Config) ->
     ?assertEqual(Frequency, blockchain_helium_packet_v1:frequency(Downlink)),
     ?assertEqual(27, blockchain_helium_packet_v1:signal_strength(Downlink)),
     ?assertEqual(
-        pp_lorawan:dr_to_datar('US915', DataRate),
+        pp_lorawan:index_to_datarate('US915', DataRate),
         blockchain_helium_packet_v1:datarate(Downlink)
     ),
 
@@ -187,7 +187,7 @@ rx2_downlink_test(_Config) ->
 
     Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
     RX2 = blockchain_helium_packet_v1:rx2_window(Downlink),
-    ?assertEqual(pp_lorawan:dr_to_datar('US915', 8), blockchain_helium_packet_v1:datarate(RX2)),
+    ?assertEqual(pp_lorawan:index_to_datarate('US915', 8), blockchain_helium_packet_v1:datarate(RX2)),
     ?assertEqual(923.3, blockchain_helium_packet_v1:frequency(RX2)),
 
     ok.
