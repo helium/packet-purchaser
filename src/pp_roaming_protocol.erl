@@ -22,6 +22,9 @@
 
 -define(NO_ROAMING_AGREEMENT, <<"NoRoamingAgreement">>).
 
+-define(RX2_DELAY, 2_000_000).
+-define(RX1_DELAY, 1_000_000).
+
 %% Roaming MessageTypes
 -type prstart_req() :: map().
 -type prstart_ans() :: map().
@@ -102,7 +105,7 @@ make_uplink_payload(NetID, Uplinks, TransactionID) ->
         'PHYPayload' => pp_utils:binary_to_hexstring(Payload),
         'ULMetaData' => #{
             RoutingKey => RoutingValue,
-            'DataRate' => pp_lorawan:datar_to_dr(Region, DataRate),
+            'DataRate' => pp_lorawan:datarate_to_index(Region, DataRate),
             'ULFreq' => Frequency,
             'RecvTime' => pp_utils:format_time(GatewayTime),
             'RFRegion' => Region,
@@ -146,13 +149,12 @@ handle_prstart_ans(#{
 }) ->
     {ok, PubKeyBin, Region, PacketTime} = parse_uplink_token(Token),
 
-    DataRate = pp_lorawan:dr_to_datar(Region, DR),
     DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
         pp_utils:hexstring_to_binary(Payload),
         _SignalStrength = 27,
         pp_utils:uint32(PacketTime + 5000000),
         Frequency,
-        erlang:binary_to_list(DataRate)
+        pp_lorawan:index_to_datarate(Region, DR)
     ),
 
     SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
@@ -189,11 +191,13 @@ handle_xmitdata_req(XmitDataReq) ->
         <<"PHYPayload">> := Payload,
         <<"DLMetaData">> := #{
             <<"FNSULToken">> := Token,
-            <<"DataRate1">> := DR,
-            <<"DLFreq1">> := Frequency,
-            <<"RXDelay1">> := Delay
+            <<"DataRate1">> := DR1,
+            <<"DLFreq1">> := Frequency1,
+            <<"RXDelay1">> := Delay0
             %% <<"GWInfo">> := [#{<<"ULToken">> := _ULToken}]
-        }
+            %% <<"DataRate2">> := DR2,
+            %% <<"DLFreq2">> := Frequency2
+        } = DLMeta
     } = XmitDataReq,
     PayloadResponse = #{
         'ProtocolVersion' => <<"1.0">>,
@@ -202,7 +206,7 @@ handle_xmitdata_req(XmitDataReq) ->
         'SenderID' => <<"0xC00053">>,
         'Result' => #{'ResultCode' => <<"Success">>},
         'TransactionID' => TransactionID,
-        'DLFreq1' => Frequency
+        'DLFreq1' => Frequency1
     },
 
     %% Make downlink packet
@@ -210,14 +214,23 @@ handle_xmitdata_req(XmitDataReq) ->
         {error, _} = Err ->
             Err;
         {ok, PubKeyBin, Region, PacketTime} ->
-            DataRate = pp_lorawan:dr_to_datar(Region, DR),
+            DataRate1 = pp_lorawan:index_to_datarate(Region, DR1),
+
+            Delay1 =
+                case Delay0 of
+                    N when N < 2 -> 1;
+                    N -> N
+                end,
+
             DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
                 pp_utils:hexstring_to_binary(Payload),
                 _SignalStrength = 27,
-                pp_utils:uint32(PacketTime + (Delay * 1000000)),
-                Frequency,
-                erlang:binary_to_list(DataRate)
+                pp_utils:uint32(PacketTime + (Delay1 * ?RX1_DELAY)),
+                Frequency1,
+                DataRate1,
+                rx2_from_dlmetadata(DLMeta, PacketTime, Region)
             ),
+
             SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
 
             case pp_roaming_downlink:lookup_handler(PubKeyBin) of
@@ -225,6 +238,30 @@ handle_xmitdata_req(XmitDataReq) ->
                 {ok, SCPid} -> {downlink, PayloadResponse, {SCPid, SCResp}}
             end
     end.
+
+rx2_from_dlmetadata(
+    #{
+        <<"DataRate2">> := DR,
+        <<"DLFreq2">> := Frequency
+    },
+    PacketTime,
+    Region
+) ->
+    try pp_lorawan:index_to_datarate(Region, DR) of
+        DataRate ->
+            blockchain_helium_packet_v1:window(
+                pp_utils:uint32(PacketTime + ?RX2_DELAY),
+                Frequency,
+                DataRate
+            )
+    catch
+        Err ->
+            lager:warning("skipping rx2, bad dr_to_datar(~p, ~p) [err: ~p]", [Region, DR, Err]),
+            undefined
+    end;
+rx2_from_dlmetadata(_, _, _) ->
+    lager:debug("skipping rx2, no details"),
+    undefined.
 
 %% ------------------------------------------------------------------
 %% Tokens
@@ -248,7 +285,7 @@ parse_uplink_token(<<"0x", Token/binary>>) ->
     case binary:split(Bin, ?TOKEN_SEP, [global]) of
         [B58, RegionBin, PacketTimeBin] ->
             PubKeyBin = libp2p_crypto:b58_to_bin(erlang:binary_to_list(B58)),
-            Region = erlang:binary_to_existing_atom(RegionBin),
+            Region = erlang:binary_to_atom(RegionBin),
             PacketTime = erlang:binary_to_integer(PacketTimeBin),
             {ok, PubKeyBin, Region, PacketTime};
         _ ->

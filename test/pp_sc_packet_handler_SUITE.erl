@@ -218,7 +218,7 @@ http_sync_uplink_join_test(_Config) ->
             ),
             <<"ULMetaData">> => #{
                 <<"DevEUI">> => <<"0x", DevEUI/binary>>,
-                <<"DataRate">> => pp_lorawan:datar_to_dr(
+                <<"DataRate">> => pp_lorawan:datarate_to_index(
                     Region,
                     blockchain_helium_packet_v1:datarate(Packet)
                 ),
@@ -350,7 +350,7 @@ http_async_uplink_join_test(_Config) ->
         ),
         <<"ULMetaData">> => #{
             <<"DevEUI">> => <<"0x", DevEUI/binary>>,
-            <<"DataRate">> => pp_lorawan:datar_to_dr(
+            <<"DataRate">> => pp_lorawan:datarate_to_index(
                 Region,
                 blockchain_helium_packet_v1:datarate(Packet)
             ),
@@ -667,7 +667,7 @@ http_uplink_packet_no_roaming_agreement_test(_Config) ->
             ),
             <<"ULMetaData">> => #{
                 <<"DevAddr">> => ?DEVADDR_ACTILITY_BIN,
-                <<"DataRate">> => pp_lorawan:datar_to_dr(
+                <<"DataRate">> => pp_lorawan:datarate_to_index(
                     Region,
                     blockchain_helium_packet_v1:datarate(Packet)
                 ),
@@ -748,7 +748,7 @@ http_uplink_packet_test(_Config) ->
             ),
             <<"ULMetaData">> => #{
                 <<"DevAddr">> => ?DEVADDR_ACTILITY_BIN,
-                <<"DataRate">> => pp_lorawan:datar_to_dr(
+                <<"DataRate">> => pp_lorawan:datarate_to_index(
                     Region,
                     blockchain_helium_packet_v1:datarate(Packet)
                 ),
@@ -836,7 +836,7 @@ http_uplink_packet_late_test(_Config) ->
             ),
             <<"ULMetaData">> => #{
                 <<"DevAddr">> => ?DEVADDR_ACTILITY_BIN,
-                <<"DataRate">> => pp_lorawan:datar_to_dr(
+                <<"DataRate">> => pp_lorawan:datarate_to_index(
                     Region,
                     blockchain_helium_packet_v1:datarate(Packet)
                 ),
@@ -920,7 +920,7 @@ http_multiple_gateways_test(_Config) ->
         ),
         <<"ULMetaData">> => #{
             <<"DevAddr">> => ?DEVADDR_ACTILITY_BIN,
-            <<"DataRate">> => pp_lorawan:datar_to_dr(
+            <<"DataRate">> => pp_lorawan:datarate_to_index(
                 Region,
                 blockchain_helium_packet_v1:datarate(Packet1)
             ),
