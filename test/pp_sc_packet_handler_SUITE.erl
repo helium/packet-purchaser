@@ -14,6 +14,7 @@
     net_ids_map_packet_test/1,
     net_ids_no_config_test/1,
     single_hotspot_multi_net_id_test/1,
+    config_inactive_test/1,
     multi_buy_join_test/1,
     multi_buy_packet_test/1,
     multi_buy_eviction_test/1,
@@ -85,6 +86,7 @@ all() ->
         net_ids_map_packet_test,
         net_ids_no_config_test,
         single_hotspot_multi_net_id_test,
+        config_inactive_test,
         multi_buy_join_test,
         multi_buy_packet_test,
         multi_buy_eviction_test,
@@ -1233,6 +1235,31 @@ multi_buy_eviction_test(_Config) ->
         end,
         [JoinOffer, PacketOffer]
     ),
+
+    ok.
+
+config_inactive_test(_Config) ->
+    MakePacketOffer = fun() ->
+        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+        test_utils:packet_offer(PubKeyBin, ?DEVADDR_COMCAST)
+    end,
+
+    %% -------------------------------------------------------------------
+    %% Send more than one of the same join to inactive partner, none should be bought
+    BaseConfig = #{
+        <<"name">> => "test",
+        <<"net_id">> => ?NET_ID_COMCAST,
+        <<"address">> => <<"3.3.3.3">>,
+        <<"port">> => 3333,
+        <<"multi_buy">> => 1,
+        <<"active">> => false
+    },
+    ok = pp_config:load_config([BaseConfig]),
+    Offer1 = MakePacketOffer(),
+    ?assertMatch({error, {buying_inactive, ?NET_ID_COMCAST}}, pp_sc_packet_handler:handle_offer(Offer1, self())),
+    ?assertMatch({error, {buying_inactive, ?NET_ID_COMCAST}}, pp_sc_packet_handler:handle_offer(Offer1, self())),
+    ?assertMatch({error, {buying_inactive, ?NET_ID_COMCAST}}, pp_sc_packet_handler:handle_offer(Offer1, self())),
 
     ok.
 

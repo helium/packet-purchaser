@@ -92,7 +92,9 @@
     protocol :: udp_protocol() | http_protocol(),
     multi_buy :: unlimited | non_neg_integer(),
     disable_pull_data :: boolean(),
-    buying_active = true :: boolean()
+    buying_active = true :: boolean(),
+    %% TODO
+    ignore_disable = false :: boolean()
 }).
 
 -type config() :: #{joins := [#eui{}], routing := [#devaddr{}]}.
@@ -453,6 +455,8 @@ transform_config_entry(Entry) ->
     Joins = maps:get(<<"joins">>, Entry, []),
     DisablePullData = maps:get(<<"disable_pull_data">>, Entry, false),
 
+    IsActive = maps:get(<<"active">>, Entry, true),
+
     Protocol =
         case maps:get(<<"protocol">>, Entry, ?DEFAULT_PROTOCOL) of
             <<"udp">> ->
@@ -481,7 +485,8 @@ transform_config_entry(Entry) ->
                 multi_buy = MultiBuy,
                 disable_pull_data = DisablePullData,
                 dev_eui = clean_config_value(DevEUI),
-                app_eui = clean_config_value(AppEUI)
+                app_eui = clean_config_value(AppEUI),
+                buying_active = IsActive
             }
         end,
         Joins
@@ -491,7 +496,8 @@ transform_config_entry(Entry) ->
         net_id = clean_config_value(NetID),
         protocol = Protocol,
         multi_buy = MultiBuy,
-        disable_pull_data = DisablePullData
+        disable_pull_data = DisablePullData,
+        buying_active = IsActive
     },
     [{joins, JoinRecords}, {routing, Routing}].
 
