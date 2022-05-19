@@ -453,9 +453,18 @@ transform_config_entry(Entry) ->
             Val -> Val
         end,
     Joins = maps:get(<<"joins">>, Entry, []),
-    DisablePullData = maps:get(<<"disable_pull_data">>, Entry, false),
 
-    IsActive = maps:get(<<"active">>, Entry, true),
+    DisablePullData =
+        case maps:get(<<"disable_pull_data">>, Entry, false) of
+            null -> false;
+            V -> V
+        end,
+
+    IsActive =
+        case maps:get(<<"active">>, Entry, true) of
+            null -> true;
+            V -> V
+        end,
 
     Protocol =
         case maps:get(<<"protocol">>, Entry, ?DEFAULT_PROTOCOL) of
