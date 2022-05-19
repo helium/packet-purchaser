@@ -22,6 +22,8 @@
 
 -define(NO_ROAMING_AGREEMENT, <<"NoRoamingAgreement">>).
 
+-define(JOIN1_DELAY, 5_000_000).
+-define(JOIN2_DELAY, 6_000_000).
 -define(RX2_DELAY, 2_000_000).
 -define(RX1_DELAY, 1_000_000).
 
@@ -145,16 +147,17 @@ handle_prstart_ans(#{
         <<"DLFreq1">> := Frequency,
         <<"DataRate1">> := DR,
         <<"FNSULToken">> := Token
-    }
+    } = DLMeta
 }) ->
     {ok, PubKeyBin, Region, PacketTime} = parse_uplink_token(Token),
 
     DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
         pp_utils:hexstring_to_binary(Payload),
         _SignalStrength = 27,
-        pp_utils:uint32(PacketTime + 5000000),
+        pp_utils:uint32(PacketTime + ?JOIN1_DELAY),
         Frequency,
-        pp_lorawan:index_to_datarate(Region, DR)
+        pp_lorawan:index_to_datarate(Region, DR),
+        rx2_from_dlmetadata(DLMeta, PacketTime, Region, ?JOIN2_DELAY)
     ),
 
     SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
@@ -176,6 +179,12 @@ handle_prstart_ans(#{
     NetID = pp_utils:hexstring_to_int(SenderID),
     lager:info("stop buying [net_id: ~p] [reason: no roaming agreement]", [NetID]),
     pp_config:stop_buying([NetID]),
+    ok;
+handle_prstart_ans(#{
+    <<"MessageType">> := <<"PRStartAns">>,
+    <<"Result">> := #{<<"ResultCode">> := <<"Deffered">>},
+    <<"SenderID">> := SenderID
+}) ->
     ok;
 handle_prstart_ans(Res) ->
     lager:error("unrecognized prstart_ans: ~p", [Res]),
@@ -228,7 +237,7 @@ handle_xmitdata_req(XmitDataReq) ->
                 pp_utils:uint32(PacketTime + (Delay1 * ?RX1_DELAY)),
                 Frequency1,
                 DataRate1,
-                rx2_from_dlmetadata(DLMeta, PacketTime, Region)
+                rx2_from_dlmetadata(DLMeta, PacketTime, Region, ?RX2_DELAY)
             ),
 
             SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
@@ -245,12 +254,13 @@ rx2_from_dlmetadata(
         <<"DLFreq2">> := Frequency
     },
     PacketTime,
-    Region
+    Region,
+    Timeout
 ) ->
     try pp_lorawan:index_to_datarate(Region, DR) of
         DataRate ->
             blockchain_helium_packet_v1:window(
-                pp_utils:uint32(PacketTime + ?RX2_DELAY),
+                pp_utils:uint32(PacketTime + Timeout),
                 Frequency,
                 DataRate
             )
@@ -259,7 +269,7 @@ rx2_from_dlmetadata(
             lager:warning("skipping rx2, bad dr_to_datar(~p, ~p) [err: ~p]", [Region, DR, Err]),
             undefined
     end;
-rx2_from_dlmetadata(_, _, _) ->
+rx2_from_dlmetadata(_, _, _, _) ->
     lager:debug("skipping rx2, no details"),
     undefined.
 
