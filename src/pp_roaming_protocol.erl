@@ -112,6 +112,7 @@ make_uplink_payload(NetID, Uplinks, TransactionID) ->
             'RecvTime' => pp_utils:format_time(GatewayTime),
             'RFRegion' => Region,
             'FNSULToken' => Token,
+            'GWCnt' => erlang:length(Uplinks),
             'GWInfo' => lists:map(fun gw_info/1, Uplinks)
         }
     }.
