@@ -457,13 +457,13 @@ transform_config_entry(Entry) ->
     DisablePullData =
         case maps:get(<<"disable_pull_data">>, Entry, false) of
             null -> false;
-            V -> V
+            V1 -> V1
         end,
 
     IsActive =
         case maps:get(<<"active">>, Entry, true) of
             null -> true;
-            V -> V
+            V2 -> V2
         end,
 
     Protocol =
