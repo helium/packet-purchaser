@@ -186,6 +186,7 @@ handle_prstart_ans(#{
     <<"Result">> := #{<<"ResultCode">> := <<"Deffered">>},
     <<"SenderID">> := SenderID
 }) ->
+    lager:info("[result: deffered] [sender: ~p]", [SenderID]),
     ok;
 handle_prstart_ans(Res) ->
     lager:error("unrecognized prstart_ans: ~p", [Res]),
