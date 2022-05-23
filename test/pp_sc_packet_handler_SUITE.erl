@@ -33,7 +33,12 @@
     http_multiple_gateways_test/1,
     http_sync_downlink_test/1,
     http_async_downlink_test/1,
-    http_uplink_packet_late_test/1
+    http_uplink_packet_late_test/1,
+    %%
+    udp_multiple_joins_test/1,
+    udp_multiple_joins_same_dest_test/1,
+    http_multiple_joins_test/1,
+    http_multiple_joins_same_dest_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -106,7 +111,12 @@ all() ->
         http_uplink_packet_test,
         http_uplink_packet_no_roaming_agreement_test,
         http_uplink_packet_late_test,
-        http_multiple_gateways_test
+        http_multiple_gateways_test,
+        %%
+        udp_multiple_joins_test,
+        udp_multiple_joins_same_dest_test,
+        http_multiple_joins_test,
+        http_multiple_joins_same_dest_test
     ].
 
 groups() ->
@@ -120,6 +130,12 @@ groups() ->
             http_uplink_packet_no_roaming_agreement_test,
             http_uplink_packet_late_test,
             http_multiple_gateways_test
+        ]},
+        {multiple_buyers, [
+            udp_multiple_joins_test,
+            udp_multiple_joins_same_dest_test,
+            http_multiple_joins_test,
+            http_multiple_joins_same_dest_test
         ]}
     ].
 
@@ -150,6 +166,98 @@ end_per_testcase(TestCase, Config) ->
 %%--------------------------------------------------------------------
 %% TEST CASES
 %%--------------------------------------------------------------------
+
+http_multiple_joins_test(_Config) ->
+    DevEUI1 = <<0, 0, 0, 0, 0, 0, 0, 1>>,
+    AppEUI1 = <<0, 0, 0, 2, 0, 0, 0, 1>>,
+
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    Routing = blockchain_helium_packet_v1:make_routing_info({eui, DevEUI1, AppEUI1}),
+    Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, ?DEVADDR_COMCAST, 0, Routing, #{
+        dont_encode => true
+    }),
+
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"protocol">> => <<"http">>,
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+            <<"http_dedupe_timeout">> => 50,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1}
+            ]
+        },
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_ORANGE,
+            <<"protocol">> => <<"http">>,
+            <<"http_endpoint">> => <<"http://127.0.0.1:3003/uplink">>,
+            <<"http_dedupe_timeout">> => 50,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1}
+            ]
+        }
+    ]),
+
+    ok = start_uplink_listener(#{port => 3002, callback_args => #{forward => self()}}),
+    ok = start_uplink_listener(#{port => 3003, callback_args => #{forward => self()}}),
+
+    ok = pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+
+    {ok, _, _} = pp_lns:http_rcv(),
+    {ok, _, _} = pp_lns:http_rcv(),
+    ok = pp_lns:not_http_rcv(250),
+
+    ok.
+
+http_multiple_joins_same_dest_test(_Config) ->
+    DevEUI1 = <<0, 0, 0, 0, 0, 0, 0, 1>>,
+    AppEUI1 = <<0, 0, 0, 2, 0, 0, 0, 1>>,
+
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    Routing = blockchain_helium_packet_v1:make_routing_info({eui, DevEUI1, AppEUI1}),
+    Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, ?DEVADDR_COMCAST, 0, Routing, #{
+        dont_encode => true
+    }),
+
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"protocol">> => <<"http">>,
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+            <<"http_dedupe_timeout">> => 50,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1}
+            ]
+        },
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_ORANGE,
+            <<"protocol">> => <<"http">>,
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+            <<"http_dedupe_timeout">> => 50,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1}
+            ]
+        }
+    ]),
+
+    ok = start_uplink_listener(#{port => 3002, callback_args => #{forward => self()}}),
+    ok = pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+
+    {ok, #{<<"ReceiverID">> := ReceiverOne}, _} = pp_lns:http_rcv(),
+    {ok, #{<<"ReceiverID">> := ReceiverTwo}, _} = pp_lns:http_rcv(),
+    ok = pp_lns:not_http_rcv(250),
+
+    ?assertNotEqual(ReceiverOne, ReceiverTwo),
+
+    ok.
 
 http_sync_uplink_join_test(_Config) ->
     %% One Gateway is going to be sending all the packets.
@@ -229,6 +337,7 @@ http_sync_uplink_join_test(_Config) ->
                 <<"RecvTime">> => pp_utils:format_time(GatewayTime),
 
                 <<"FNSULToken">> => Token,
+                <<"GWCnt">> => 1,
                 <<"GWInfo">> => [
                     #{
                         <<"RFRegion">> => erlang:atom_to_binary(Region),
@@ -361,6 +470,7 @@ http_async_uplink_join_test(_Config) ->
             <<"RecvTime">> => pp_utils:format_time(GatewayTime),
 
             <<"FNSULToken">> => Token,
+            <<"GWCnt">> => 1,
             <<"GWInfo">> => [
                 #{
                     <<"RFRegion">> => erlang:atom_to_binary(Region),
@@ -617,15 +727,17 @@ http_uplink_packet_no_roaming_agreement_test(_Config) ->
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
     ok = start_uplink_listener(#{
-        response => #{
-            <<"SenderID">> => <<"000002">>,
-            <<"ReceiverID">> => <<"C00053">>,
-            <<"ProtocolVersion">> => <<"1.0">>,
-            <<"TransactionID">> => 601913476,
-            <<"MessageType">> => <<"PRStartAns">>,
-            <<"Result">> => #{
-                <<"ResultCode">> => <<"NoRoamingAgreement">>,
-                <<"Description">> => <<"There is no roaming agreement between the operators">>
+        callback_args => #{
+            response => #{
+                <<"SenderID">> => <<"000002">>,
+                <<"ReceiverID">> => <<"C00053">>,
+                <<"ProtocolVersion">> => <<"1.0">>,
+                <<"TransactionID">> => 601913476,
+                <<"MessageType">> => <<"PRStartAns">>,
+                <<"Result">> => #{
+                    <<"ResultCode">> => <<"NoRoamingAgreement">>,
+                    <<"Description">> => <<"There is no roaming agreement between the operators">>
+                }
             }
         }
     }),
@@ -682,7 +794,7 @@ http_uplink_packet_no_roaming_agreement_test(_Config) ->
                     'US915',
                     PacketTime
                 ),
-
+                <<"GWCnt">> => 1,
                 <<"GWInfo">> => [
                     #{
                         <<"RFRegion">> => erlang:atom_to_binary(Region),
@@ -763,7 +875,7 @@ http_uplink_packet_test(_Config) ->
                     'US915',
                     PacketTime
                 ),
-
+                <<"GWCnt">> => 1,
                 <<"GWInfo">> => [
                     #{
                         <<"RFRegion">> => erlang:atom_to_binary(Region),
@@ -851,7 +963,7 @@ http_uplink_packet_late_test(_Config) ->
                     'US915',
                     PacketTime
                 ),
-
+                <<"GWCnt">> => 1,
                 <<"GWInfo">> => [
                     #{
                         <<"RFRegion">> => erlang:atom_to_binary(Region),
@@ -936,7 +1048,7 @@ http_multiple_gateways_test(_Config) ->
                 'US915',
                 PacketTime1
             ),
-
+            <<"GWCnt">> => 2,
             <<"GWInfo">> => [
                 #{
                     <<"ID">> => pp_utils:binary_to_hexstring(pp_utils:pubkeybin_to_mac(PubKeyBin1)),
@@ -1257,9 +1369,18 @@ config_inactive_test(_Config) ->
     },
     ok = pp_config:load_config([BaseConfig]),
     Offer1 = MakePacketOffer(),
-    ?assertMatch({error, {buying_inactive, ?NET_ID_COMCAST}}, pp_sc_packet_handler:handle_offer(Offer1, self())),
-    ?assertMatch({error, {buying_inactive, ?NET_ID_COMCAST}}, pp_sc_packet_handler:handle_offer(Offer1, self())),
-    ?assertMatch({error, {buying_inactive, ?NET_ID_COMCAST}}, pp_sc_packet_handler:handle_offer(Offer1, self())),
+    ?assertMatch(
+        {error, {buying_inactive, ?NET_ID_COMCAST}},
+        pp_sc_packet_handler:handle_offer(Offer1, self())
+    ),
+    ?assertMatch(
+        {error, {buying_inactive, ?NET_ID_COMCAST}},
+        pp_sc_packet_handler:handle_offer(Offer1, self())
+    ),
+    ?assertMatch(
+        {error, {buying_inactive, ?NET_ID_COMCAST}},
+        pp_sc_packet_handler:handle_offer(Offer1, self())
+    ),
 
     ok.
 
@@ -1373,6 +1494,97 @@ net_ids_map_offer_test(_Config) ->
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_COMCAST)),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_EXPERIMENTAL)),
     ?assertMatch(ok, SendPacketOfferFun(?DEVADDR_ORANGE)),
+
+    ok.
+
+udp_multiple_joins_test(_Config) ->
+    DevEUI1 = <<0, 0, 0, 0, 0, 0, 0, 1>>,
+    AppEUI1 = <<0, 0, 0, 2, 0, 0, 0, 1>>,
+
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    Routing = blockchain_helium_packet_v1:make_routing_info({eui, DevEUI1, AppEUI1}),
+    Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, ?DEVADDR_COMCAST, 0, Routing, #{
+        dont_encode => true
+    }),
+
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"protocol">> => <<"udp">>,
+            <<"address">> => <<"127.0.0.1">>,
+            <<"port">> => 1111,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1}
+            ]
+        },
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_ORANGE,
+            <<"protocol">> => <<"udp">>,
+            <<"address">> => <<"127.0.0.1">>,
+            <<"port">> => 2222,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1}
+            ]
+        }
+    ]),
+
+    {ok, OnePid} = pp_lns:start_link(#{port => 1111, forward => self()}),
+    {ok, TwoPid} = pp_lns:start_link(#{port => 2222, forward => self()}),
+
+    ok = pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+
+    PushData = 0,
+    {ok, _} = pp_lns:rcv(OnePid, PushData),
+    {ok, _} = pp_lns:rcv(TwoPid, PushData),
+
+    ok.
+
+udp_multiple_joins_same_dest_test(_Config) ->
+    DevEUI1 = <<0, 0, 0, 0, 0, 0, 0, 1>>,
+    AppEUI1 = <<0, 0, 0, 2, 0, 0, 0, 1>>,
+
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    Routing = blockchain_helium_packet_v1:make_routing_info({eui, DevEUI1, AppEUI1}),
+    Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, ?DEVADDR_COMCAST, 0, Routing, #{
+        dont_encode => true
+    }),
+
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"protocol">> => <<"udp">>,
+            <<"address">> => <<"127.0.0.1">>,
+            <<"port">> => 1111,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1}
+            ]
+        },
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_ORANGE,
+            <<"protocol">> => <<"udp">>,
+            <<"address">> => <<"127.0.0.1">>,
+            <<"port">> => 1111,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1}
+            ]
+        }
+    ]),
+
+    {ok, OnePid} = pp_lns:start_link(#{port => 1111, forward => self()}),
+
+    ok = pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+
+    PushData = 0,
+    {ok, _} = pp_lns:rcv(OnePid, PushData),
+    ok = pp_lns:not_rcv(OnePid, PushData, timer:seconds(1)),
 
     ok.
 
@@ -2012,14 +2224,15 @@ get_udp_worker_address_port(Pid) ->
     pp_udp_socket:get_address(Socket).
 
 start_uplink_listener() ->
-    start_uplink_listener(#{}).
+    start_uplink_listener(#{callback_args => #{}}).
 
-start_uplink_listener(CallbackArgs) ->
+start_uplink_listener(Options) ->
     %% Uplinks we send to an LNS
+    CallbackArgs = maps:get(callback_args, Options, #{}),
     {ok, _ElliPid} = elli:start_link([
         {callback, pp_lns},
         {callback_args, maps:merge(#{forward => self()}, CallbackArgs)},
-        {port, 3002},
+        {port, maps:get(port, Options, 3002)},
         {min_acceptors, 1}
     ]),
     ok.

@@ -78,50 +78,87 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 [PacketType, RoutingInfo]
             ),
             Err;
-        {udp, #{net_id := NetID} = WorkerArgs} ->
-            case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs) of
-                {ok, WorkerPid} ->
-                    lager:debug(
-                        [{packet_type, PacketType}, {net_id, NetID}, {protocol, udp}],
-                        "~s: [routing_info: ~p] [net_id: ~p]",
-                        [PacketType, RoutingInfo, NetID]
-                    ),
-                    ok = pp_metrics:handle_packet(PubKeyBin, NetID, PacketType, udp),
-                    ok = pp_console_ws_worker:handle_packet(NetID, Packet, PacketTime, PacketType),
-                    pp_udp_worker:push_data(WorkerPid, SCPacket, PacketTime, Pid);
-                {error, worker_not_started} = Err ->
-                    lager:error(
-                        [{packet_type, PacketType}, {net_id, NetID}],
-                        "failed to start udp connector for ~p: ~p",
-                        [blockchain_utils:addr2name(PubKeyBin)]
-                    ),
-                    Err
-            end;
-        {http, #{net_id := NetID, protocol := {http, _, FlowType, _}} = Args} ->
-            PHash = blockchain_helium_packet_v1:packet_hash(Packet),
-            case pp_http_sup:maybe_start_worker(PHash, Args) of
-                {error, worker_not_started, _} = Err ->
-                    lager:error(
-                        [{packet_type, PacketType}, {net_id, NetID}],
-                        "failed to start http connector for ~p: ~p",
-                        [blockchain_utils:addr2name(PubKeyBin), Err]
-                    ),
-                    Err;
-                {ok, WorkerPid} ->
-                    lager:debug(
-                        [{packet_type, PacketType}, {net_id, NetID}, {protocol, http}],
-                        "~s: [routing_info: ~p] [net_id: ~p]",
-                        [PacketType, RoutingInfo, NetID]
-                    ),
-                    ProtocolType =
-                        case FlowType of
-                            sync -> http_sync;
-                            async -> http_async
-                        end,
-                    ok = pp_metrics:handle_packet(PubKeyBin, NetID, PacketType, ProtocolType),
-                    ok = pp_console_ws_worker:handle_packet(NetID, Packet, PacketTime, PacketType),
-                    pp_http_worker:handle_packet(WorkerPid, SCPacket, PacketTime)
-            end
+        {ok, Matches} ->
+            lists:foreach(
+                fun(Match) ->
+                    case Match of
+                        {udp, #{net_id := NetID} = WorkerArgs} ->
+                            case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs) of
+                                {ok, WorkerPid} ->
+                                    lager:debug(
+                                        [
+                                            {packet_type, PacketType},
+                                            {net_id, NetID},
+                                            {protocol, udp}
+                                        ],
+                                        "~s: [routing_info: ~p] [net_id: ~p]",
+                                        [PacketType, RoutingInfo, NetID]
+                                    ),
+                                    ok = pp_metrics:handle_packet(
+                                        PubKeyBin,
+                                        NetID,
+                                        PacketType,
+                                        udp
+                                    ),
+                                    ok = pp_console_ws_worker:handle_packet(
+                                        NetID,
+                                        Packet,
+                                        PacketTime,
+                                        PacketType
+                                    ),
+                                    pp_udp_worker:push_data(WorkerPid, SCPacket, PacketTime, Pid);
+                                {error, worker_not_started} = Err ->
+                                    lager:error(
+                                        [{packet_type, PacketType}, {net_id, NetID}],
+                                        "failed to start udp connector for ~p: ~p",
+                                        [blockchain_utils:addr2name(PubKeyBin)]
+                                    ),
+                                    Err
+                            end;
+                        {http, #{net_id := NetID, protocol := {http, _, FlowType, _}} = Args} ->
+                            PHash = blockchain_helium_packet_v1:packet_hash(Packet),
+                            case pp_http_sup:maybe_start_worker({NetID, PHash}, Args) of
+                                {error, worker_not_started, _} = Err ->
+                                    lager:error(
+                                        [{packet_type, PacketType}, {net_id, NetID}],
+                                        "failed to start http connector for ~p: ~p",
+                                        [blockchain_utils:addr2name(PubKeyBin), Err]
+                                    ),
+                                    Err;
+                                {ok, WorkerPid} ->
+                                    lager:debug(
+                                        [
+                                            {packet_type, PacketType},
+                                            {net_id, NetID},
+                                            {protocol, http}
+                                        ],
+                                        "~s: [routing_info: ~p] [net_id: ~p]",
+                                        [PacketType, RoutingInfo, NetID]
+                                    ),
+                                    ProtocolType =
+                                        case FlowType of
+                                            sync -> http_sync;
+                                            async -> http_async
+                                        end,
+                                    ok = pp_metrics:handle_packet(
+                                        PubKeyBin,
+                                        NetID,
+                                        PacketType,
+                                        ProtocolType
+                                    ),
+                                    ok = pp_console_ws_worker:handle_packet(
+                                        NetID,
+                                        Packet,
+                                        PacketTime,
+                                        PacketType
+                                    ),
+                                    pp_http_worker:handle_packet(WorkerPid, SCPacket, PacketTime)
+                            end
+                    end
+                end,
+                Matches
+            ),
+            ok
     end.
 
 %% ------------------------------------------------------------------
@@ -130,9 +167,8 @@ handle_packet(SCPacket, PacketTime, Pid) ->
 
 handle_join_offer(EUI, Offer) ->
     case pp_config:lookup_eui(EUI) of
-        {udp, #{multi_buy := MultiBuyMax}} ->
-            pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
-        {http, #{multi_buy := MultiBuyMax}} ->
+        {ok, Matches} ->
+            MultiBuyMax = lists:max([maps:get(multi_buy, M) || {_, M} <- Matches]),
             pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
         Err ->
             Err
@@ -140,9 +176,8 @@ handle_join_offer(EUI, Offer) ->
 
 handle_packet_offer(DevAddr, Offer) ->
     case pp_config:lookup_devaddr(DevAddr) of
-        {udp, #{multi_buy := MultiBuyMax}} ->
-            pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
-        {http, #{multi_buy := MultiBuyMax}} ->
+        {ok, Matches} ->
+            MultiBuyMax = lists:max([maps:get(multi_buy, M) || {_, M} <- Matches]),
             pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
         Err ->
             Err
@@ -159,17 +194,20 @@ handle_packet_offer(DevAddr, Offer) ->
 ) -> ok.
 handle_offer_resp(Routing, Offer, Resp) ->
     PubKeyBin = blockchain_state_channel_offer_v1:hotspot(Offer),
-    {ok, NetID} =
+    {ok, NetIDs} =
         case Routing of
             {eui, _} = EUI ->
                 case pp_config:lookup_eui(EUI) of
-                    {error, Reason} -> {ok, Reason};
-                    {_, #{net_id := NetID0}} -> {ok, NetID0}
+                    {error, Reason} ->
+                        {ok, Reason};
+                    {ok, Ms} ->
+                        NetIds = [NetID0 || {_, #{net_id := NetID0}} <- Ms],
+                        {ok, NetIds}
                 end;
             {devaddr, DevAddr} ->
                 case pp_lorawan:parse_netid(DevAddr) of
                     {error, Reason} -> {ok, Reason};
-                    {_, NetID0} -> {ok, NetID0}
+                    {_, NetID0} -> {ok, [NetID0]}
                 end
         end,
 
@@ -185,10 +223,15 @@ handle_offer_resp(Routing, Offer, Resp) ->
         end,
 
     PayloadSize = blockchain_state_channel_offer_v1:payload_size(Offer),
-    ok = pp_metrics:handle_offer(PubKeyBin, NetID, OfferType, Action, PayloadSize),
+    lists:foreach(
+        fun(NetID) ->
+            ok = pp_metrics:handle_offer(PubKeyBin, NetID, OfferType, Action, PayloadSize),
 
-    lager:debug(
-        [{action, Action}, {offer_type, OfferType}, {net_id, NetID}],
-        "offer: ~s ~s [net_id: ~p] [routing: ~p] [resp: ~p]",
-        [Action, OfferType, NetID, Routing, Resp]
+            lager:debug(
+                [{action, Action}, {offer_type, OfferType}, {net_id, NetID}],
+                "offer: ~s ~s [net_id: ~p] [routing: ~p] [resp: ~p]",
+                [Action, OfferType, NetID, Routing, Resp]
+            )
+        end,
+        NetIDs
     ).
