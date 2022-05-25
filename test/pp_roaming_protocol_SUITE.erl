@@ -9,7 +9,8 @@
 -export([
     rx1_timestamp_test/1,
     rx1_downlink_test/1,
-    rx2_downlink_test/1
+    rx2_downlink_test/1,
+    chirpstack_join_accept_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -28,7 +29,8 @@ all() ->
     [
         rx1_timestamp_test,
         rx1_downlink_test,
-        rx2_downlink_test
+        rx2_downlink_test,
+        chirpstack_join_accept_test
     ].
 
 %%--------------------------------------------------------------------
@@ -49,6 +51,48 @@ end_per_testcase(_TestCase, _Config) ->
 %%--------------------------------------------------------------------
 %% TEST CASES
 %%--------------------------------------------------------------------
+
+chirpstack_join_accept_test(_Config) ->
+    pp_roaming_downlink:insert_handler(
+        <<0, 145, 110, 53, 166, 115, 179, 88, 16, 245, 204, 205, 12, 28, 192, 140, 95, 240, 148,
+            120, 101, 37, 142, 25, 41, 159, 165, 128, 221, 94, 89, 242, 128>>,
+        self()
+    ),
+    A = #{
+        <<"ProtocolVersion">> => <<"1.0">>,
+        <<"MessageType">> => <<"PRStartAns">>,
+        <<"ReceiverID">> => <<"C00053">>,
+        <<"SenderID">> => <<"600013">>,
+        <<"DLMetaData">> => #{
+            <<"ClassMode">> => <<"A">>,
+            <<"DLFreq1">> => 925.1,
+            <<"DLFreq2">> => 923.3,
+            <<"DataRate1">> => 10,
+            <<"DataRate2">> => 8,
+            <<"DevEUI">> => <<"6081f9c306a777fd">>,
+            <<"FNSULToken">> =>
+                <<"313132373370794c4d6b48314d67786177555045575a4c6644656478344e64395742326d3250636855725961784b5539795644723a55533931353a33383333313734393934">>,
+            <<"GWInfo">> => [#{}],
+            <<"RXDelay1">> => 5
+        },
+        <<"DevAddr">> => <<"e0279ae8">>,
+        <<"DevEUI">> => <<"6081f9c306a777fd">>,
+        <<"FCntUp">> => 0,
+        <<"FNwkSIntKey">> => #{
+            <<"AESKey">> => <<"79dfbf88d0214e6f4b33360e987e9d50">>,
+            <<"KEKLabel">> => <<>>
+        },
+        <<"Lifetime">> => 0,
+        <<"PHYPayload">> =>
+            <<"203851b55db2b1669f2c83a52b4b586d8ecca19880f22f6adda429dd719021160c">>,
+        <<"Result">> => #{<<"Description">> => <<>>, <<"ResultCode">> => <<"Success">>},
+        <<"TransactionID">> => 473719436,
+        <<"VSExtension">> => #{}
+    },
+    Self = self(),
+    ?assertMatch({join_accept, {Self, _}}, pp_roaming_protocol:handle_message(A)),
+
+    ok.
 
 rx1_timestamp_test(_Config) ->
     PubKeyBin =
