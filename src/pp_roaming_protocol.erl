@@ -336,7 +336,7 @@ gw_info(#packet{sc_packet = SCPacket, location = Location}) ->
     GW = #{
         'ID' => pp_utils:binary_to_hexstring(pp_utils:pubkeybin_to_mac(PubKeyBin)),
         'RFRegion' => Region,
-        'RSSI' => RSSI,
+        'RSSI' => erlang:trunc(RSSI),
         'SNR' => SNR,
         'DLAllowed' => true
     },
