@@ -124,6 +124,8 @@ binary_to_hexstring(ID) ->
 -spec hexstring_to_binary(binary()) -> binary().
 hexstring_to_binary(<<"0x", Bin/binary>>) ->
     hex_to_binary(Bin);
+hexstring_to_binary(Bin) when erlang:is_binary(Bin) ->
+    hex_to_binary(Bin);
 hexstring_to_binary(_Invalid) ->
     throw({invalid_hexstring_binary, _Invalid}).
 
