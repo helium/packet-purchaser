@@ -293,6 +293,8 @@ make_uplink_token(PubKeyBin, Region, PacketTime) ->
 -spec parse_uplink_token(token()) ->
     {ok, pubkeybin(), region(), non_neg_integer()} | {error, any()}.
 parse_uplink_token(<<"0x", Token/binary>>) ->
+    parse_uplink_token(Token);
+parse_uplink_token(Token) ->
     Bin = pp_utils:hex_to_binary(Token),
     case binary:split(Bin, ?TOKEN_SEP, [global]) of
         [B58, RegionBin, PacketTimeBin] ->
@@ -302,9 +304,7 @@ parse_uplink_token(<<"0x", Token/binary>>) ->
             {ok, PubKeyBin, Region, PacketTime};
         _ ->
             {error, malformed_token}
-    end;
-parse_uplink_token(_) ->
-    {error, malformed_token}.
+    end.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
