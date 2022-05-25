@@ -199,14 +199,14 @@ handle_offer_resp(Routing, Offer, Resp) ->
             {eui, _} = EUI ->
                 case pp_config:lookup_eui(EUI) of
                     {error, Reason} ->
-                        {ok, Reason};
+                        {ok, [Reason]};
                     {ok, Ms} ->
                         NetIds = [NetID0 || {_, #{net_id := NetID0}} <- Ms],
                         {ok, NetIds}
                 end;
             {devaddr, DevAddr} ->
                 case pp_lorawan:parse_netid(DevAddr) of
-                    {error, Reason} -> {ok, Reason};
+                    {error, Reason} -> {ok, [Reason]};
                     {_, NetID0} -> {ok, [NetID0]}
                 end
         end,
