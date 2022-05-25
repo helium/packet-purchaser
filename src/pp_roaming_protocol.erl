@@ -188,6 +188,16 @@ handle_prstart_ans(#{
 }) ->
     lager:info("[result: deffered] [sender: ~p]", [SenderID]),
     ok;
+handle_prstart_ans(#{
+    <<"MessageType">> := <<"PRStartAns">>,
+    <<"Result">> := #{<<"ResultCode">> := <<"Other">>} = Result,
+    <<"SenderID">> := SenderID
+}) ->
+    lager:info(
+        "[result: Other] [sender: ~p] [description: ~p]",
+        [SenderID, maps:get(<<"Description">>, Result, "No Description")]
+    ),
+    ok;
 handle_prstart_ans(Res) ->
     lager:error("unrecognized prstart_ans: ~p", [Res]),
     throw({bad_response, Res}).
