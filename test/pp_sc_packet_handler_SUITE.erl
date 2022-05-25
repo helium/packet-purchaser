@@ -341,7 +341,7 @@ http_sync_uplink_join_test(_Config) ->
                 <<"GWInfo">> => [
                     #{
                         <<"RFRegion">> => erlang:atom_to_binary(Region),
-                        <<"RSSI">> => blockchain_helium_packet_v1:signal_strength(Packet),
+                        <<"RSSI">> => erlang:trunc(blockchain_helium_packet_v1:signal_strength(Packet)),
                         <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
                         <<"DLAllowed">> => true,
                         <<"ID">> => pp_utils:binary_to_hexstring(
@@ -474,7 +474,7 @@ http_async_uplink_join_test(_Config) ->
             <<"GWInfo">> => [
                 #{
                     <<"RFRegion">> => erlang:atom_to_binary(Region),
-                    <<"RSSI">> => blockchain_helium_packet_v1:signal_strength(Packet),
+                    <<"RSSI">> => erlang:trunc(blockchain_helium_packet_v1:signal_strength(Packet)),
                     <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
                     <<"DLAllowed">> => true,
                     <<"ID">> => pp_utils:binary_to_hexstring(
@@ -798,7 +798,7 @@ http_uplink_packet_no_roaming_agreement_test(_Config) ->
                 <<"GWInfo">> => [
                     #{
                         <<"RFRegion">> => erlang:atom_to_binary(Region),
-                        <<"RSSI">> => blockchain_helium_packet_v1:signal_strength(Packet),
+                        <<"RSSI">> => erlang:trunc(blockchain_helium_packet_v1:signal_strength(Packet)),
                         <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
                         <<"DLAllowed">> => true,
                         <<"ID">> => pp_utils:binary_to_hexstring(
@@ -879,7 +879,7 @@ http_uplink_packet_test(_Config) ->
                 <<"GWInfo">> => [
                     #{
                         <<"RFRegion">> => erlang:atom_to_binary(Region),
-                        <<"RSSI">> => blockchain_helium_packet_v1:signal_strength(Packet),
+                        <<"RSSI">> => erlang:trunc(blockchain_helium_packet_v1:signal_strength(Packet)),
                         <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
                         <<"DLAllowed">> => true,
                         <<"ID">> => pp_utils:binary_to_hexstring(
@@ -967,7 +967,7 @@ http_uplink_packet_late_test(_Config) ->
                 <<"GWInfo">> => [
                     #{
                         <<"RFRegion">> => erlang:atom_to_binary(Region),
-                        <<"RSSI">> => blockchain_helium_packet_v1:signal_strength(Packet),
+                        <<"RSSI">> => erlang:trunc(blockchain_helium_packet_v1:signal_strength(Packet)),
                         <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
                         <<"DLAllowed">> => true,
                         <<"ID">> => pp_utils:binary_to_hexstring(
@@ -1053,14 +1053,14 @@ http_multiple_gateways_test(_Config) ->
                 #{
                     <<"ID">> => pp_utils:binary_to_hexstring(pp_utils:pubkeybin_to_mac(PubKeyBin1)),
                     <<"RFRegion">> => erlang:atom_to_binary(Region),
-                    <<"RSSI">> => blockchain_helium_packet_v1:signal_strength(Packet1),
+                    <<"RSSI">> => erlang:trunc(blockchain_helium_packet_v1:signal_strength(Packet1)),
                     <<"SNR">> => blockchain_helium_packet_v1:snr(Packet1),
                     <<"DLAllowed">> => true
                 },
                 #{
                     <<"ID">> => pp_utils:binary_to_hexstring(pp_utils:pubkeybin_to_mac(PubKeyBin2)),
                     <<"RFRegion">> => erlang:atom_to_binary(Region),
-                    <<"RSSI">> => blockchain_helium_packet_v1:signal_strength(Packet2),
+                    <<"RSSI">> => erlang:trunc(blockchain_helium_packet_v1:signal_strength(Packet2)),
                     <<"SNR">> => blockchain_helium_packet_v1:snr(Packet2),
                     <<"DLAllowed">> => true
                 }
