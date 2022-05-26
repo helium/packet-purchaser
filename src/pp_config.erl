@@ -92,7 +92,9 @@
     protocol :: udp_protocol() | http_protocol(),
     multi_buy :: unlimited | non_neg_integer(),
     disable_pull_data :: boolean(),
-    buying_active = true :: boolean()
+    buying_active = true :: boolean(),
+    %% TODO
+    ignore_disable = false :: boolean()
 }).
 
 -type config() :: #{joins := [#eui{}], routing := [#devaddr{}]}.
@@ -111,8 +113,7 @@ start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [Args], []).
 
 -spec lookup(eui() | devaddr()) ->
-    {udp, map()}
-    | {http, map()}
+    {ok, list({udp, list(map())} | {http, map()})}
     | {error, {buying_inactive, NetID :: integer()}}
     | {error, unmapped_eui}
     | {error, routing_not_found}
@@ -121,8 +122,7 @@ lookup({devaddr, _} = DevAddr) -> lookup_devaddr(DevAddr);
 lookup(EUI) -> lookup_eui(EUI).
 
 -spec lookup_eui(eui()) ->
-    {udp, map()}
-    | {http, map()}
+    {ok, list({udp, map()} | {http, map()})}
     | {error, {buying_inactive, NetID :: integer()}}
     | {error, unmapped_eui}.
 lookup_eui({eui, #eui_pb{deveui = DevEUI, appeui = AppEUI}}) ->
@@ -141,27 +141,31 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
             {error, unmapped_eui};
         [#eui{buying_active = false, net_id = NetID}] ->
             {error, {buying_inactive, NetID}};
-        [
-            #eui{
-                protocol = Protocol,
-                net_id = NetID,
-                multi_buy = MultiBuy,
-                disable_pull_data = DisablePullData
-            }
-            | _PotentiallIgnoredSecondNetID
-        ] ->
-            {erlang:element(1, Protocol),
-                maybe_clean_udp(#{
-                    protocol => Protocol,
-                    net_id => NetID,
-                    multi_buy => MultiBuy,
-                    disable_pull_data => DisablePullData
-                })}
+        Matches0 ->
+            Matches1 = dedupe_udp_matches(Matches0),
+            Cleaned = lists:map(
+                fun(Entry) ->
+                    #eui{
+                        protocol = Protocol,
+                        net_id = NetID,
+                        multi_buy = MultiBuy,
+                        disable_pull_data = DisablePullData
+                    } = Entry,
+                    {erlang:element(1, Protocol),
+                        maybe_clean_udp(#{
+                            protocol => Protocol,
+                            net_id => NetID,
+                            multi_buy => MultiBuy,
+                            disable_pull_data => DisablePullData
+                        })}
+                end,
+                Matches1
+            ),
+            {ok, Cleaned}
     end.
 
 -spec lookup_devaddr({devaddr, non_neg_integer()}) ->
-    {udp, map()}
-    | {http, map()}
+    {ok, list({udp, map()} | {http, map()})}
     | {error, {buying_inactive, NetID :: integer()}}
     | {error, routing_not_found}
     | {error, invalid_netid_type}.
@@ -180,13 +184,15 @@ lookup_devaddr({devaddr, DevAddr}) ->
                         disable_pull_data = DisablePullData
                     }
                 ] ->
-                    {erlang:element(1, Protocol),
-                        maybe_clean_udp(#{
-                            protocol => Protocol,
-                            net_id => NetID,
-                            multi_buy => MultiBuy,
-                            disable_pull_data => DisablePullData
-                        })}
+                    {ok, [
+                        {erlang:element(1, Protocol),
+                            maybe_clean_udp(#{
+                                protocol => Protocol,
+                                net_id => NetID,
+                                multi_buy => MultiBuy,
+                                disable_pull_data => DisablePullData
+                            })}
+                    ]}
             end;
         Err ->
             Err
@@ -451,7 +457,18 @@ transform_config_entry(Entry) ->
             Val -> Val
         end,
     Joins = maps:get(<<"joins">>, Entry, []),
-    DisablePullData = maps:get(<<"disable_pull_data">>, Entry, false),
+
+    DisablePullData =
+        case maps:get(<<"disable_pull_data">>, Entry, false) of
+            null -> false;
+            V1 -> V1
+        end,
+
+    IsActive =
+        case maps:get(<<"active">>, Entry, true) of
+            null -> true;
+            V2 -> V2
+        end,
 
     Protocol =
         case maps:get(<<"protocol">>, Entry, ?DEFAULT_PROTOCOL) of
@@ -481,7 +498,8 @@ transform_config_entry(Entry) ->
                 multi_buy = MultiBuy,
                 disable_pull_data = DisablePullData,
                 dev_eui = clean_config_value(DevEUI),
-                app_eui = clean_config_value(AppEUI)
+                app_eui = clean_config_value(AppEUI),
+                buying_active = IsActive
             }
         end,
         Joins
@@ -491,7 +509,8 @@ transform_config_entry(Entry) ->
         net_id = clean_config_value(NetID),
         protocol = Protocol,
         multi_buy = MultiBuy,
-        disable_pull_data = DisablePullData
+        disable_pull_data = DisablePullData,
+        buying_active = IsActive
     },
     [{joins, JoinRecords}, {routing, Routing}].
 
@@ -588,6 +607,21 @@ maybe_clean_udp(#{protocol := {udp, Address, Port}} = Args) ->
 maybe_clean_udp(Args) ->
     Args.
 
+%%--------------------------------------------------------------------
+%% @doc
+%% UDP packets group by the gateway, we don't want to double send to the same
+%% location from the same gateway. HTTP Packets group by PHash, we want to send
+%% to all matches requesting.
+%% @end
+%%--------------------------------------------------------------------
+-spec dedupe_udp_matches(list(#eui{})) -> list(#eui{}).
+dedupe_udp_matches(Matches) ->
+    {UDPMatches, HTTPMatches} = lists:partition(
+        fun(#eui{protocol = P}) -> element(1, P) == udp end,
+        Matches
+    ),
+    lists:ukeysort(#eui.protocol, UDPMatches) ++ HTTPMatches.
+
 -ifdef(TEST).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -663,17 +697,17 @@ join_eui_to_net_id_test() ->
     ?assertMatch({error, _}, ?MODULE:lookup_eui(EUI1), "Empty mapping, no joins"),
 
     ok = pp_config:load_config(OneMapped),
-    ?assertMatch({udp, _}, ?MODULE:lookup_eui(EUI1), "One EUI mapping, this one"),
+    ?assertMatch({ok, [{udp, _}]}, ?MODULE:lookup_eui(EUI1), "One EUI mapping, this one"),
     ?assertMatch({error, _}, ?MODULE:lookup_eui(EUI2), "One EUI mapping, not this one"),
 
     ok = pp_config:load_config(BothMapped),
-    ?assertMatch({udp, _}, ?MODULE:lookup_eui(EUI1), "All EUI Mapped 1"),
-    ?assertMatch({udp, _}, ?MODULE:lookup_eui(EUI2), "All EUI Mapped 2"),
+    ?assertMatch({ok, [{udp, _}]}, ?MODULE:lookup_eui(EUI1), "All EUI Mapped 1"),
+    ?assertMatch({ok, [{udp, _}]}, ?MODULE:lookup_eui(EUI2), "All EUI Mapped 2"),
 
     ok = pp_config:load_config(WildcardMapped),
-    ?assertMatch({udp, _}, ?MODULE:lookup_eui(EUI1), "Wildcard EUI Mapped 1"),
+    ?assertMatch({ok, [{udp, _}]}, ?MODULE:lookup_eui(EUI1), "Wildcard EUI Mapped 1"),
     ?assertMatch(
-        {udp, _},
+        {ok, [{udp, _}]},
         ?MODULE:lookup_eui(
             #eui_pb{
                 deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
@@ -682,9 +716,9 @@ join_eui_to_net_id_test() ->
         ),
         "Wildcard random device EUI Mapped 1"
     ),
-    ?assertMatch({udp, _}, ?MODULE:lookup_eui(EUI2), "Wildcard EUI Mapped 2"),
+    ?assertMatch({ok, [{udp, _}]}, ?MODULE:lookup_eui(EUI2), "Wildcard EUI Mapped 2"),
     ?assertMatch(
-        {udp, _},
+        {ok, [{udp, _}]},
         ?MODULE:lookup_eui(
             #eui_pb{
                 deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
