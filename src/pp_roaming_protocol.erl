@@ -198,6 +198,16 @@ handle_prstart_ans(#{
         [SenderID, maps:get(<<"Description">>, Result, "No Description")]
     ),
     ok;
+handle_prstart_ans(#{
+    <<"MessageType">> := <<"PRStartAns">>,
+    <<"Result">> := #{<<"ResultCode">> := <<"MICFailed">>} = Result,
+    <<"SenderID">> := SenderID
+}) ->
+    lager:info(
+        "[result: MICFailed] [sender: ~p] [description: ~p]",
+        [SenderID, maps:get(<<"Description">>, Result, "No Description")]
+    ),
+    ok;
 handle_prstart_ans(Res) ->
     lager:error("unrecognized prstart_ans: ~p", [Res]),
     throw({bad_response, Res}).
