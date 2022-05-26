@@ -183,29 +183,13 @@ handle_prstart_ans(#{
     ok;
 handle_prstart_ans(#{
     <<"MessageType">> := <<"PRStartAns">>,
-    <<"Result">> := #{<<"ResultCode">> := <<"Deffered">>},
+    <<"Result">> := #{<<"ResultCode">> := ResultCode} = Result,
     <<"SenderID">> := SenderID
 }) ->
-    lager:info("[result: deffered] [sender: ~p]", [SenderID]),
-    ok;
-handle_prstart_ans(#{
-    <<"MessageType">> := <<"PRStartAns">>,
-    <<"Result">> := #{<<"ResultCode">> := <<"Other">>} = Result,
-    <<"SenderID">> := SenderID
-}) ->
+    %% Catchall for properly formatted messages with results we don't yet support
     lager:info(
-        "[result: Other] [sender: ~p] [description: ~p]",
-        [SenderID, maps:get(<<"Description">>, Result, "No Description")]
-    ),
-    ok;
-handle_prstart_ans(#{
-    <<"MessageType">> := <<"PRStartAns">>,
-    <<"Result">> := #{<<"ResultCode">> := <<"MICFailed">>} = Result,
-    <<"SenderID">> := SenderID
-}) ->
-    lager:info(
-        "[result: MICFailed] [sender: ~p] [description: ~p]",
-        [SenderID, maps:get(<<"Description">>, Result, "No Description")]
+        "[result: ~p] [sender: ~p] [description: ~p]",
+        [ResultCode, SenderID, maps:get(<<"Description">>, Result, "No Description")]
     ),
     ok;
 handle_prstart_ans(Res) ->
