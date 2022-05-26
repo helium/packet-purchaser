@@ -3,6 +3,7 @@
 -behavior(gen_server).
 
 -include("semtech_udp.hrl").
+-include("http_protocol.hrl").
 
 %% ------------------------------------------------------------------
 %% API Function Exports
@@ -77,17 +78,17 @@ rcv(Pid, Type, Delay) ->
 -spec http_rcv() -> {ok, any()}.
 http_rcv() ->
     receive
-        {http_msg, Payload, {StatusCode, [], RespBody}} ->
-            {ok, jsx:decode(Payload), {StatusCode, jsx:decode(RespBody)}}
+        {http_msg, Payload, Request, {StatusCode, [], RespBody}} ->
+            {ok, jsx:decode(Payload), Request, {StatusCode, jsx:decode(RespBody)}}
     after 2500 -> ct:fail(http_msg_timeout)
     end.
 
 -spec http_rcv(map()) -> {ok, any(), any()}.
 http_rcv(Expected) ->
-    {ok, Got, Response} = ?MODULE:http_rcv(),
+    {ok, Got, Request, Response} = ?MODULE:http_rcv(),
     case test_utils:match_map(Expected, Got) of
         true ->
-            {ok, Got, Response};
+            {ok, Got, Request, Response};
         {false, Reason} ->
             ct:pal("FAILED got: ~n~p~n expected: ~n~p", [Got, Expected]),
             ct:fail({http_rcv, Reason})
@@ -283,9 +284,7 @@ handle('POST', [<<"downlink">>], Req, Args) ->
 
     SenderNetIDBin = maps:get(<<"SenderID">>, Decoded),
     SenderNetID = pp_utils:hexstring_to_int(SenderNetIDBin),
-    {ok, #{protocol := {http, _Endpoint, FlowType, _DedupeTimout}}} = pp_config:lookup_netid(
-        SenderNetID
-    ),
+    {ok, #{protocol := #http_protocol{flow_type=FlowType}}} = pp_config:lookup_netid(SenderNetID),
 
     case FlowType of
         async ->
@@ -295,13 +294,12 @@ handle('POST', [<<"downlink">>], Req, Args) ->
             Forward ! {http_downlink_data_response, 200},
             {200, [], <<>>};
         sync ->
-            Decoded = jsx:decode(Body),
             ct:pal("sync handling downlink:~n~p", [Decoded]),
             Response = pp_roaming_downlink:handle(Req, Args),
 
             %% ResponseBody = make_response_body(Decoded),
             %% Response = {200, [], jsx:encode(ResponseBody)},
-            Forward ! {http_msg, Body, Response},
+            Forward ! {http_msg, Body, Req, Response},
             Response
     end;
 handle('POST', [<<"uplink">>], Req, Args) ->
@@ -311,9 +309,7 @@ handle('POST', [<<"uplink">>], Req, Args) ->
 
     ReceiverNetIDBin = maps:get(<<"ReceiverID">>, Decoded),
     ReceiverNetID = pp_utils:hexstring_to_int(ReceiverNetIDBin),
-    {ok, #{protocol := {http, _Endpoint, FlowType, _DedupeTimeout}}} = pp_config:lookup_netid(
-        ReceiverNetID
-    ),
+    {ok, #{protocol := #http_protocol{flow_type=FlowType}}} = pp_config:lookup_netid(ReceiverNetID),
 
     ResponseBody =
         case maps:get(response, Args, undefined) of
@@ -343,7 +339,7 @@ handle('POST', [<<"uplink">>], Req, Args) ->
             Response;
         sync ->
             Response = {200, [], jsx:encode(ResponseBody)},
-            Forward ! {http_msg, Body, Response},
+            Forward ! {http_msg, Body, Req, Response},
 
             Response
     end.

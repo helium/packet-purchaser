@@ -2,6 +2,8 @@
 
 -behavior(gen_server).
 
+-include("http_protocol.hrl").
+
 %% ------------------------------------------------------------------
 %% API Function Exports
 %% ------------------------------------------------------------------
@@ -38,6 +40,7 @@
     send_data_timer = 200 :: non_neg_integer(),
     send_data_timer_ref :: undefined | reference(),
     flow_type :: async | sync,
+    auth_header :: undefined | binary(),
 
     should_shutdown = false :: boolean(),
     shutdown_timer_ref :: undefined | reference()
@@ -62,14 +65,23 @@ handle_packet(Pid, SCPacket, GatewayTime) ->
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 init(Args) ->
-    #{protocol := {http, Address, FlowType, DedupeTimeout}, net_id := NetID} = Args,
+    #{
+        protocol := #http_protocol{
+            endpoint = Address,
+            flow_type = FlowType,
+            dedupe_timeout = DedupeTimeout,
+            auth_header = Auth
+        },
+        net_id := NetID
+    } = Args,
     lager:debug("~p init with ~p", [?MODULE, Args]),
     {ok, #state{
         net_id = NetID,
         address = Address,
         transaction_id = next_transaction_id(),
         send_data_timer = DedupeTimeout,
-        flow_type = FlowType
+        flow_type = FlowType,
+        auth_header = Auth
     }}.
 
 handle_call(_Msg, _From, State) ->
@@ -157,11 +169,19 @@ send_data(#state{
     address = Address,
     packets = Packets,
     transaction_id = TransactionID,
-    flow_type = FlowType
+    flow_type = FlowType,
+    auth_header = Auth
 }) ->
     Data = pp_roaming_protocol:make_uplink_payload(NetID, Packets, TransactionID),
     Data1 = jsx:encode(Data, [{float_formatter, fun round_to_fourth_decimal/1}]),
-    case hackney:post(Address, [], Data1, [with_body]) of
+
+    Headers =
+        case Auth of
+            undefined -> [{<<"Content-Type">>, <<"application/json">>}];
+            _ -> [{<<"Content-Type">>, <<"application/json">>}, {<<"Authorization">>, Auth}]
+        end,
+
+    case hackney:post(Address, Headers, Data1, [with_body]) of
         {ok, 200, _Headers, Res} ->
             case FlowType of
                 sync ->

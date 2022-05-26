@@ -34,6 +34,7 @@
     http_sync_downlink_test/1,
     http_async_downlink_test/1,
     http_uplink_packet_late_test/1,
+    http_auth_header_test/1,
     %%
     udp_multiple_joins_test/1,
     udp_multiple_joins_same_dest_test/1,
@@ -112,6 +113,7 @@ all() ->
         http_uplink_packet_no_roaming_agreement_test,
         http_uplink_packet_late_test,
         http_multiple_gateways_test,
+        http_auth_header_test,
         %%
         udp_multiple_joins_test,
         udp_multiple_joins_same_dest_test,
@@ -129,7 +131,8 @@ groups() ->
             http_uplink_packet_test,
             http_uplink_packet_no_roaming_agreement_test,
             http_uplink_packet_late_test,
-            http_multiple_gateways_test
+            http_multiple_gateways_test,
+            http_auth_header_test
         ]},
         {multiple_buyers, [
             udp_multiple_joins_test,
@@ -166,6 +169,44 @@ end_per_testcase(TestCase, Config) ->
 %%--------------------------------------------------------------------
 %% TEST CASES
 %%--------------------------------------------------------------------
+
+http_auth_header_test(_Config) ->
+    DevEUI1 = <<0, 0, 0, 0, 0, 0, 0, 1>>,
+    AppEUI1 = <<0, 0, 0, 2, 0, 0, 0, 1>>,
+
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    Routing = blockchain_helium_packet_v1:make_routing_info({eui, DevEUI1, AppEUI1}),
+    Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, ?DEVADDR_COMCAST, 0, Routing, #{
+        dont_encode => true
+    }),
+
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"protocol">> => <<"http">>,
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+            <<"http_dedupe_timeout">> => 50,
+            <<"http_auth_header">> => <<"Basic: testing">>,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1}
+            ]
+        }
+    ]),
+
+    ok = start_uplink_listener(#{port => 3002, callback_args => #{forward => self()}}),
+
+    ok = pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+
+    {ok, _, Request, _} = pp_lns:http_rcv(),
+    Headers = elli_request:headers(Request),
+    ?assertEqual(<<"Basic: testing">>, proplists:get_value(<<"Authorization">>, Headers)),
+
+    ok = pp_lns:not_http_rcv(250),
+
+    ok.
 
 http_multiple_joins_test(_Config) ->
     DevEUI1 = <<0, 0, 0, 0, 0, 0, 0, 1>>,
@@ -207,8 +248,8 @@ http_multiple_joins_test(_Config) ->
 
     ok = pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
 
-    {ok, _, _} = pp_lns:http_rcv(),
-    {ok, _, _} = pp_lns:http_rcv(),
+    {ok, _, _, _} = pp_lns:http_rcv(),
+    {ok, _, _, _} = pp_lns:http_rcv(),
     ok = pp_lns:not_http_rcv(250),
 
     ok.
@@ -251,8 +292,8 @@ http_multiple_joins_same_dest_test(_Config) ->
     ok = start_uplink_listener(#{port => 3002, callback_args => #{forward => self()}}),
     ok = pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
 
-    {ok, #{<<"ReceiverID">> := ReceiverOne}, _} = pp_lns:http_rcv(),
-    {ok, #{<<"ReceiverID">> := ReceiverTwo}, _} = pp_lns:http_rcv(),
+    {ok, #{<<"ReceiverID">> := ReceiverOne}, _, _} = pp_lns:http_rcv(),
+    {ok, #{<<"ReceiverID">> := ReceiverTwo}, _, _} = pp_lns:http_rcv(),
     ok = pp_lns:not_http_rcv(250),
 
     ?assertNotEqual(ReceiverOne, ReceiverTwo),
@@ -316,7 +357,7 @@ http_sync_uplink_join_test(_Config) ->
     Token = pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', PacketTime),
 
     %% 2. Expect a PRStartReq to the lns
-    {ok, #{<<"TransactionID">> := TransactionID}, {200, RespBody}} = pp_lns:http_rcv(
+    {ok, #{<<"TransactionID">> := TransactionID}, _, {200, RespBody}} = pp_lns:http_rcv(
         #{
             <<"ProtocolVersion">> => <<"1.0">>,
             <<"TransactionID">> => fun erlang:is_number/1,
@@ -341,7 +382,9 @@ http_sync_uplink_join_test(_Config) ->
                 <<"GWInfo">> => [
                     #{
                         <<"RFRegion">> => erlang:atom_to_binary(Region),
-                        <<"RSSI">> => erlang:trunc(blockchain_helium_packet_v1:signal_strength(Packet)),
+                        <<"RSSI">> => erlang:trunc(
+                            blockchain_helium_packet_v1:signal_strength(Packet)
+                        ),
                         <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
                         <<"DLAllowed">> => true,
                         <<"ID">> => pp_utils:binary_to_hexstring(
@@ -769,7 +812,7 @@ http_uplink_packet_no_roaming_agreement_test(_Config) ->
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
 
     %% First packet is purchased and sent to Roamer
-    {ok, _Data, {200, _RespBody}} = pp_lns:http_rcv(
+    {ok, _Data, _, {200, _RespBody}} = pp_lns:http_rcv(
         #{
             <<"ProtocolVersion">> => <<"1.0">>,
             <<"TransactionID">> => fun erlang:is_number/1,
@@ -798,7 +841,9 @@ http_uplink_packet_no_roaming_agreement_test(_Config) ->
                 <<"GWInfo">> => [
                     #{
                         <<"RFRegion">> => erlang:atom_to_binary(Region),
-                        <<"RSSI">> => erlang:trunc(blockchain_helium_packet_v1:signal_strength(Packet)),
+                        <<"RSSI">> => erlang:trunc(
+                            blockchain_helium_packet_v1:signal_strength(Packet)
+                        ),
                         <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
                         <<"DLAllowed">> => true,
                         <<"ID">> => pp_utils:binary_to_hexstring(
@@ -850,7 +895,7 @@ http_uplink_packet_test(_Config) ->
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
 
-    {ok, _Data, {200, _RespBody}} = pp_lns:http_rcv(
+    {ok, _Data, _, {200, _RespBody}} = pp_lns:http_rcv(
         #{
             <<"ProtocolVersion">> => <<"1.0">>,
             <<"TransactionID">> => fun erlang:is_number/1,
@@ -879,7 +924,9 @@ http_uplink_packet_test(_Config) ->
                 <<"GWInfo">> => [
                     #{
                         <<"RFRegion">> => erlang:atom_to_binary(Region),
-                        <<"RSSI">> => erlang:trunc(blockchain_helium_packet_v1:signal_strength(Packet)),
+                        <<"RSSI">> => erlang:trunc(
+                            blockchain_helium_packet_v1:signal_strength(Packet)
+                        ),
                         <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
                         <<"DLAllowed">> => true,
                         <<"ID">> => pp_utils:binary_to_hexstring(
@@ -938,7 +985,7 @@ http_uplink_packet_late_test(_Config) ->
     ok = timer:sleep(100),
     {ok, _, _} = SendPacketFun(PubKeyBin2, ?DEVADDR_ACTILITY),
 
-    {ok, _Data, {200, _RespBody}} = pp_lns:http_rcv(
+    {ok, _Data, _, {200, _RespBody}} = pp_lns:http_rcv(
         #{
             <<"ProtocolVersion">> => <<"1.0">>,
             <<"TransactionID">> => fun erlang:is_number/1,
@@ -967,7 +1014,9 @@ http_uplink_packet_late_test(_Config) ->
                 <<"GWInfo">> => [
                     #{
                         <<"RFRegion">> => erlang:atom_to_binary(Region),
-                        <<"RSSI">> => erlang:trunc(blockchain_helium_packet_v1:signal_strength(Packet)),
+                        <<"RSSI">> => erlang:trunc(
+                            blockchain_helium_packet_v1:signal_strength(Packet)
+                        ),
                         <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
                         <<"DLAllowed">> => true,
                         <<"ID">> => pp_utils:binary_to_hexstring(
@@ -1023,7 +1072,7 @@ http_multiple_gateways_test(_Config) ->
     Packet2 = blockchain_state_channel_packet_v1:packet(SCPacket2),
     Region = blockchain_state_channel_packet_v1:region(SCPacket1),
 
-    {ok, _Data, {200, _RespBody}} = pp_lns:http_rcv(#{
+    {ok, _Data, _, {200, _RespBody}} = pp_lns:http_rcv(#{
         <<"ProtocolVersion">> => <<"1.0">>,
         <<"TransactionID">> => fun erlang:is_number/1,
         <<"SenderID">> => <<"0xC00053">>,
@@ -1053,14 +1102,18 @@ http_multiple_gateways_test(_Config) ->
                 #{
                     <<"ID">> => pp_utils:binary_to_hexstring(pp_utils:pubkeybin_to_mac(PubKeyBin1)),
                     <<"RFRegion">> => erlang:atom_to_binary(Region),
-                    <<"RSSI">> => erlang:trunc(blockchain_helium_packet_v1:signal_strength(Packet1)),
+                    <<"RSSI">> => erlang:trunc(
+                        blockchain_helium_packet_v1:signal_strength(Packet1)
+                    ),
                     <<"SNR">> => blockchain_helium_packet_v1:snr(Packet1),
                     <<"DLAllowed">> => true
                 },
                 #{
                     <<"ID">> => pp_utils:binary_to_hexstring(pp_utils:pubkeybin_to_mac(PubKeyBin2)),
                     <<"RFRegion">> => erlang:atom_to_binary(Region),
-                    <<"RSSI">> => erlang:trunc(blockchain_helium_packet_v1:signal_strength(Packet2)),
+                    <<"RSSI">> => erlang:trunc(
+                        blockchain_helium_packet_v1:signal_strength(Packet2)
+                    ),
                     <<"SNR">> => blockchain_helium_packet_v1:snr(Packet2),
                     <<"DLAllowed">> => true
                 }
