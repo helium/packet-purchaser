@@ -73,7 +73,7 @@
 -record(eui, {
     name :: undefined | binary(),
     net_id :: non_neg_integer(),
-    protocol :: udp_protocol() | http_protocol(),
+    protocol :: not_configured | udp_protocol() | http_protocol(),
     multi_buy :: unlimited | non_neg_integer(),
     disable_pull_data :: boolean(),
     dev_eui :: '*' | non_neg_integer(),
@@ -86,7 +86,7 @@
 -record(devaddr, {
     name :: undefined | binary(),
     net_id :: non_neg_integer(),
-    protocol :: udp_protocol() | http_protocol(),
+    protocol :: not_configured | udp_protocol() | http_protocol(),
     multi_buy :: unlimited | non_neg_integer(),
     disable_pull_data :: boolean(),
     buying_active = true :: boolean(),
@@ -112,6 +112,7 @@ start_link(Args) ->
 -spec lookup(eui() | devaddr()) ->
     {ok, list(map())}
     | {error, {buying_inactive, NetID :: integer()}}
+    | {error, {not_configured, NetID :: integer()}}
     | {error, unmapped_eui}
     | {error, routing_not_found}
     | {error, invalid_netid_type}.
@@ -121,6 +122,7 @@ lookup(EUI) -> lookup_eui(EUI).
 -spec lookup_eui(eui()) ->
     {ok, list(map())}
     | {error, {buying_inactive, NetID :: integer()}}
+    | {error, {not_configured, NetID :: integer()}}
     | {error, unmapped_eui}.
 lookup_eui({eui, #eui_pb{deveui = DevEUI, appeui = AppEUI}}) ->
     lookup_eui({eui, DevEUI, AppEUI});
@@ -136,34 +138,43 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
     case ets:select(?EUI_ETS, Spec) of
         [] ->
             {error, unmapped_eui};
+        [#eui{protocol = not_configured, net_id = NetID}] ->
+            {error, {not_configured, NetID}};
         [#eui{buying_active = false, net_id = NetID}] ->
             {error, {buying_inactive, NetID}};
         Matches0 ->
-            Matches1 = dedupe_udp_matches(Matches0),
-            Cleaned = lists:map(
-                fun(Entry) ->
-                    #eui{
-                        protocol = Protocol,
-                        net_id = NetID,
-                        multi_buy = MultiBuy,
-                        disable_pull_data = DisablePullData
-                    } = Entry,
-
-                    maybe_clean_udp(#{
-                        protocol => Protocol,
-                        net_id => NetID,
-                        multi_buy => MultiBuy,
-                        disable_pull_data => DisablePullData
-                    })
+            Matches1 = lists:filtermap(
+                fun
+                    (#eui{buying_active = false}) ->
+                        false;
+                    (#eui{protocol = not_configured}) ->
+                        false;
+                    (
+                        #eui{
+                            protocol = Protocol,
+                            net_id = NetID,
+                            multi_buy = MultiBuy,
+                            disable_pull_data = DisablePullData
+                        }
+                    ) ->
+                        {true,
+                            maybe_clean_udp(#{
+                                protocol => Protocol,
+                                net_id => NetID,
+                                multi_buy => MultiBuy,
+                                disable_pull_data => DisablePullData
+                            })}
                 end,
-                Matches1
+                Matches0
             ),
-            {ok, Cleaned}
+            Matches2 = dedupe_udp_matches(Matches1),
+            {ok, Matches2}
     end.
 
 -spec lookup_devaddr({devaddr, non_neg_integer()}) ->
     {ok, list(map())}
     | {error, {buying_inactive, NetID :: integer()}}
+    | {error, {not_configured, NetID :: integer()}}
     | {error, routing_not_found}
     | {error, invalid_netid_type}.
 lookup_devaddr({devaddr, DevAddr}) ->
@@ -172,6 +183,8 @@ lookup_devaddr({devaddr, DevAddr}) ->
             case ets:lookup(?DEVADDR_ETS, NetID) of
                 [] ->
                     {error, routing_not_found};
+                [#devaddr{protocol = not_configured, net_id = NetID}] ->
+                    {error, {not_configured, NetID}};
                 [#devaddr{buying_active = false, net_id = NetID}] ->
                     {error, {buying_inactive, NetID}};
                 [
@@ -469,9 +482,18 @@ transform_config_entry(Entry) ->
     Protocol =
         case maps:get(<<"protocol">>, Entry, ?DEFAULT_PROTOCOL) of
             <<"udp">> ->
-                Address = erlang:binary_to_list(maps:get(<<"address">>, Entry)),
-                Port = maps:get(<<"port">>, Entry),
-                {udp, Address, Port};
+                try
+                    Address = erlang:binary_to_list(maps:get(<<"address">>, Entry)),
+                    Port = maps:get(<<"port">>, Entry),
+                    {udp, Address, Port}
+                catch
+                    error:{badkey, BadKey} ->
+                        lager:warning(
+                            "could not use defauflt protocol [badkey: ~p] [net_id: ~p]",
+                            [BadKey, NetID]
+                        ),
+                        not_configured
+                end;
             <<"http">> ->
                 #http_protocol{
                     endpoint = maps:get(<<"http_endpoint">>, Entry),
@@ -620,13 +642,21 @@ maybe_clean_udp(Args) ->
 %% to all matches requesting.
 %% @end
 %%--------------------------------------------------------------------
--spec dedupe_udp_matches(list(#eui{})) -> list(#eui{}).
+-spec dedupe_udp_matches(list(map())) -> list(map()).
 dedupe_udp_matches(Matches) ->
-    {UDPMatches, HTTPMatches} = lists:partition(
-        fun(#eui{protocol = P}) -> element(1, P) == udp end,
+    {UDPMatches0, HTTPMatches} = lists:partition(
+        fun(#{protocol := P}) -> element(1, P) == udp end,
         Matches
     ),
-    lists:ukeysort(#eui.protocol, UDPMatches) ++ HTTPMatches.
+    UDPMatches1 = maps:values(
+        lists:foldr(
+            fun(#{protocol := P} = Entry, Acc) -> Acc#{P => Entry} end,
+            #{},
+            UDPMatches0
+        )
+    ),
+    UDPMatches1 ++ HTTPMatches.
+
 
 -ifdef(TEST).
 
@@ -703,7 +733,11 @@ join_eui_to_net_id_test() ->
     ?assertMatch({error, _}, ?MODULE:lookup_eui(EUI1), "Empty mapping, no joins"),
 
     ok = pp_config:load_config(OneMapped),
-    ?assertMatch({ok, [#{protocol := {udp, _, _}}]}, ?MODULE:lookup_eui(EUI1), "One EUI mapping, this one"),
+    ?assertMatch(
+        {ok, [#{protocol := {udp, _, _}}]},
+        ?MODULE:lookup_eui(EUI1),
+        "One EUI mapping, this one"
+    ),
     ?assertMatch({error, _}, ?MODULE:lookup_eui(EUI2), "One EUI mapping, not this one"),
 
     ok = pp_config:load_config(BothMapped),
@@ -711,7 +745,11 @@ join_eui_to_net_id_test() ->
     ?assertMatch({ok, [#{protocol := {udp, _, _}}]}, ?MODULE:lookup_eui(EUI2), "All EUI Mapped 2"),
 
     ok = pp_config:load_config(WildcardMapped),
-    ?assertMatch({ok, [#{protocol := {udp, _, _}}]}, ?MODULE:lookup_eui(EUI1), "Wildcard EUI Mapped 1"),
+    ?assertMatch(
+        {ok, [#{protocol := {udp, _, _}}]},
+        ?MODULE:lookup_eui(EUI1),
+        "Wildcard EUI Mapped 1"
+    ),
     ?assertMatch(
         {ok, [#{protocol := {udp, _, _}}]},
         ?MODULE:lookup_eui(
@@ -722,7 +760,11 @@ join_eui_to_net_id_test() ->
         ),
         "Wildcard random device EUI Mapped 1"
     ),
-    ?assertMatch({ok, [#{protocol := {udp, _, _}}]}, ?MODULE:lookup_eui(EUI2), "Wildcard EUI Mapped 2"),
+    ?assertMatch(
+        {ok, [#{protocol := {udp, _, _}}]},
+        ?MODULE:lookup_eui(EUI2),
+        "Wildcard EUI Mapped 2"
+    ),
     ?assertMatch(
         {ok, [#{protocol := {udp, _, _}}]},
         ?MODULE:lookup_eui(
