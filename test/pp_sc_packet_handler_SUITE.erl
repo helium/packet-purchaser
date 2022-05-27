@@ -25,6 +25,8 @@
     join_websocket_inactive_test/1,
     stop_start_purchasing_net_id_packet_test/1,
     stop_start_purchasing_net_id_join_test/1,
+    drop_not_configured_orgs_packet_test/1,
+    drop_not_configured_orgs_join_test/1,
     %% http_test/1,
     http_sync_uplink_join_test/1,
     http_async_uplink_join_test/1,
@@ -104,6 +106,8 @@ all() ->
         %% multi_buy_worst_case_stress_test
         stop_start_purchasing_net_id_packet_test,
         stop_start_purchasing_net_id_join_test,
+        drop_not_configured_orgs_packet_test,
+        drop_not_configured_orgs_join_test,
         %%
         http_sync_uplink_join_test,
         http_async_uplink_join_test,
@@ -169,6 +173,89 @@ end_per_testcase(TestCase, Config) ->
 %%--------------------------------------------------------------------
 %% TEST CASES
 %%--------------------------------------------------------------------
+
+drop_not_configured_orgs_packet_test(_Config) ->
+    MakePacketOffer = fun() ->
+        #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+        PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+        test_utils:packet_offer(PubKeyBin, ?DEVADDR_ACTILITY)
+    end,
+
+    pp_config:load_config([
+        #{
+            <<"active">> => false,
+            <<"joins">> => [],
+            <<"multi_buy">> => 0,
+            <<"name">> => <<"Test Onboarding">>,
+            <<"net_id">> => ?NET_ID_ACTILITY
+        }
+    ]),
+
+    Offer = MakePacketOffer(),
+    ?assertMatch(
+        {error, {not_configured, ?NET_ID_ACTILITY}},
+        pp_sc_packet_handler:handle_offer(Offer, self())
+    ),
+
+    ok.
+
+drop_not_configured_orgs_join_test(_Config) ->
+    DevEUI = <<0, 0, 0, 0, 0, 0, 0, 1>>,
+    AppEUI = <<0, 0, 0, 2, 0, 0, 0, 1>>,
+
+    DevNonce = crypto:strong_rand_bytes(2),
+    AppKey = <<245, 16, 127, 141, 191, 84, 201, 16, 111, 172, 36, 152, 70, 228, 52, 95>>,
+
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    JoinOffer = test_utils:join_offer(PubKeyBin, AppKey, DevNonce, DevEUI, AppEUI),
+
+    %% Single non-buying roamer for join
+    pp_config:load_config([
+        #{
+            <<"active">> => false,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI, <<"app_eui">> => AppEUI}
+            ],
+            <<"multi_buy">> => 0,
+            <<"name">> => <<"Test Onboarding">>,
+            <<"net_id">> => ?NET_ID_ACTILITY
+        }
+    ]),
+    %% Offer is rejected for single roamer
+    ?assertMatch(
+        {error, {not_configured, ?NET_ID_ACTILITY}},
+        pp_sc_packet_handler:handle_offer(JoinOffer, self())
+    ),
+
+    %% One valid, one invalid roamer for join
+    pp_config:load_config([
+        #{
+            <<"active">> => false,
+            <<"multi_buy">> => 0,
+            <<"name">> => <<"Test Onboarding">>,
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI, <<"app_eui">> => AppEUI}
+            ]
+        },
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_COMCAST,
+            <<"address">> => <<"3.3.3.3">>,
+            <<"port">> => 3333,
+            <<"multi_buy">> => 1,
+            <<"active">> => true,
+            <<"joins">> => [
+                #{<<"dev_eui">> => DevEUI, <<"app_eui">> => AppEUI}
+            ]
+        }
+    ]),
+    %% Offer is purchased for single configured roamer
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(JoinOffer, self())),
+
+    ok.
 
 http_auth_header_test(_Config) ->
     DevEUI1 = <<0, 0, 0, 0, 0, 0, 0, 1>>,

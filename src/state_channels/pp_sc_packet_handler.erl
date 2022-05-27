@@ -58,6 +58,13 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                 [PacketType, RoutingInfo, NetID]
             ),
             {error, buying_inactive};
+        {error, {not_configured, NetID}} ->
+            lager:debug(
+                [{packet_type, PacketType, {net_id, NetID}, {error, not_configured}}],
+                "~s: net_id ~p not configured",
+                [PacketType, NetID]
+            ),
+            {error, not_configured};
         {error, routing_not_found} = Err ->
             lager:debug(
                 [{packet_type, PacketType}, Err],
@@ -116,7 +123,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                                     ),
                                     Err
                             end;
-                        #{net_id := NetID, protocol := #http_protocol{flow_type=FlowType}} = Args ->
+                        #{net_id := NetID, protocol := #http_protocol{flow_type = FlowType}} = Args ->
                             PHash = blockchain_helium_packet_v1:packet_hash(Packet),
                             case pp_http_sup:maybe_start_worker({NetID, PHash}, Args) of
                                 {error, worker_not_started, _} = Err ->
