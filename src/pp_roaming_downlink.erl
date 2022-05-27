@@ -1,6 +1,7 @@
 -module(pp_roaming_downlink).
 
 -include_lib("elli/include/elli.hrl").
+-include("http_protocol.hrl").
 
 -behaviour(elli_handler).
 
@@ -37,7 +38,7 @@ handle(Req, Args) ->
         {error, routing_not_found} ->
             lager:error("received message for partner not configured: ~p", [Decoded]),
             {500, [], <<"An error occured">>};
-        {ok, #{protocol := {http, Endpoint, FlowType, _DedupTimeout}}} ->
+        {ok, #{protocol := #http_protocol{endpoint=Endpoint, flow_type=FlowType}}} ->
             case pp_roaming_protocol:handle_message(Decoded) of
                 ok ->
                     {200, [], <<"OK">>};

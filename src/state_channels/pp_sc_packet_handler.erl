@@ -6,6 +6,7 @@
 -module(pp_sc_packet_handler).
 
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
+-include("http_protocol.hrl").
 
 -export([
     handle_offer/2,
@@ -82,7 +83,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
             lists:foreach(
                 fun(Match) ->
                     case Match of
-                        {udp, #{net_id := NetID} = WorkerArgs} ->
+                        #{net_id := NetID, protocol := {udp, _, _}} = WorkerArgs ->
                             case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs) of
                                 {ok, WorkerPid} ->
                                     lager:debug(
@@ -115,7 +116,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                                     ),
                                     Err
                             end;
-                        {http, #{net_id := NetID, protocol := {http, _, FlowType, _}} = Args} ->
+                        #{net_id := NetID, protocol := #http_protocol{flow_type=FlowType}} = Args ->
                             PHash = blockchain_helium_packet_v1:packet_hash(Packet),
                             case pp_http_sup:maybe_start_worker({NetID, PHash}, Args) of
                                 {error, worker_not_started, _} = Err ->
@@ -168,7 +169,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
 handle_join_offer(EUI, Offer) ->
     case pp_config:lookup_eui(EUI) of
         {ok, Matches} ->
-            MultiBuyMax = lists:max([maps:get(multi_buy, M) || {_, M} <- Matches]),
+            MultiBuyMax = lists:max([maps:get(multi_buy, M) || M <- Matches]),
             pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
         Err ->
             Err
@@ -177,7 +178,7 @@ handle_join_offer(EUI, Offer) ->
 handle_packet_offer(DevAddr, Offer) ->
     case pp_config:lookup_devaddr(DevAddr) of
         {ok, Matches} ->
-            MultiBuyMax = lists:max([maps:get(multi_buy, M) || {_, M} <- Matches]),
+            MultiBuyMax = lists:max([maps:get(multi_buy, M) || M <- Matches]),
             pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax);
         Err ->
             Err
@@ -201,7 +202,7 @@ handle_offer_resp(Routing, Offer, Resp) ->
                     {error, Reason} ->
                         {ok, [Reason]};
                     {ok, Ms} ->
-                        NetIds = [NetID0 || {_, #{net_id := NetID0}} <- Ms],
+                        NetIds = [NetID0 || #{net_id := NetID0} <- Ms],
                         {ok, NetIds}
                 end;
             {devaddr, DevAddr} ->

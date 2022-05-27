@@ -4,6 +4,7 @@
 
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
+-include("http_protocol.hrl").
 
 %% gen_server API
 -export([
@@ -61,17 +62,13 @@
 -define(UDP_WORKER_ETS, pp_config_udp_worker_ets).
 
 -define(DEFAULT_PROTOCOL, <<"udp">>).
--define(DEFAULT_HTTP_FLOW_TYPE, <<"sync">>).
--define(DEFAULT_HTTP_DEDUPE_TIMEOUT, 200).
 
 -record(state, {
     filename :: testing | string()
 }).
 
 -type udp_protocol() :: {udp, Address :: string(), Port :: non_neg_integer()}.
--type http_protocol() ::
-    {http, ConnectionString :: binary(), FlowType :: async | sync,
-        DedupeTimer :: non_neg_integer()}.
+-type http_protocol() :: #http_protocol{}.
 
 -record(eui, {
     name :: undefined | binary(),
@@ -113,7 +110,7 @@ start_link(Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [Args], []).
 
 -spec lookup(eui() | devaddr()) ->
-    {ok, list({udp, list(map())} | {http, map()})}
+    {ok, list(map())}
     | {error, {buying_inactive, NetID :: integer()}}
     | {error, unmapped_eui}
     | {error, routing_not_found}
@@ -122,7 +119,7 @@ lookup({devaddr, _} = DevAddr) -> lookup_devaddr(DevAddr);
 lookup(EUI) -> lookup_eui(EUI).
 
 -spec lookup_eui(eui()) ->
-    {ok, list({udp, map()} | {http, map()})}
+    {ok, list(map())}
     | {error, {buying_inactive, NetID :: integer()}}
     | {error, unmapped_eui}.
 lookup_eui({eui, #eui_pb{deveui = DevEUI, appeui = AppEUI}}) ->
@@ -151,13 +148,13 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
                         multi_buy = MultiBuy,
                         disable_pull_data = DisablePullData
                     } = Entry,
-                    {erlang:element(1, Protocol),
-                        maybe_clean_udp(#{
-                            protocol => Protocol,
-                            net_id => NetID,
-                            multi_buy => MultiBuy,
-                            disable_pull_data => DisablePullData
-                        })}
+
+                    maybe_clean_udp(#{
+                        protocol => Protocol,
+                        net_id => NetID,
+                        multi_buy => MultiBuy,
+                        disable_pull_data => DisablePullData
+                    })
                 end,
                 Matches1
             ),
@@ -165,7 +162,7 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
     end.
 
 -spec lookup_devaddr({devaddr, non_neg_integer()}) ->
-    {ok, list({udp, map()} | {http, map()})}
+    {ok, list(map())}
     | {error, {buying_inactive, NetID :: integer()}}
     | {error, routing_not_found}
     | {error, invalid_netid_type}.
@@ -185,13 +182,12 @@ lookup_devaddr({devaddr, DevAddr}) ->
                     }
                 ] ->
                     {ok, [
-                        {erlang:element(1, Protocol),
-                            maybe_clean_udp(#{
-                                protocol => Protocol,
-                                net_id => NetID,
-                                multi_buy => MultiBuy,
-                                disable_pull_data => DisablePullData
-                            })}
+                        maybe_clean_udp(#{
+                            protocol => Protocol,
+                            net_id => NetID,
+                            multi_buy => MultiBuy,
+                            disable_pull_data => DisablePullData
+                        })
                     ]}
             end;
         Err ->
@@ -477,13 +473,17 @@ transform_config_entry(Entry) ->
                 Port = maps:get(<<"port">>, Entry),
                 {udp, Address, Port};
             <<"http">> ->
-                {
-                    http,
-                    maps:get(<<"http_endpoint">>, Entry),
-                    erlang:binary_to_existing_atom(
+                #http_protocol{
+                    endpoint = maps:get(<<"http_endpoint">>, Entry),
+                    flow_type = erlang:binary_to_existing_atom(
                         maps:get(<<"http_flow_type">>, Entry, ?DEFAULT_HTTP_FLOW_TYPE)
                     ),
-                    maps:get(<<"http_dedupe_timeout">>, Entry, ?DEFAULT_HTTP_DEDUPE_TIMEOUT)
+                    dedupe_timeout = maps:get(
+                        <<"http_dedupe_timeout">>,
+                        Entry,
+                        ?DEFAULT_HTTP_DEDUPE_TIMEOUT
+                    ),
+                    auth_header = maps:get(<<"http_auth_header">>, Entry, undefined)
                 };
             Other ->
                 throw({invalid_protocol_type, Other})
@@ -551,12 +551,18 @@ write_config_to_disk(Filename) ->
                             address => erlang:list_to_binary(Address),
                             port => Port
                         };
-                    {http, Endpoint, Flow, Dedupe} ->
+                    #http_protocol{
+                        endpoint = Endpoint,
+                        flow_type = Flow,
+                        dedupe_timeout = Dedupe,
+                        auth_header = Auth
+                    } ->
                         #{
                             protocol => http,
                             http_endpoint => Endpoint,
                             http_flow_type => Flow,
-                            http_dedupe_timeout => Dedupe
+                            http_dedupe_timeout => Dedupe,
+                            http_auth_header => Auth
                         }
                 end,
             maps:merge(BaseMap, ProtocolMap)
@@ -697,17 +703,17 @@ join_eui_to_net_id_test() ->
     ?assertMatch({error, _}, ?MODULE:lookup_eui(EUI1), "Empty mapping, no joins"),
 
     ok = pp_config:load_config(OneMapped),
-    ?assertMatch({ok, [{udp, _}]}, ?MODULE:lookup_eui(EUI1), "One EUI mapping, this one"),
+    ?assertMatch({ok, [#{protocol := {udp, _, _}}]}, ?MODULE:lookup_eui(EUI1), "One EUI mapping, this one"),
     ?assertMatch({error, _}, ?MODULE:lookup_eui(EUI2), "One EUI mapping, not this one"),
 
     ok = pp_config:load_config(BothMapped),
-    ?assertMatch({ok, [{udp, _}]}, ?MODULE:lookup_eui(EUI1), "All EUI Mapped 1"),
-    ?assertMatch({ok, [{udp, _}]}, ?MODULE:lookup_eui(EUI2), "All EUI Mapped 2"),
+    ?assertMatch({ok, [#{protocol := {udp, _, _}}]}, ?MODULE:lookup_eui(EUI1), "All EUI Mapped 1"),
+    ?assertMatch({ok, [#{protocol := {udp, _, _}}]}, ?MODULE:lookup_eui(EUI2), "All EUI Mapped 2"),
 
     ok = pp_config:load_config(WildcardMapped),
-    ?assertMatch({ok, [{udp, _}]}, ?MODULE:lookup_eui(EUI1), "Wildcard EUI Mapped 1"),
+    ?assertMatch({ok, [#{protocol := {udp, _, _}}]}, ?MODULE:lookup_eui(EUI1), "Wildcard EUI Mapped 1"),
     ?assertMatch(
-        {ok, [{udp, _}]},
+        {ok, [#{protocol := {udp, _, _}}]},
         ?MODULE:lookup_eui(
             #eui_pb{
                 deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
@@ -716,9 +722,9 @@ join_eui_to_net_id_test() ->
         ),
         "Wildcard random device EUI Mapped 1"
     ),
-    ?assertMatch({ok, [{udp, _}]}, ?MODULE:lookup_eui(EUI2), "Wildcard EUI Mapped 2"),
+    ?assertMatch({ok, [#{protocol := {udp, _, _}}]}, ?MODULE:lookup_eui(EUI2), "Wildcard EUI Mapped 2"),
     ?assertMatch(
-        {ok, [{udp, _}]},
+        {ok, [#{protocol := {udp, _, _}}]},
         ?MODULE:lookup_eui(
             #eui_pb{
                 deveui = rand:uniform(trunc(math:pow(2, 64) - 1)),
