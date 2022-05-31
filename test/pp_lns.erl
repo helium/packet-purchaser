@@ -284,7 +284,7 @@ handle('POST', [<<"downlink">>], Req, Args) ->
 
     SenderNetIDBin = maps:get(<<"SenderID">>, Decoded),
     SenderNetID = pp_utils:hexstring_to_int(SenderNetIDBin),
-    {ok, #{protocol := #http_protocol{flow_type=FlowType}}} = pp_config:lookup_netid(SenderNetID),
+    {ok, #{protocol := #http_protocol{flow_type = FlowType}}} = pp_config:lookup_netid(SenderNetID),
 
     case FlowType of
         async ->
@@ -309,7 +309,9 @@ handle('POST', [<<"uplink">>], Req, Args) ->
 
     ReceiverNetIDBin = maps:get(<<"ReceiverID">>, Decoded),
     ReceiverNetID = pp_utils:hexstring_to_int(ReceiverNetIDBin),
-    {ok, #{protocol := #http_protocol{flow_type=FlowType}}} = pp_config:lookup_netid(ReceiverNetID),
+    {ok, #{protocol := #http_protocol{flow_type = FlowType}}} = pp_config:lookup_netid(
+        ReceiverNetID
+    ),
 
     ResponseBody =
         case maps:get(response, Args, undefined) of
