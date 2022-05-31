@@ -36,6 +36,7 @@ docker-exec:
 	docker exec -it helium_packet_purchaser _build/default/rel/packet_purchaser/bin/packet_purchaser remote_console
 
 src/grpc/compiled.txt: config/grpc_*_gen.config
+	mkdir -p src/grpc
 	echo "$$(date)" > src/grpc/compiled.txt
 	REBAR_CONFIG="config/grpc_client_gen.config" $(REBAR) grpc gen
 	REBAR_CONFIG="config/grpc_server_gen.config" $(REBAR) grpc gen
