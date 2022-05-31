@@ -21,10 +21,13 @@ RUN rustup update
 
 WORKDIR /opt/packet_purchaser
 
-COPY Makefile Makefile
-COPY rebar3 rebar3
-COPY rebar.config rebar.config
-COPY rebar.lock rebar.lock
+COPY Makefile \
+    rebar3 \
+    rebar.config \
+    rebar.lock \
+    .
+
+COPY config/ config/
 RUN ./rebar3 get-deps
 RUN make
 
