@@ -26,6 +26,8 @@
 -define(METRICS_VM_PROC_Q, packet_purchaser_vm_process_queue).
 -define(METRICS_VM_ETS_MEMORY, packet_purchaser_vm_ets_memory).
 
+-define(METRICS_GRPC_CONNECTION_COUNT, packet_purchaser_connection_count).
+
 -define(METRICS_WORKER_TICK_INTERVAL, timer:seconds(10)).
 -define(METRICS_WORKER_TICK, '__pp_metrics_tick').
 
@@ -247,7 +249,8 @@ handle_info(?METRICS_WORKER_TICK, #state{pubkey_bin = PubKeyBin} = State) ->
         ok = record_state_channels(),
         ok = record_vm_stats(),
         ok = record_ets(),
-        ok = record_queues()
+        ok = record_queues(),
+        ok = record_grpc_connections()
     end),
     _ = schedule_next_tick(),
     {noreply, State};
@@ -373,6 +376,12 @@ declare_metrics() ->
         {labels, [name]}
     ]),
 
+    %% GRPC
+    prometheus_gauge:declare([
+        {name, ?METRICS_GRPC_CONNECTION_COUNT},
+        {help, "Number of active GRPC Connections"}
+    ]),
+
     ok.
 
 -spec schedule_next_tick() -> reference().
@@ -476,6 +485,23 @@ record_ets() ->
         end,
         ets:all()
     ),
+    ok.
+
+-spec record_grpc_connections() -> ok.
+record_grpc_connections() ->
+    Opts = application:get_env(grpcbox, listen_opts, #{}),
+    PoolName = grpcbox_services_sup:pool_name(Opts),
+    try
+        Counts = acceptor_pool:count_children(PoolName),
+        proplists:get_value(active, Counts)
+    of
+        Count ->
+            _ = prometheus_gauge:set(?METRICS_GRPC_CONNECTION_COUNT, Count)
+    catch
+        _:_ ->
+            lager:warning("no grpcbox acceptor named ~p", [PoolName]),
+            _ = prometheus_gauge:set(?METRICS_GRPC_CONNECTION_COUNT, 0)
+    end,
     ok.
 
 -spec record_queues() -> ok.

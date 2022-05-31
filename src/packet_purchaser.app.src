@@ -25,6 +25,8 @@
         prometheus,
         hackney,
         clique,
+        grpcbox,
+        grpc_client,
         erlang_lorawan
     ]},
     {included_applications, [blockchain]},
