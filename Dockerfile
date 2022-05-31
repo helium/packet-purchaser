@@ -25,7 +25,7 @@ COPY Makefile \
     rebar3 \
     rebar.config \
     rebar.lock \
-    .
+    ./
 
 COPY config/ config/
 RUN ./rebar3 get-deps
