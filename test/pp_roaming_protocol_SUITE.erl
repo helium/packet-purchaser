@@ -59,7 +59,7 @@ chirpstack_join_accept_test(_Config) ->
         self()
     ),
     A = #{
-        <<"ProtocolVersion">> => <<"1.0">>,
+        <<"ProtocolVersion">> => <<"1.1">>,
         <<"MessageType">> => <<"PRStartAns">>,
         <<"ReceiverID">> => <<"C00053">>,
         <<"SenderID">> => <<"600013">>,
@@ -105,7 +105,7 @@ rx1_timestamp_test(_Config) ->
 
     MakeInput = fun(RXDelay) ->
         #{
-            <<"ProtocolVersion">> => <<"1.0">>,
+            <<"ProtocolVersion">> => <<"1.1">>,
             <<"SenderID">> => <<"0x600013">>,
             <<"ReceiverID">> => <<"0xc00053">>,
             <<"TransactionID">> => 17,
@@ -157,7 +157,7 @@ rx1_downlink_test(_Config) ->
     DataRate = 10,
 
     Input = #{
-        <<"ProtocolVersion">> => <<"1.0">>,
+        <<"ProtocolVersion">> => <<"1.1">>,
         <<"SenderID">> => <<"0x600013">>,
         <<"ReceiverID">> => <<"0xc00053">>,
         <<"TransactionID">> => 17,
@@ -202,7 +202,7 @@ rx2_downlink_test(_Config) ->
     ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
 
     Input = #{
-        <<"ProtocolVersion">> => <<"1.0">>,
+        <<"ProtocolVersion">> => <<"1.1">>,
         <<"SenderID">> => <<"0x600013">>,
         <<"ReceiverID">> => <<"0xc00053">>,
         <<"TransactionID">> => 17,
