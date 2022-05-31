@@ -99,7 +99,7 @@ make_uplink_payload(NetID, Uplinks, TransactionID) ->
     Token = make_uplink_token(PubKeyBin, Region, PacketTime),
 
     #{
-        'ProtocolVersion' => <<"1.0">>,
+        'ProtocolVersion' => <<"1.1">>,
         'SenderID' => <<"0xC00053">>,
         'ReceiverID' => pp_utils:hexstring(NetID),
         'TransactionID' => TransactionID,
@@ -215,7 +215,7 @@ handle_xmitdata_req(XmitDataReq) ->
         } = DLMeta
     } = XmitDataReq,
     PayloadResponse = #{
-        'ProtocolVersion' => <<"1.0">>,
+        'ProtocolVersion' => <<"1.1">>,
         'MessageType' => <<"XmitDataAns">>,
         'ReceiverID' => SenderID,
         'SenderID' => <<"0xC00053">>,

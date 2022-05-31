@@ -657,7 +657,6 @@ dedupe_udp_matches(Matches) ->
     ),
     UDPMatches1 ++ HTTPMatches.
 
-
 -ifdef(TEST).
 
 -include_lib("eunit/include/eunit.hrl").

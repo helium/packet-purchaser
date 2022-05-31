@@ -11,7 +11,7 @@
 -export([
     index_to_datarate/2,
     datarate_to_index/2,
-         parse_netid/1,
+    parse_netid/1,
 
     datar_to_dr/2,
     dr_to_datar/2
