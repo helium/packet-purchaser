@@ -63,7 +63,7 @@
 
 % pp_utils:hex_to_binary(<<"04ABCDEF">>)
 -define(DEVADDR_ACTILITY, <<4, 171, 205, 239>>).
--define(DEVADDR_ACTILITY_BIN, <<"0x4ABCDEF">>).
+-define(DEVADDR_ACTILITY_BIN, <<"0x04ABCDEF">>).
 
 % pp_utils:hex_to_binary(<<"45000042">>)
 -define(DEVADDR_COMCAST, <<69, 0, 0, 66>>).
