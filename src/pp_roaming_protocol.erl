@@ -399,4 +399,18 @@ encode_deveui(Num) ->
 
 -spec encode_devaddr(non_neg_integer()) -> binary().
 encode_devaddr(Num) ->
-    pp_utils:hexstring(Num).
+    pp_utils:hexstring(Num, 8).
+
+-ifdef(TEST).
+
+-include_lib("eunit/include/eunit.hrl").
+
+encode_deveui_test() ->
+    ?assertEqual(encode_deveui(0), <<"0x0000000000000000">>),
+    ok.
+
+encode_devaddr_test() ->
+    ?assertEqual(encode_devaddr(0), <<"0x00000000">>),
+    ok.
+
+-endif.
