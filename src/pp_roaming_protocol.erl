@@ -93,7 +93,7 @@ make_uplink_payload(NetID, Uplinks, TransactionID) ->
     {RoutingKey, RoutingValue} =
         case RoutingInfo of
             {devaddr, DevAddr} -> {'DevAddr', pp_utils:hexstring(DevAddr)};
-            {eui, DevEUI, _AppEUI} -> {'DevEUI', pp_utils:hexstring(DevEUI)}
+            {eui, DevEUI, _AppEUI} -> {'DevEUI', pp_utils:hexstring(DevEUI, 16)}
         end,
 
     Token = make_uplink_token(PubKeyBin, Region, PacketTime),
