@@ -198,22 +198,64 @@ handle_prstart_ans(Res) ->
 
 -spec handle_xmitdata_req(xmitdata_req()) ->
     {downlink, xmitdata_ans(), downlink()} | {error, any()}.
-handle_xmitdata_req(XmitDataReq) ->
-    #{
-        <<"MessageType">> := <<"XmitDataReq">>,
-        <<"TransactionID">> := TransactionID,
-        <<"SenderID">> := SenderID,
-        <<"PHYPayload">> := Payload,
-        <<"DLMetaData">> := #{
-            <<"FNSULToken">> := Token,
-            <<"DataRate1">> := DR1,
-            <<"DLFreq1">> := Frequency1,
-            <<"RXDelay1">> := Delay0
-            %% <<"GWInfo">> := [#{<<"ULToken">> := _ULToken}]
-            %% <<"DataRate2">> := DR2,
-            %% <<"DLFreq2">> := Frequency2
-        } = DLMeta
-    } = XmitDataReq,
+%% Class C ==========================================
+handle_xmitdata_req(#{
+    <<"MessageType">> := <<"XmitDataReq">>,
+    <<"TransactionID">> := TransactionID,
+    <<"SenderID">> := SenderID,
+    <<"PHYPayload">> := Payload,
+    <<"DLMetaData">> := #{
+        <<"ClassMode">> := <<"C">>,
+        <<"FNSULToken">> := Token,
+        <<"DLFreq2">> := Frequency,
+        <<"DataRate2">> := DR
+    }
+}) ->
+    PayloadResponse = #{
+        'ProtocolVersion' => <<"1.0">>,
+        'MessageType' => <<"XmitDataAns">>,
+        'ReceiverID' => SenderID,
+        'SenderID' => <<"0xC00053">>,
+        'Result' => #{'ResultCode' => <<"Success">>},
+        'TransactionID' => TransactionID,
+        'DLFreq2' => Frequency
+    },
+
+    case parse_uplink_token(Token) of
+        {error, _} = Err ->
+            Err;
+        {ok, PubKeyBin, Region, _PacketTime} ->
+            DataRate = pp_lorawan:index_to_datarate(Region, DR),
+
+            DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
+                pp_utils:hexstring_to_binary(Payload),
+                _SignalStrength = 27,
+                immediate,
+                Frequency,
+                DataRate
+            ),
+
+            SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
+
+            case pp_roaming_downlink:lookup_handler(PubKeyBin) of
+                {error, _} = Err -> Err;
+                {ok, SCPid} -> {downlink, PayloadResponse, {SCPid, SCResp}}
+            end
+    end;
+%% Class A ==========================================
+handle_xmitdata_req(#{
+    <<"MessageType">> := <<"XmitDataReq">>,
+    <<"TransactionID">> := TransactionID,
+    <<"SenderID">> := SenderID,
+    <<"PHYPayload">> := Payload,
+    <<"DLMetaData">> := #{
+        <<"ClassMode">> := <<"A">>,
+        <<"FNSULToken">> := Token,
+        <<"DataRate1">> := DR1,
+        <<"DLFreq1">> := Frequency1,
+        <<"RXDelay1">> := Delay0
+    } = DLMeta
+}) ->
     PayloadResponse = #{
         'ProtocolVersion' => <<"1.0">>,
         'MessageType' => <<"XmitDataAns">>,
