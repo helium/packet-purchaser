@@ -10,7 +10,8 @@
     rx1_timestamp_test/1,
     rx1_downlink_test/1,
     rx2_downlink_test/1,
-    chirpstack_join_accept_test/1
+    chirpstack_join_accept_test/1,
+    class_c_downlink_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -30,7 +31,8 @@ all() ->
         rx1_timestamp_test,
         rx1_downlink_test,
         rx2_downlink_test,
-        chirpstack_join_accept_test
+        chirpstack_join_accept_test,
+        class_c_downlink_test
     ].
 
 %%--------------------------------------------------------------------
@@ -51,6 +53,36 @@ end_per_testcase(_TestCase, _Config) ->
 %%--------------------------------------------------------------------
 %% TEST CASES
 %%--------------------------------------------------------------------
+
+class_c_downlink_test(_Config) ->
+    pp_roaming_downlink:insert_handler(
+        <<0, 97, 6, 18, 79, 240, 99, 255, 196, 76, 155, 129, 218, 223, 22, 235, 57, 180, 244, 232,
+            142, 120, 120, 58, 206, 246, 188, 125, 38, 161, 39, 35, 133>>,
+        self()
+    ),
+    Input = #{
+        <<"ProtocolVersion">> => <<"1.1">>,
+        <<"MessageType">> => <<"XmitDataReq">>,
+        <<"ReceiverID">> => <<"0xc00053">>,
+        <<"SenderID">> => <<"0x600013">>,
+        <<"DLMetaData">> => #{
+            <<"ClassMode">> => <<"C">>,
+            <<"DLFreq2">> => 869.525,
+            <<"DataRate2">> => 8,
+            <<"DevEUI">> => <<"0x6081f9c306a777fd">>,
+            <<"FNSULToken">> =>
+                <<"0x31316A6A4C6B73717734597A646E6B54666939735A73334537617241657767586A4771516735394662554D78673750396774533A55533931353A3131383839323136">>,
+            <<"HiPriorityFlag">> => false,
+            <<"RXDelay1">> => 0
+        },
+        <<"PHYPayload">> => <<"0x60c04e26e000010001ae6cb4ddf7bc1997">>,
+        <<"TransactionID">> => 2176
+    },
+
+    Self = self(),
+    ?assertMatch({downlink, #{}, {Self, _}}, pp_roaming_protocol:handle_message(Input)),
+
+    ok.
 
 chirpstack_join_accept_test(_Config) ->
     pp_roaming_downlink:insert_handler(

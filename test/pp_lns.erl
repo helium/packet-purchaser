@@ -284,7 +284,13 @@ handle('POST', [<<"downlink">>], Req, Args) ->
 
     SenderNetIDBin = maps:get(<<"SenderID">>, Decoded),
     SenderNetID = pp_utils:hexstring_to_int(SenderNetIDBin),
-    {ok, #{protocol := #http_protocol{flow_type = FlowType}}} = pp_config:lookup_netid(SenderNetID),
+    FlowType =
+        case pp_config:lookup_netid(SenderNetID) of
+            {ok, #{protocol := Protocol}} ->
+                Protocol#http_protocol.flow_type;
+            {error, _} ->
+                Forward ! {http_downlink_data_error, {config_not_found, SenderNetIDBin}}
+        end,
 
     case FlowType of
         async ->
@@ -352,6 +358,7 @@ handle_event(_Event, _Data, _Args) ->
     ok.
 
 make_response_body(#{
+    <<"ProtocolVersion">> := ProtocolVersion,
     <<"MessageType">> := <<"PRStartReq">>,
     <<"ReceiverID">> := ReceiverID,
     <<"SenderID">> := SenderID,
@@ -365,7 +372,7 @@ make_response_body(#{
     %% Join Response
     %% includes similar information from XmitDataReq
     #{
-        'ProtocolVersion' => <<"1.1">>,
+        'ProtocolVersion' => ProtocolVersion,
         'SenderID' => ReceiverID,
         'ReceiverID' => SenderID,
         'TransactionID' => TransactionID,
@@ -383,10 +390,14 @@ make_response_body(#{
             'Lifetime' => 0
         }
     };
-make_response_body(#{<<"ReceiverID">> := ReceiverID, <<"TransactionID">> := TransactionID}) ->
+make_response_body(#{
+    <<"ProtocolVersion">> := ProtocolVersion,
+    <<"ReceiverID">> := ReceiverID,
+    <<"TransactionID">> := TransactionID
+}) ->
     %% Ack to regular uplink
     #{
-        'ProtocolVersion' => <<"1.1">>,
+        'ProtocolVersion' => ProtocolVersion,
         'SenderID' => ReceiverID,
         'ReceiverID' => <<"0xC00053">>,
         'TransactionID' => TransactionID,
