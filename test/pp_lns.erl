@@ -365,7 +365,7 @@ make_response_body(#{
     %% Join Response
     %% includes similar information from XmitDataReq
     #{
-        'ProtocolVersion' => <<"1.1">>,
+        'ProtocolVersion' => <<"1.0">>,
         'SenderID' => ReceiverID,
         'ReceiverID' => SenderID,
         'TransactionID' => TransactionID,
@@ -386,7 +386,7 @@ make_response_body(#{
 make_response_body(#{<<"ReceiverID">> := ReceiverID, <<"TransactionID">> := TransactionID}) ->
     %% Ack to regular uplink
     #{
-        'ProtocolVersion' => <<"1.1">>,
+        'ProtocolVersion' => <<"1.0">>,
         'SenderID' => ReceiverID,
         'ReceiverID' => <<"0xC00053">>,
         'TransactionID' => TransactionID,
