@@ -177,6 +177,7 @@ send_data(#state{
 
     Headers =
         case Auth of
+            null -> [{<<"Content-Type">>, <<"application/json">>}];
             undefined -> [{<<"Content-Type">>, <<"application/json">>}];
             _ -> [{<<"Content-Type">>, <<"application/json">>}, {<<"Authorization">>, Auth}]
         end,
