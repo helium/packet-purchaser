@@ -40,7 +40,7 @@
     send_data_timer = 200 :: non_neg_integer(),
     send_data_timer_ref :: undefined | reference(),
     flow_type :: async | sync,
-    auth_header :: undefined | binary(),
+    auth_header :: null | binary(),
 
     should_shutdown = false :: boolean(),
     shutdown_timer_ref :: undefined | reference()
@@ -178,7 +178,6 @@ send_data(#state{
     Headers =
         case Auth of
             null -> [{<<"Content-Type">>, <<"application/json">>}];
-            undefined -> [{<<"Content-Type">>, <<"application/json">>}];
             _ -> [{<<"Content-Type">>, <<"application/json">>}, {<<"Authorization">>, Auth}]
         end,
 

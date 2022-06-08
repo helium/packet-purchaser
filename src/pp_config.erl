@@ -505,7 +505,7 @@ transform_config_entry(Entry) ->
                         Entry,
                         ?DEFAULT_HTTP_DEDUPE_TIMEOUT
                     ),
-                    auth_header = maps:get(<<"http_auth_header">>, Entry, undefined)
+                    auth_header = maps:get(<<"http_auth_header">>, Entry, null)
                 };
             Other ->
                 throw({invalid_protocol_type, Other})
