@@ -284,7 +284,13 @@ handle('POST', [<<"downlink">>], Req, Args) ->
 
     SenderNetIDBin = maps:get(<<"SenderID">>, Decoded),
     SenderNetID = pp_utils:hexstring_to_int(SenderNetIDBin),
-    {ok, #{protocol := #http_protocol{flow_type = FlowType}}} = pp_config:lookup_netid(SenderNetID),
+    FlowType =
+        case pp_config:lookup_netid(SenderNetID) of
+            {ok, #{protocol := Protocol}} ->
+                Protocol#http_protocol.flow_type;
+            {error, _} ->
+                Forward ! {http_downlink_data_error, {config_not_found, SenderNetIDBin}}
+        end,
 
     case FlowType of
         async ->

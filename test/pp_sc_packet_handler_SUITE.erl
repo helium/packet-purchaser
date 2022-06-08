@@ -2422,6 +2422,7 @@ forwarder_expect_downlink_data(Expected) ->
 forwarder_expect_downlink_data() ->
     receive
         http_downlink_data -> ct:fail({http_downlink_data, no_payload});
+        {http_downlink_data_error, Err} -> ct:fail(Err);
         {http_downlink_data, Payload} -> {ok, jsx:decode(Payload)}
     after 1000 -> ct:fail(http_downlink_data_timeout)
     end.
