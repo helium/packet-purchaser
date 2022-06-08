@@ -358,6 +358,7 @@ handle_event(_Event, _Data, _Args) ->
     ok.
 
 make_response_body(#{
+    <<"ProtocolVersion">> := ProtocolVersion,
     <<"MessageType">> := <<"PRStartReq">>,
     <<"ReceiverID">> := ReceiverID,
     <<"SenderID">> := SenderID,
@@ -371,7 +372,7 @@ make_response_body(#{
     %% Join Response
     %% includes similar information from XmitDataReq
     #{
-        'ProtocolVersion' => <<"1.0">>,
+        'ProtocolVersion' => ProtocolVersion,
         'SenderID' => ReceiverID,
         'ReceiverID' => SenderID,
         'TransactionID' => TransactionID,
@@ -389,10 +390,14 @@ make_response_body(#{
             'Lifetime' => 0
         }
     };
-make_response_body(#{<<"ReceiverID">> := ReceiverID, <<"TransactionID">> := TransactionID}) ->
+make_response_body(#{
+    <<"ProtocolVersion">> := ProtocolVersion,
+    <<"ReceiverID">> := ReceiverID,
+    <<"TransactionID">> := TransactionID
+}) ->
     %% Ack to regular uplink
     #{
-        'ProtocolVersion' => <<"1.0">>,
+        'ProtocolVersion' => ProtocolVersion,
         'SenderID' => ReceiverID,
         'ReceiverID' => <<"0xC00053">>,
         'TransactionID' => TransactionID,

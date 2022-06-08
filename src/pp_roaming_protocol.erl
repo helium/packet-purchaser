@@ -97,9 +97,10 @@ make_uplink_payload(NetID, Uplinks, TransactionID) ->
         end,
 
     Token = make_uplink_token(PubKeyBin, Region, PacketTime),
+    ProtocolVersion = application:get_env(packet_purchaser, http_protocol_version, <<"1.1">>),
 
     #{
-        'ProtocolVersion' => <<"1.0">>,
+        'ProtocolVersion' => ProtocolVersion,
         'SenderID' => <<"0xC00053">>,
         'ReceiverID' => pp_utils:hexstring(NetID),
         'TransactionID' => TransactionID,
@@ -201,6 +202,7 @@ handle_prstart_ans(Res) ->
 %% Class C ==========================================
 handle_xmitdata_req(#{
     <<"MessageType">> := <<"XmitDataReq">>,
+    <<"ProtocolVersion">> := ProtocolVersion,
     <<"TransactionID">> := TransactionID,
     <<"SenderID">> := SenderID,
     <<"PHYPayload">> := Payload,
@@ -212,7 +214,7 @@ handle_xmitdata_req(#{
     }
 }) ->
     PayloadResponse = #{
-        'ProtocolVersion' => <<"1.0">>,
+        'ProtocolVersion' => ProtocolVersion,
         'MessageType' => <<"XmitDataAns">>,
         'ReceiverID' => SenderID,
         'SenderID' => <<"0xC00053">>,
@@ -245,6 +247,7 @@ handle_xmitdata_req(#{
 %% Class A ==========================================
 handle_xmitdata_req(#{
     <<"MessageType">> := <<"XmitDataReq">>,
+    <<"ProtocolVersion">> := ProtocolVersion,
     <<"TransactionID">> := TransactionID,
     <<"SenderID">> := SenderID,
     <<"PHYPayload">> := Payload,
@@ -257,7 +260,7 @@ handle_xmitdata_req(#{
     } = DLMeta
 }) ->
     PayloadResponse = #{
-        'ProtocolVersion' => <<"1.0">>,
+        'ProtocolVersion' => ProtocolVersion,
         'MessageType' => <<"XmitDataAns">>,
         'ReceiverID' => SenderID,
         'SenderID' => <<"0xC00053">>,

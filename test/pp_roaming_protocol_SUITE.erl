@@ -61,7 +61,7 @@ class_c_downlink_test(_Config) ->
         self()
     ),
     Input = #{
-        <<"ProtocolVersion">> => <<"1.0">>,
+        <<"ProtocolVersion">> => <<"1.1">>,
         <<"MessageType">> => <<"XmitDataReq">>,
         <<"ReceiverID">> => <<"0xc00053">>,
         <<"SenderID">> => <<"0x600013">>,
