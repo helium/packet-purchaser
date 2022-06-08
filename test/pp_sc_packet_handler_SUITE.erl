@@ -109,20 +109,9 @@ all() ->
         drop_not_configured_orgs_packet_test,
         drop_not_configured_orgs_join_test,
         %%
-        http_sync_uplink_join_test,
-        http_async_uplink_join_test,
-        http_sync_downlink_test,
-        http_async_downlink_test,
-        http_uplink_packet_test,
-        http_uplink_packet_no_roaming_agreement_test,
-        http_uplink_packet_late_test,
-        http_multiple_gateways_test,
-        http_auth_header_test,
+        {group, http},
         %%
-        udp_multiple_joins_test,
-        udp_multiple_joins_same_dest_test,
-        http_multiple_joins_test,
-        http_multiple_joins_same_dest_test
+        {group, multiple_buyers}
     ].
 
 groups() ->
