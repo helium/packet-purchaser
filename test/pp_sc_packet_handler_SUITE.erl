@@ -395,7 +395,9 @@ http_sync_uplink_join_test(_Config) ->
     ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
     ok = start_uplink_listener(),
 
-    DevEUI = <<"AABBCCDDEEFF0011">>,
+    %% NOTE: Leading 00 are important in this test.
+    %% We want to make sure EUI are encoded with the correct number of bytes.
+    DevEUI = <<"00BBCCDDEEFF0011">>,
     AppEUI = <<"1122334455667788">>,
 
     SendPacketFun = fun(DevAddr) ->

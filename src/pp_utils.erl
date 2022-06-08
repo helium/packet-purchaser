@@ -110,6 +110,11 @@ hexstring(Other) ->
     throw({unknown_hexstring_conversion, Other}).
 
 -spec hexstring(non_neg_integer(), non_neg_integer()) -> binary().
+hexstring(Bin, Length) when erlang:is_binary(Bin) ->
+    Inter0 = binary_to_hex(Bin),
+    Inter1 = string:pad(Inter0, Length, leading, $0),
+    Inter = erlang:iolist_to_binary(Inter1),
+    <<"0x", Inter/binary>>;
 hexstring(Num, Length) ->
     Inter0 = erlang:integer_to_binary(Num, 16),
     Inter1 = string:pad(Inter0, Length, leading, $0),

@@ -92,8 +92,8 @@ make_uplink_payload(NetID, Uplinks, TransactionID) ->
 
     {RoutingKey, RoutingValue} =
         case RoutingInfo of
-            {devaddr, DevAddr} -> {'DevAddr', pp_utils:hexstring(DevAddr)};
-            {eui, DevEUI, _AppEUI} -> {'DevEUI', pp_utils:hexstring(DevEUI, 16)}
+            {devaddr, DevAddr} -> {'DevAddr', encode_devaddr(DevAddr)};
+            {eui, DevEUI, _AppEUI} -> {'DevEUI', encode_deveui(DevEUI)}
         end,
 
     Token = make_uplink_token(PubKeyBin, Region, PacketTime),
@@ -350,3 +350,11 @@ gw_info(#packet{sc_packet = SCPacket, location = Location}) ->
         _ ->
             GW
     end.
+
+-spec encode_deveui(non_neg_integer()) -> binary().
+encode_deveui(Num) ->
+    pp_utils:hexstring(Num, 16).
+
+-spec encode_devaddr(non_neg_integer()) -> binary().
+encode_devaddr(Num) ->
+    pp_utils:hexstring(Num).
