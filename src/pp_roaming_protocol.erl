@@ -245,7 +245,7 @@ handle_xmitdata_req(#{
         <<"FNSULToken">> := Token,
         <<"DLFreq2">> := Frequency,
         <<"DataRate2">> := DR,
-        <<"RXDealy1">> := Delay0
+        <<"RXDelay1">> := Delay0
     }
 }) ->
     PayloadResponse = #{
