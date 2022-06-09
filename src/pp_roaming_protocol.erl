@@ -169,6 +169,40 @@ handle_prstart_ans(#{
         {ok, SCPid} -> {join_accept, {SCPid, SCResp}}
     end;
 handle_prstart_ans(#{
+    <<"Result">> := #{<<"ResultCode">> := <<"Success">>},
+    <<"MessageType">> := <<"PRStartAns">>,
+
+    <<"PHYPayload">> := Payload,
+    <<"DevEUI">> := _DevEUI,
+
+    <<"DLMetaData">> := #{
+        <<"DLFreq2">> := Frequency,
+        <<"DataRate2">> := DR,
+        <<"FNSULToken">> := Token
+    }
+}) ->
+    case parse_uplink_token(Token) of
+        {error, _} = Err ->
+            Err;
+        {ok, PubKeyBin, Region, PacketTime} ->
+            DataRate = pp_lorawan:index_to_datarate(Region, DR),
+
+            DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
+                pp_utils:hexstring_to_binary(Payload),
+                _SignalStrength = 27,
+                pp_utils:uint32(PacketTime + ?JOIN2_DELAY),
+                Frequency,
+                DataRate
+            ),
+
+            SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
+
+            case pp_roaming_downlink:lookup_handler(PubKeyBin) of
+                {error, _} = Err -> Err;
+                {ok, SCPid} -> {join_accept, {SCPid, SCResp}}
+            end
+    end;
+handle_prstart_ans(#{
     <<"MessageType">> := <<"PRStartAns">>,
     <<"Result">> := #{<<"ResultCode">> := <<"Success">>}
 }) ->
