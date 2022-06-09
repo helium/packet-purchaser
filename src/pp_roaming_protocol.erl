@@ -241,10 +241,11 @@ handle_xmitdata_req(#{
     <<"SenderID">> := SenderID,
     <<"PHYPayload">> := Payload,
     <<"DLMetaData">> := #{
-        <<"ClassMode">> := <<"C">>,
+        <<"ClassMode">> := DeviceClass,
         <<"FNSULToken">> := Token,
         <<"DLFreq2">> := Frequency,
-        <<"DataRate2">> := DR
+        <<"DataRate2">> := DR,
+        <<"RXDealy1">> := Delay0
     }
 }) ->
     PayloadResponse = #{
@@ -260,13 +261,25 @@ handle_xmitdata_req(#{
     case parse_uplink_token(Token) of
         {error, _} = Err ->
             Err;
-        {ok, PubKeyBin, Region, _PacketTime} ->
+        {ok, PubKeyBin, Region, PacketTime} ->
             DataRate = pp_lorawan:index_to_datarate(Region, DR),
+
+            Delay1 =
+                case Delay0 of
+                    N when N < 2 -> 1;
+                    N -> N
+                end,
+
+            Timeout =
+                case DeviceClass of
+                    <<"C">> -> immediate;
+                    <<"A">> -> pp_utils:uint32(PacketTime + (Delay1 * ?RX1_DELAY) + ?RX1_DELAY)
+                end,
 
             DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
                 pp_utils:hexstring_to_binary(Payload),
                 _SignalStrength = 27,
-                immediate,
+                Timeout,
                 Frequency,
                 DataRate
             ),
