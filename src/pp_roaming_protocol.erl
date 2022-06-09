@@ -237,6 +237,60 @@ handle_prstart_ans(Res) ->
 
 -spec handle_xmitdata_req(xmitdata_req()) ->
     {downlink, xmitdata_ans(), downlink()} | {error, any()}.
+%% Class A ==========================================
+handle_xmitdata_req(#{
+    <<"MessageType">> := <<"XmitDataReq">>,
+    <<"ProtocolVersion">> := ProtocolVersion,
+    <<"TransactionID">> := TransactionID,
+    <<"SenderID">> := SenderID,
+    <<"PHYPayload">> := Payload,
+    <<"DLMetaData">> := #{
+        <<"ClassMode">> := <<"A">>,
+        <<"FNSULToken">> := Token,
+        <<"DataRate1">> := DR1,
+        <<"DLFreq1">> := Frequency1,
+        <<"RXDelay1">> := Delay0
+    } = DLMeta
+}) ->
+    PayloadResponse = #{
+        'ProtocolVersion' => ProtocolVersion,
+        'MessageType' => <<"XmitDataAns">>,
+        'ReceiverID' => SenderID,
+        'SenderID' => <<"0xC00053">>,
+        'Result' => #{'ResultCode' => <<"Success">>},
+        'TransactionID' => TransactionID,
+        'DLFreq1' => Frequency1
+    },
+
+    %% Make downlink packet
+    case parse_uplink_token(Token) of
+        {error, _} = Err ->
+            Err;
+        {ok, PubKeyBin, Region, PacketTime} ->
+            DataRate1 = pp_lorawan:index_to_datarate(Region, DR1),
+
+            Delay1 =
+                case Delay0 of
+                    N when N < 2 -> 1;
+                    N -> N
+                end,
+
+            DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
+                pp_utils:hexstring_to_binary(Payload),
+                _SignalStrength = 27,
+                pp_utils:uint32(PacketTime + (Delay1 * ?RX1_DELAY)),
+                Frequency1,
+                DataRate1,
+                rx2_from_dlmetadata(DLMeta, PacketTime, Region, ?RX2_DELAY)
+            ),
+
+            SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
+
+            case pp_roaming_downlink:lookup_handler(PubKeyBin) of
+                {error, _} = Err -> Err;
+                {ok, SCPid} -> {downlink, PayloadResponse, {SCPid, SCResp}}
+            end
+    end;
 %% Class C ==========================================
 handle_xmitdata_req(#{
     <<"MessageType">> := <<"XmitDataReq">>,
@@ -301,61 +355,8 @@ handle_xmitdata_req(#{
                 {error, _} = Err -> Err;
                 {ok, SCPid} -> {downlink, PayloadResponse, {SCPid, SCResp}}
             end
-    end;
-%% Class A ==========================================
-handle_xmitdata_req(#{
-    <<"MessageType">> := <<"XmitDataReq">>,
-    <<"ProtocolVersion">> := ProtocolVersion,
-    <<"TransactionID">> := TransactionID,
-    <<"SenderID">> := SenderID,
-    <<"PHYPayload">> := Payload,
-    <<"DLMetaData">> := #{
-        <<"ClassMode">> := <<"A">>,
-        <<"FNSULToken">> := Token,
-        <<"DataRate1">> := DR1,
-        <<"DLFreq1">> := Frequency1,
-        <<"RXDelay1">> := Delay0
-    } = DLMeta
-}) ->
-    PayloadResponse = #{
-        'ProtocolVersion' => ProtocolVersion,
-        'MessageType' => <<"XmitDataAns">>,
-        'ReceiverID' => SenderID,
-        'SenderID' => <<"0xC00053">>,
-        'Result' => #{'ResultCode' => <<"Success">>},
-        'TransactionID' => TransactionID,
-        'DLFreq1' => Frequency1
-    },
-
-    %% Make downlink packet
-    case parse_uplink_token(Token) of
-        {error, _} = Err ->
-            Err;
-        {ok, PubKeyBin, Region, PacketTime} ->
-            DataRate1 = pp_lorawan:index_to_datarate(Region, DR1),
-
-            Delay1 =
-                case Delay0 of
-                    N when N < 2 -> 1;
-                    N -> N
-                end,
-
-            DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
-                pp_utils:hexstring_to_binary(Payload),
-                _SignalStrength = 27,
-                pp_utils:uint32(PacketTime + (Delay1 * ?RX1_DELAY)),
-                Frequency1,
-                DataRate1,
-                rx2_from_dlmetadata(DLMeta, PacketTime, Region, ?RX2_DELAY)
-            ),
-
-            SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
-
-            case pp_roaming_downlink:lookup_handler(PubKeyBin) of
-                {error, _} = Err -> Err;
-                {ok, SCPid} -> {downlink, PayloadResponse, {SCPid, SCResp}}
-            end
     end.
+
 
 rx2_from_dlmetadata(
     #{
