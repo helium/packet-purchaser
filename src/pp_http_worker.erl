@@ -41,6 +41,7 @@
     send_data_timer_ref :: undefined | reference(),
     flow_type :: async | sync,
     auth_header :: null | binary(),
+    protocol_version :: pv_1_0 | pv_1_1,
 
     should_shutdown = false :: boolean(),
     shutdown_timer_ref :: undefined | reference()
@@ -70,7 +71,8 @@ init(Args) ->
             endpoint = Address,
             flow_type = FlowType,
             dedupe_timeout = DedupeTimeout,
-            auth_header = Auth
+            auth_header = Auth,
+            protocol_version = ProtocolVersion
         },
         net_id := NetID
     } = Args,
@@ -81,7 +83,8 @@ init(Args) ->
         transaction_id = next_transaction_id(),
         send_data_timer = DedupeTimeout,
         flow_type = FlowType,
-        auth_header = Auth
+        auth_header = Auth,
+        protocol_version = ProtocolVersion
     }}.
 
 handle_call(_Msg, _From, State) ->
@@ -170,9 +173,10 @@ send_data(#state{
     packets = Packets,
     transaction_id = TransactionID,
     flow_type = FlowType,
-    auth_header = Auth
+    auth_header = Auth,
+    protocol_version = ProtocolVersion
 }) ->
-    Data = pp_roaming_protocol:make_uplink_payload(NetID, Packets, TransactionID),
+    Data = pp_roaming_protocol:make_uplink_payload(NetID, Packets, TransactionID, ProtocolVersion),
     Data1 = jsx:encode(Data, [{float_formatter, fun round_to_fourth_decimal/1}]),
 
     Headers =

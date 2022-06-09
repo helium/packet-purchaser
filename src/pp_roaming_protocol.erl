@@ -2,7 +2,7 @@
 
 %% Uplinking
 -export([
-    make_uplink_payload/3
+    make_uplink_payload/4
 ]).
 
 %% Downlinking
@@ -76,8 +76,8 @@ new_packet(SCPacket, GatewayTime) ->
         location = pp_utils:get_hotspot_location(PubKeyBin)
     }.
 
--spec make_uplink_payload(netid_num(), list(packet()), integer()) -> prstart_req().
-make_uplink_payload(NetID, Uplinks, TransactionID) ->
+-spec make_uplink_payload(netid_num(), list(packet()), integer(), pv_1_0 | pv_1_1) -> prstart_req().
+make_uplink_payload(NetID, Uplinks, TransactionID, ProtocolVersion0) ->
     #packet{sc_packet = SCPacket, gateway_time = GatewayTime} = select_best(Uplinks),
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
@@ -97,7 +97,11 @@ make_uplink_payload(NetID, Uplinks, TransactionID) ->
         end,
 
     Token = make_uplink_token(PubKeyBin, Region, PacketTime),
-    ProtocolVersion = application:get_env(packet_purchaser, http_protocol_version, <<"1.1">>),
+    ProtocolVersion =
+        case ProtocolVersion0 of
+            pv_1_0 -> <<"1.0">>;
+            pv_1_1 -> <<"1.1">>
+        end,
 
     #{
         'ProtocolVersion' => ProtocolVersion,
