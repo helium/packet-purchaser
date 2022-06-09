@@ -326,14 +326,21 @@ http_protocol_version_test(_Config) ->
     {ok, Uplink1, _, _} = pp_lns:http_rcv(),
     ?assertEqual(maps:get(<<"ProtocolVersion">>, Uplink1), <<"1.1">>),
 
-    %% We can change it in the application env.
+    %% We can change it with the config
     application:set_env(packet_purchaser, http_protocol_version, <<"1.0">>),
+    pp_config:change_http_protocol_version(?NET_ID_ACTILITY, pv_1_0),
     ok = pp_sc_packet_handler:handle_packet(MakePacket(1), erlang:system_time(millisecond), self()),
     {ok, Uplink2, _, _} = pp_lns:http_rcv(),
     ?assertEqual(maps:get(<<"ProtocolVersion">>, Uplink2), <<"1.0">>),
 
+    %% We can change it back
+    pp_config:change_http_protocol_version(?NET_ID_ACTILITY, pv_1_1),
+    ok = pp_sc_packet_handler:handle_packet(MakePacket(2), erlang:system_time(millisecond), self()),
+    {ok, Uplink3, _, _} = pp_lns:http_rcv(),
+    ?assertEqual(maps:get(<<"ProtocolVersion">>, Uplink3), <<"1.1">>),
+
     %% Responses are whatever version was sent to us.
-        Token = pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', 1234),
+    Token = pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', 1234),
     SendDownlinkWithVersion = fun(ProtocolVersion) ->
         DownlinkBody = #{
             <<"ProtocolVersion">> => ProtocolVersion,
