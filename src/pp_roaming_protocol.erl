@@ -276,9 +276,16 @@ handle_xmitdata_req(#{
                     <<"A">> -> pp_utils:uint32(PacketTime + (Delay1 * ?RX1_DELAY) + ?RX1_DELAY)
                 end,
 
+            %% TODO: move to lora lib
+            SignalStrength =
+                case Region of
+                    'EU868' -> 16;
+                    _ -> 27
+                end,
+
             DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
                 pp_utils:hexstring_to_binary(Payload),
-                _SignalStrength = 27,
+                SignalStrength,
                 Timeout,
                 Frequency,
                 DataRate
