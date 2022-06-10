@@ -10,6 +10,7 @@
 -define(DEFAULT_MULTI_BUY, unlimited).
 -define(DEFAULT_PROTOCOL_VERSION, pv_1_1).
 -define(DEFAULT_DEDUPE_TIMEOUT, 200).
+-define(DEFAULT_FLOW_TYPE, <<"sync">>).
 
 -record(udp_protocol, {
     address :: string(),
@@ -177,16 +178,15 @@ get_protocol(#{
             end
     };
 get_protocol(#{
-    <<"http_endpoint">> := Endpoint,
-    <<"http_flow_type">> := FT
-}) ->
+    <<"http_endpoint">> := Endpoint
+}=Entry) ->
     #http_protocol{
-        protocol_version = ?DEFAULT_PROTOCOL_VERSION,
-        auth_header = null,
-        dedupe_timeout = ?DEFAULT_DEDUPE_TIMEOUT,
+        protocol_version = maps:get(<<"http_protocol_version">>, Entry, ?DEFAULT_PROTOCOL_VERSION),
+        auth_header = maps:get(<<"http_auth_header">>, Entry, null),
+        dedupe_timeout = maps:get(<<"http_dedupe_timeout">>, Entry, ?DEFAULT_DEDUPE_TIMEOUT),
         endpoint = Endpoint,
         flow_type =
-            case FT of
+            case maps:get(<<"http_flow_type">>, Entry, ?DEFAULT_FLOW_TYPE) of
                 <<"async">> -> async;
                 <<"sync">> -> sync
             end

@@ -341,6 +341,7 @@ http_protocol_version_test(_Config) ->
 
     %% Responses are whatever version was sent to us.
     Token = pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', 1234),
+    ok = pp_config:insert_transaction_id(2177, <<"http://127.0.0.1:3002">>, sync),
     SendDownlinkWithVersion = fun(ProtocolVersion) ->
         DownlinkBody = #{
             <<"ProtocolVersion">> => ProtocolVersion,
@@ -1089,7 +1090,8 @@ http_uplink_packet_no_roaming_agreement_test(_Config) ->
             <<"name">> => <<"test">>,
             <<"net_id">> => ?NET_ID_ACTILITY,
             <<"protocol">> => <<"http">>,
-            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+            <<"http_flow_type">> => <<"sync">>
         }
     ]),
     {ok, SCPacket, GatewayTime} = SendPacketFun(?DEVADDR_ACTILITY, 0),
@@ -1260,7 +1262,8 @@ http_uplink_packet_late_test(_Config) ->
             <<"net_id">> => ?NET_ID_ACTILITY,
             <<"protocol">> => <<"http">>,
             <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
-            <<"http_dedupe_timeout">> => 10
+            <<"http_dedupe_timeout">> => 10,
+            <<"http_flow_type">> => <<"sync">>
         }
     ]),
     {ok, SCPacket, GatewayTime} = SendPacketFun(PubKeyBin1, ?DEVADDR_ACTILITY),

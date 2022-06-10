@@ -378,7 +378,7 @@ change_http_protocol_version(NetID, ProtocolVersion) ->
         false ->
             {error, {invalid_version, ProtocolVersion}};
         true ->
-            {ok, _} = update_devaddr_http_protocol_version(NetID, ProtocolVersion),
+            ok = update_devaddr_http_protocol_version(NetID, ProtocolVersion),
             ok = update_eui_http_protocol_version(NetID, ProtocolVersion)
     end.
 
@@ -499,7 +499,6 @@ update_buying_eui(NetID, BuyingActive) ->
     %% everything we know of, delete it all, update the items for the NetID in
     %% question and reinsert everything.
     AllEuis = ets:tab2list(?EUI_ETS),
-    true = ets:delete_all_objects(?EUI_ETS),
     NewEUIs = lists:map(
         fun
             %% TODO
@@ -509,21 +508,36 @@ update_buying_eui(NetID, BuyingActive) ->
         end,
         AllEuis
     ),
+    true = ets:delete_all_objects(?EUI_ETS),
     true = ets:insert(?EUI_ETS, NewEUIs),
     ok.
 
 -spec update_devaddr_http_protocol_version(
     NetID :: integer(),
     ProtocolVersion :: protocol_version()
-) -> {ok, integer()}.
+) -> ok.
 update_devaddr_http_protocol_version(NetID, ProtocolVersion) ->
-    DevAddrMS = ets:fun2ms(fun(
-        #devaddr{net_id = Key, protocol = Protocol} = Val
-    ) when Key == NetID ->
-        Val#devaddr{protocol = Protocol#http_protocol{protocol_version = ProtocolVersion}}
-    end),
-    N = ets:select_replace(?DEVADDR_ETS, DevAddrMS),
-    {ok, N}.
+    %% There are potentially many DevAddrs per NetID. `ets:select_replace/2'
+    %% requires you keep the key intact, in a bag table the whole record is
+    %% considered as part of the key. So the current solution is to grab
+    %% everything we know of, delete it all, update the items for the NetID in
+    %% question and reinsert everything.
+    AllDevAddrs = ets:tab2list(?DEVADDR_ETS),
+    NewDevAddrs = lists:map(
+        fun
+            (#devaddr{net_id = Key, protocol = #http_protocol{} = Protocol} = Val) when
+                Key == NetID
+            ->
+                Val#devaddr{protocol = Protocol#http_protocol{protocol_version = ProtocolVersion}};
+            (Val) ->
+                Val
+        end,
+        AllDevAddrs
+    ),
+
+    true = ets:delete_all_objects(?DEVADDR_ETS),
+    true = ets:insert(?DEVADDR_ETS, NewDevAddrs),
+    ok.
 
 -spec update_eui_http_protocol_version(
     NetID :: integer(),
