@@ -19,7 +19,8 @@
     delete_udp_worker/1,
     %% Purchasing
     start_buying/1,
-    stop_buying/1
+    stop_buying/1,
+    change_http_protocol_version/2
 ]).
 
 %% helper API
@@ -324,6 +325,16 @@ stop_buying([NetID | NetIDS]) ->
     ok = update_buying_eui(NetID, false),
     ?MODULE:stop_buying(NetIDS).
 
+-spec change_http_protocol_version(integer(), protocol_version()) -> ok | {error, any()}.
+change_http_protocol_version(NetID, ProtocolVersion) ->
+    case lists:member(ProtocolVersion, [pv_1_0, pv_1_1]) of
+        false ->
+            {error, {invalid_version, ProtocolVersion}};
+        true ->
+            {ok, _} = update_devaddr_http_protocol_version(NetID, ProtocolVersion),
+            ok = update_eui_http_protocol_version(NetID, ProtocolVersion)
+    end.
+
 %% -------------------------------------------------------------------
 %% gen_server Callbacks
 %% -------------------------------------------------------------------
@@ -438,6 +449,38 @@ update_buying_eui(NetID, BuyingActive) ->
     true = ets:insert(?EUI_ETS, NewEUIs),
     ok.
 
+-spec update_devaddr_http_protocol_version(
+    NetID :: integer(),
+    ProtocolVersion :: protocol_version()
+) -> {ok, integer()}.
+update_devaddr_http_protocol_version(NetID, ProtocolVersion) ->
+    DevAddrMS = ets:fun2ms(fun(
+        #devaddr{net_id = Key, protocol = Protocol} = Val
+    ) when Key == NetID ->
+        Val#devaddr{protocol = Protocol#http_protocol{protocol_version = ProtocolVersion}}
+    end),
+    N = ets:select_replace(?DEVADDR_ETS, DevAddrMS),
+    {ok, N}.
+
+-spec update_eui_http_protocol_version(
+    NetID :: integer(),
+    ProtocolVersion :: protocol_version()
+) -> ok.
+update_eui_http_protocol_version(NetID, ProtocolVersion) ->
+    AllEUIs = ets:tab2list(?EUI_ETS),
+    NewEUIs = lists:map(
+        fun
+            (#eui{net_id = Key, protocol = #http_protocol{} = Protocol} = Val) when Key == NetID ->
+                Val#eui{protocol = Protocol#http_protocol{protocol_version = ProtocolVersion}};
+            (Val) ->
+                Val
+        end,
+        AllEUIs
+    ),
+    true = ets:delete_all_objects(?EUI_ETS),
+    true = ets:insert(?EUI_ETS, NewEUIs),
+    ok.
+
 -spec read_config(string()) -> list(map()).
 read_config(Filename) ->
     {ok, Config} = file:read_file(Filename),
@@ -505,7 +548,18 @@ transform_config_entry(Entry) ->
                         Entry,
                         ?DEFAULT_HTTP_DEDUPE_TIMEOUT
                     ),
-                    auth_header = maps:get(<<"http_auth_header">>, Entry, null)
+                    auth_header = maps:get(<<"http_auth_header">>, Entry, null),
+                    protocol_version =
+                        case
+                            maps:get(
+                                <<"http_protocol_version">>,
+                                Entry,
+                                ?DEFAULT_HTTP_PROTOCOL_VERSION
+                            )
+                        of
+                            <<"1.0">> -> pv_1_0;
+                            <<"1.1">> -> pv_1_1
+                        end
                 };
             Other ->
                 throw({invalid_protocol_type, Other})
@@ -577,14 +631,21 @@ write_config_to_disk(Filename) ->
                         endpoint = Endpoint,
                         flow_type = Flow,
                         dedupe_timeout = Dedupe,
-                        auth_header = Auth
+                        auth_header = Auth,
+                        protocol_version = ProtocolVersion
                     } ->
+                        PV =
+                            case ProtocolVersion of
+                                pv_1_0 -> <<"1.0">>;
+                                pv_1_1 -> <<"1.1">>
+                            end,
                         #{
                             protocol => http,
                             http_endpoint => Endpoint,
                             http_flow_type => Flow,
                             http_dedupe_timeout => Dedupe,
-                            http_auth_header => Auth
+                            http_auth_header => Auth,
+                            http_protocol_version => PV
                         }
                 end,
             maps:merge(BaseMap, ProtocolMap)
