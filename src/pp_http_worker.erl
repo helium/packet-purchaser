@@ -176,6 +176,8 @@ send_data(#state{
     auth_header = Auth,
     protocol_version = ProtocolVersion
 }) ->
+    ok = pp_config:insert_transaction_id(TransactionID, Address, FlowType),
+
     Data = pp_roaming_protocol:make_uplink_payload(NetID, Packets, TransactionID, ProtocolVersion),
     Data1 = jsx:encode(Data, [{float_formatter, fun round_to_fourth_decimal/1}]),
 

@@ -504,11 +504,16 @@ http_sync_uplink_join_test(_Config) ->
         #{
             <<"name">> => <<"test">>,
             <<"net_id">> => ?NET_ID_ACTILITY,
-            <<"protocol">> => <<"http">>,
-            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
-            <<"http_flow_type">> => <<"sync">>,
-            <<"joins">> => [
-                #{<<"dev_eui">> => DevEUI, <<"app_eui">> => AppEUI}
+            <<"configs">> => [
+                #{
+                    <<"protocol">> => <<"http">>,
+                    <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+                    <<"http_flow_type">> => <<"sync">>,
+                    <<"joins">> => [
+                        #{<<"dev_eui">> => DevEUI, <<"app_eui">> => AppEUI}
+                    ],
+                    <<"devaddrs">> => []
+                }
             ]
         }
     ]),

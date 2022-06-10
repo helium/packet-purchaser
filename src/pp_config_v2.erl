@@ -1,18 +1,15 @@
 -module(pp_config_v2).
 
+-include("http_protocol.hrl").
+
 -export([parse_config/1]).
 
 -export([hex_to_num/1]).
 
--type protocol_version() :: pv_1_0 | pv_1_1.
-
--record(http_protocol, {
-    endpoint :: binary(),
-    flow_type :: async | sync,
-    dedupe_timeout :: non_neg_integer(),
-    auth_header :: null | binary(),
-    protocol_version :: protocol_version()
-}).
+-define(DEFAULT_ACTIVE, true).
+-define(DEFAULT_MULTI_BUY, unlimited).
+-define(DEFAULT_PROTOCOL_VERSION, pv_1_1).
+-define(DEFAULT_DEDUPE_TIMEOUT, 200).
 
 -record(udp_protocol, {
     address :: string(),
@@ -51,22 +48,22 @@ parse_config(Configs) ->
                 NetID = hex_to_num(NetIDBin),
                 eui_from_configs(Name, NetID, Inner) ++ devaddr_from_configs(Name, NetID, Inner)
             end,
-            Configs
+            convert_to_v2(Configs)
         )
     ).
+
+convert_to_v2(Configs) ->
+    Configs.
 
 -spec eui_from_configs(binary(), integer(), list(map())) -> list(#eui{}).
 eui_from_configs(Name, NetID, Configs) ->
     lists:flatten(
         lists:map(
             fun(Entry) ->
-                #{
-                    <<"active">> := BuyingActive,
-                    <<"joins">> := EUIs,
-                    <<"multi_buy">> := MultiBuy
-                } =
-                    Entry,
-                Protocol = protocol_from_config(Entry),
+                #{<<"joins">> := EUIs} = Entry,
+                BuyingActive = get_buying_active(Entry),
+                MultiBuy = get_multi_buy(Entry),
+                Protocol = get_protocol(Entry),
                 lists:map(
                     fun(#{<<"dev_eui">> := DevBin, <<"app_eui">> := AppBin}) ->
                         #eui{
@@ -74,7 +71,7 @@ eui_from_configs(Name, NetID, Configs) ->
                             net_id = NetID,
                             app_eui = hex_to_num(AppBin),
                             dev_eui = hex_to_num(DevBin),
-                            multi_buy = hex_to_num(MultiBuy),
+                            multi_buy = MultiBuy,
                             protocol = Protocol,
                             buying_active = BuyingActive
                         }
@@ -86,18 +83,25 @@ eui_from_configs(Name, NetID, Configs) ->
         )
     ).
 
+-spec get_buying_active(map()) -> boolean().
+get_buying_active(#{<<"active">> := Active}) -> Active;
+get_buying_active(_) -> ?DEFAULT_ACTIVE.
+
+-spec get_multi_buy(map()) -> unlimited | non_neg_integer().
+get_multi_buy(#{<<"multi_buy">> := null}) -> ?DEFAULT_MULTI_BUY;
+get_multi_buy(#{<<"multi_buy">> := <<"unlimited">>}) -> unlimited;
+get_multi_buy(#{<<"multi_buy">> := MB}) -> MB;
+get_multi_buy(_) -> ?DEFAULT_MULTI_BUY.
+
 -spec devaddr_from_configs(binary(), integer(), list(map())) -> list(#devaddr{}).
 devaddr_from_configs(Name, NetID, Configs) ->
     lists:flatten(
         lists:map(
             fun(Entry) ->
-                #{
-                    <<"active">> := BuyingActive,
-                    <<"devaddrs">> := DevAddrs,
-                    <<"multi_buy">> := MultiBuy
-                } =
-                    Entry,
-                Protocol = protocol_from_config(Entry),
+                #{<<"devaddrs">> := DevAddrs} = Entry,
+                BuyingActive = maps:get(<<"active">>, Entry, ?DEFAULT_ACTIVE),
+                MultiBuy = get_multi_buy(Entry),
+                Protocol = get_protocol(Entry),
                 lists:map(
                     fun(#{<<"lower">> := Lower, <<"upper">> := Upper}) ->
                         D =
@@ -109,7 +113,7 @@ devaddr_from_configs(Name, NetID, Configs) ->
                             name = Name,
                             net_id = NetID,
                             protocol = Protocol,
-                            multi_buy = hex_to_num(MultiBuy),
+                            multi_buy = MultiBuy,
                             buying_active = BuyingActive,
                             addr = D
                         }
@@ -121,7 +125,7 @@ devaddr_from_configs(Name, NetID, Configs) ->
         )
     ).
 
-protocol_from_config(#{
+get_protocol(#{
     <<"protocol_version">> := PV,
     <<"http_auth_header">> := AuthHeader,
     <<"http_dedupe_timeout">> := DedupeTimeout,
@@ -143,7 +147,22 @@ protocol_from_config(#{
                 <<"sync">> -> sync
             end
     };
-protocol_from_config(#{}) ->
+get_protocol(#{
+    <<"http_endpoint">> := Endpoint,
+    <<"http_flow_type">> := FT
+}) ->
+    #http_protocol{
+        protocol_version = ?DEFAULT_PROTOCOL_VERSION,
+        auth_header = null,
+        dedupe_timeout = ?DEFAULT_DEDUPE_TIMEOUT,
+        endpoint = Endpoint,
+        flow_type =
+            case FT of
+                <<"async">> -> async;
+                <<"sync">> -> sync
+            end
+    };
+get_protocol(#{}) ->
     not_configured.
 
 %%--------------------------------------------------------------------
