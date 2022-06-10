@@ -12,12 +12,12 @@
 -define(DEFAULT_DEDUPE_TIMEOUT, 200).
 -define(DEFAULT_FLOW_TYPE, <<"sync">>).
 
--record(udp_protocol, {
+-record(udp, {
     address :: string(),
     port :: non_neg_integer()
 }).
 
--type protocol() :: not_configured | #http_protocol{} | #udp_protocol{}.
+-type protocol() :: not_configured | #http_protocol{} | #udp{}.
 
 -record(eui, {
     name :: undefined | binary(),
@@ -84,6 +84,7 @@ convert_to_v2(
 
 -spec eui_from_configs(binary(), integer(), list(map())) -> list(#eui{}).
 eui_from_configs(Name, NetID, Configs) ->
+    ct:print("eui from configs: ~p", [Configs]),
     lists:flatten(
         lists:map(
             fun(Entry) ->
@@ -177,9 +178,7 @@ get_protocol(#{
                 <<"sync">> -> sync
             end
     };
-get_protocol(#{
-    <<"http_endpoint">> := Endpoint
-}=Entry) ->
+get_protocol(#{<<"http_endpoint">> := Endpoint} = Entry) ->
     #http_protocol{
         protocol_version = maps:get(<<"http_protocol_version">>, Entry, ?DEFAULT_PROTOCOL_VERSION),
         auth_header = maps:get(<<"http_auth_header">>, Entry, null),
@@ -191,6 +190,8 @@ get_protocol(#{
                 <<"sync">> -> sync
             end
     };
+get_protocol(#{<<"address">> := UDPAddress, <<"port">> := UDPPort}) ->
+    #udp{address = erlang:binary_to_list(UDPAddress), port = UDPPort};
 get_protocol(#{}) ->
     not_configured.
 

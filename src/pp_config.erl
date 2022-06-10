@@ -75,9 +75,6 @@
     filename :: testing | string()
 }).
 
--type udp_protocol() :: {udp, Address :: string(), Port :: non_neg_integer()}.
--type http_protocol() :: #http_protocol{}.
-
 -record(udp_protocol, {
     address :: string(),
     port :: non_neg_integer()
@@ -272,7 +269,7 @@ load_config(ConfigList) ->
         end,
         Entries
     ),
-
+    ok = ?MODULE:reset_config(),
     true = ets:insert(?EUI_ETS, Joins),
     true = ets:insert(?DEVADDR_ETS, DevAddrs),
 
@@ -477,18 +474,26 @@ lookup_transaction_id(TransactionID) ->
 
 -spec update_buying_devaddr(NetID :: integer(), BuyingActive :: boolean()) -> ok.
 update_buying_devaddr(NetID, BuyingActive) ->
-    DevaddrMS = ets:fun2ms(fun(#devaddr{net_id = Key} = Val) when Key == NetID ->
-        Val#devaddr{buying_active = BuyingActive}
-    end),
-    case ets:select_replace(?DEVADDR_ETS, DevaddrMS) of
-        1 ->
-            ok;
-        N ->
-            lager:warning(
-                "updating devaddr ets [net_id: ~p] [count: ~p] [buying_active_new_val: ~p] should be 1",
-                [NetID, N, BuyingActive]
-            )
-    end,
+    %% There are potentially many DevAddrs per NetID. `ets:select_replace/2'
+    %% requires you keep the key intact, in a bag table the whole record is
+    %% considered as part of the key. So the current solution is to grab
+    %% everything we know of, delete it all, update the items for the NetID in
+    %% question and reinsert everything.
+    AllDevAddrs = ets:tab2list(?DEVADDR_ETS),
+    NewDevAddrs = lists:map(
+        fun
+            (#devaddr{ignore_disable = true} = Val) ->
+                Val;
+            (#devaddr{net_id = Key} = Val) when Key == NetID ->
+                Val#devaddr{buying_active = BuyingActive};
+            (Val) ->
+                Val
+        end,
+        AllDevAddrs
+    ),
+
+    true = ets:delete_all_objects(?DEVADDR_ETS),
+    true = ets:insert(?DEVADDR_ETS, NewDevAddrs),
     ok.
 
 -spec update_buying_eui(NetID :: integer(), BuyingActive :: boolean()) -> ok.
