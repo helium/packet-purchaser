@@ -37,7 +37,10 @@
     multi_buy :: unlimited | non_neg_integer(),
     buying_active = true :: boolean(),
     addr :: {single, integer()} | {range, integer(), integer()},
-    protocol :: protocol()
+    protocol :: protocol(),
+    %% TODO remove eventually
+    disable_pull_data = false :: boolean(),
+    ignore_disable = false :: boolean()
 }).
 
 -spec parse_config(list(map())) -> list(#devaddr{} | #eui{}).
@@ -141,7 +144,10 @@ devaddr_from_configs(Name, NetID, Configs) ->
                             addr = D
                         }
                     end,
-                    DevAddrs
+                    case DevAddrs of
+                        [] -> [#{<<"lower">> => <<"0x00000000">>, <<"upper">> => <<"0xFFFFFFFF">>}];
+                        _ -> DevAddrs
+                    end
                 )
             end,
             Configs

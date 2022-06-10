@@ -101,11 +101,12 @@
 -record(devaddr, {
     name :: undefined | binary(),
     net_id :: non_neg_integer(),
-    protocol :: not_configured | udp_protocol() | http_protocol(),
     multi_buy :: unlimited | non_neg_integer(),
-    disable_pull_data :: boolean(),
     buying_active = true :: boolean(),
-    %% TODO
+    addr :: {single, integer()} | {range, integer(), integer()},
+    protocol :: protocol(),
+    %% TODO remove eventually
+    disable_pull_data = false :: boolean(),
     ignore_disable = false :: boolean()
 }).
 
@@ -198,7 +199,16 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
 lookup_devaddr({devaddr, DevAddr}) ->
     case pp_lorawan:parse_netid(DevAddr) of
         {ok, NetID} ->
-            case ets:lookup(?DEVADDR_ETS, NetID) of
+            Spec = ets:fun2ms(fun(
+                #devaddr{
+                    net_id = Key,
+                    addr = {range, Lower, Upper}
+                } = V
+            ) when Key == NetID andalso Lower =< DevAddr andalso DevAddr =< Upper ->
+                V
+            end),
+            Found = ets:select(?DEVADDR_ETS, Spec),
+            case Found of
                 [] ->
                     {error, routing_not_found};
                 [#devaddr{protocol = not_configured, net_id = NetID}] ->
@@ -436,9 +446,8 @@ init_ets() ->
     ?DEVADDR_ETS = ets:new(?DEVADDR_ETS, [
         public,
         named_table,
-        set,
-        {read_concurrency, true},
-        {keypos, #devaddr.net_id}
+        bag,
+        {read_concurrency, true}
     ]),
     ?UDP_WORKER_ETS = ets:new(?UDP_WORKER_ETS, [
         public,
