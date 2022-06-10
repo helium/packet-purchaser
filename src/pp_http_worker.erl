@@ -176,6 +176,8 @@ send_data(#state{
     auth_header = Auth,
     protocol_version = ProtocolVersion
 }) ->
+    %% NOTE: We do this here so we don't pass unnecessary things to
+    %% pp_roaming_protocol.
     ok = pp_config:insert_transaction_id(TransactionID, Address, FlowType),
 
     Data = pp_roaming_protocol:make_uplink_payload(NetID, Packets, TransactionID, ProtocolVersion),

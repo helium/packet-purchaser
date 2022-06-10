@@ -769,6 +769,7 @@ http_sync_downlink_test(_Config) ->
         }
     },
 
+    ok = pp_config:insert_transaction_id(23, <<"http://127.0.0.1:3002/uplink">>, sync),
     ok = pp_config:load_config([
         #{
             <<"name">> => <<"test">>,
@@ -834,6 +835,7 @@ http_async_downlink_test(_Config) ->
 
     %% 2. insert sc handler and config
     ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+    ok = pp_config:insert_transaction_id(23, <<"http://127.0.0.1:3002/uplink">>, async),
     ok = pp_config:load_config([
         #{
             <<"name">> => <<"test">>,
@@ -950,6 +952,7 @@ http_class_c_downlink_test(_Config) ->
 
     %% 2. insert sc handler and config
     ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+    ok = pp_config:insert_transaction_id(2176, <<"http://127.0.0.1:3002/uplink">>, async),
     ok = pp_config:load_config([
         #{
             <<"name">> => <<"test">>,
@@ -1170,7 +1173,8 @@ http_uplink_packet_test(_Config) ->
             <<"name">> => <<"test">>,
             <<"net_id">> => ?NET_ID_ACTILITY,
             <<"protocol">> => <<"http">>,
-            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+            <<"http_flow_type">> => <<"sync">>
         }
     ]),
     {ok, SCPacket, GatewayTime} = SendPacketFun(?DEVADDR_ACTILITY),

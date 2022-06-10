@@ -48,12 +48,35 @@ parse_config(Configs) ->
                 NetID = hex_to_num(NetIDBin),
                 eui_from_configs(Name, NetID, Inner) ++ devaddr_from_configs(Name, NetID, Inner)
             end,
-            convert_to_v2(Configs)
+            [convert_to_v2(Config) || Config <- Configs]
         )
     ).
 
-convert_to_v2(Configs) ->
-    Configs.
+convert_to_v2(#{<<"configs">> := _} = Config) ->
+    %% if it has configs key, it's already v2
+    Config;
+convert_to_v2(
+    #{
+        <<"name">> := Name,
+        <<"net_id">> := NetID
+    } = Rest
+) ->
+    Inner = maps:without([<<"name">>, <<"net_id">>], Rest),
+    #{
+        <<"name">> => Name,
+        <<"net_id">> => NetID,
+        %% old config won't have devaddrs key
+        %% and might not have joins key
+        <<"configs">> => [
+            maps:merge(
+                #{
+                    <<"devaddrs">> => [],
+                    <<"joins">> => []
+                },
+                Inner
+            )
+        ]
+    }.
 
 -spec eui_from_configs(binary(), integer(), list(map())) -> list(#eui{}).
 eui_from_configs(Name, NetID, Configs) ->
@@ -190,3 +213,40 @@ hex_to_num(Bin) ->
             lager:warning("value is not hex: ~p", [Bin]),
             Bin
     end.
+
+-ifdef(TEST).
+
+-include_lib("eunit/include/eunit.hrl").
+
+upgrade_config_test() ->
+    Config = #{
+        <<"name">> => <<"test">>,
+        <<"net_id">> => 1234,
+        <<"protocol">> => <<"http">>,
+        <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+        <<"http_flow_type">> => <<"async">>,
+        <<"joins">> => [
+            #{<<"dev_eui">> => 1234, <<"app_eui">> => 7890}
+        ]
+    },
+    ?assertEqual(
+        #{
+            <<"name">> => <<"test">>,
+            <<"net_id">> => 1234,
+            <<"configs">> => [
+                #{
+                    <<"protocol">> => <<"http">>,
+                    <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+                    <<"http_flow_type">> => <<"async">>,
+                    <<"joins">> => [
+                        #{<<"dev_eui">> => 1234, <<"app_eui">> => 7890}
+                    ],
+                    <<"devaddrs">> => []
+                }
+            ]
+        },
+        convert_to_v2(Config)
+    ),
+    ok.
+
+-endif.
