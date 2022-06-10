@@ -148,10 +148,8 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
     ->
         EUI
     end),
-    Res = ets:select(?EUI_ETS, Spec),
-    ct:print("Looking for ~p , ~p", [DevEUI, AppEUI]),
-    ct:print("Found: ~p", [Res]),
-    case Res of
+
+    case ets:select(?EUI_ETS, Spec) of
         [] ->
             {error, unmapped_eui};
         [#eui{protocol = not_configured, net_id = NetID}] ->
@@ -272,8 +270,6 @@ load_config(ConfigList) ->
     ok = ?MODULE:reset_config(),
     true = ets:insert(?EUI_ETS, Joins),
     true = ets:insert(?DEVADDR_ETS, DevAddrs),
-
-    ct:print("~p", [ets:tab2list(?EUI_ETS)]),
 
     %% {ok, PrevConfig} = ?MODULE:get_config(),
     %% Config = ?MODULE:transform_config(ConfigList),
@@ -570,107 +566,15 @@ read_config(Filename) ->
 
 -spec transform_config(list()) -> map().
 transform_config(ConfigList0) ->
-    ConfigList1 = lists:flatten(
-        lists:map(
-            fun transform_config_entry/1,
-            ConfigList0
-        )
+    Entries = pp_config_v2:parse_config(ConfigList0),
+    {DevAddrs, Joins} = lists:partition(
+        fun
+            (#devaddr{}) -> true;
+            (_) -> false
+        end,
+        lists:reverse(Entries)
     ),
-    #{
-        joins => proplists:append_values(joins, ConfigList1),
-        routing => proplists:append_values(routing, ConfigList1)
-    }.
-
--spec transform_config_entry(Entry :: map()) -> proplists:proplist().
-transform_config_entry(Entry) ->
-    #{<<"name">> := Name, <<"net_id">> := NetID} = Entry,
-    MultiBuy =
-        case maps:get(<<"multi_buy">>, Entry, null) of
-            null -> unlimited;
-            <<"unlimited">> -> unlimited;
-            Val -> Val
-        end,
-    Joins = maps:get(<<"joins">>, Entry, []),
-
-    DisablePullData =
-        case maps:get(<<"disable_pull_data">>, Entry, false) of
-            null -> false;
-            V1 -> V1
-        end,
-
-    IsActive =
-        case maps:get(<<"active">>, Entry, true) of
-            null -> true;
-            V2 -> V2
-        end,
-
-    Protocol =
-        case maps:get(<<"protocol">>, Entry, ?DEFAULT_PROTOCOL) of
-            <<"udp">> ->
-                try
-                    Address = erlang:binary_to_list(maps:get(<<"address">>, Entry)),
-                    Port = maps:get(<<"port">>, Entry),
-                    {udp, Address, Port}
-                catch
-                    error:{badkey, BadKey} ->
-                        lager:warning(
-                            "could not use defauflt protocol [badkey: ~p] [net_id: ~p]",
-                            [BadKey, NetID]
-                        ),
-                        not_configured
-                end;
-            <<"http">> ->
-                #http_protocol{
-                    endpoint = maps:get(<<"http_endpoint">>, Entry),
-                    flow_type = erlang:binary_to_existing_atom(
-                        maps:get(<<"http_flow_type">>, Entry, ?DEFAULT_HTTP_FLOW_TYPE)
-                    ),
-                    dedupe_timeout = maps:get(
-                        <<"http_dedupe_timeout">>,
-                        Entry,
-                        ?DEFAULT_HTTP_DEDUPE_TIMEOUT
-                    ),
-                    auth_header = maps:get(<<"http_auth_header">>, Entry, null),
-                    protocol_version =
-                        case
-                            maps:get(
-                                <<"http_protocol_version">>,
-                                Entry,
-                                ?DEFAULT_HTTP_PROTOCOL_VERSION
-                            )
-                        of
-                            <<"1.0">> -> pv_1_0;
-                            <<"1.1">> -> pv_1_1
-                        end
-                };
-            Other ->
-                throw({invalid_protocol_type, Other})
-        end,
-
-    JoinRecords = lists:map(
-        fun(#{<<"dev_eui">> := DevEUI, <<"app_eui">> := AppEUI}) ->
-            #eui{
-                name = Name,
-                net_id = clean_config_value(NetID),
-                protocol = Protocol,
-                multi_buy = MultiBuy,
-                disable_pull_data = DisablePullData,
-                dev_eui = clean_config_value(DevEUI),
-                app_eui = clean_config_value(AppEUI),
-                buying_active = IsActive
-            }
-        end,
-        Joins
-    ),
-    Routing = #devaddr{
-        name = Name,
-        net_id = clean_config_value(NetID),
-        protocol = Protocol,
-        multi_buy = MultiBuy,
-        disable_pull_data = DisablePullData,
-        buying_active = IsActive
-    },
-    [{joins, JoinRecords}, {routing, Routing}].
+    #{joins => Joins, routing => DevAddrs}.
 
 -spec write_config_to_ets(map()) -> ok.
 write_config_to_ets(Config) ->

@@ -84,7 +84,6 @@ convert_to_v2(
 
 -spec eui_from_configs(binary(), integer(), list(map())) -> list(#eui{}).
 eui_from_configs(Name, NetID, Configs) ->
-    ct:print("eui from configs: ~p", [Configs]),
     lists:flatten(
         lists:map(
             fun(Entry) ->
