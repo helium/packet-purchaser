@@ -71,16 +71,31 @@
 -type udp_protocol() :: {udp, Address :: string(), Port :: non_neg_integer()}.
 -type http_protocol() :: #http_protocol{}.
 
+-record(http_protocol_v2, {
+    endpoint :: binary(),
+    flow_type :: async | sync,
+    dedupe_timeout :: non_neg_integer(),
+    auth_header :: null | binary(),
+    protocol_version :: protocol_version()
+}).
+
+-record(udp_protocol, {
+    address :: string(),
+    port :: non_neg_integer()
+}).
+
+-type protocol() :: not_configured | #http_protocol_v2{} | #udp_protocol{}.
+
 -record(eui, {
     name :: undefined | binary(),
     net_id :: non_neg_integer(),
-    protocol :: not_configured | udp_protocol() | http_protocol(),
     multi_buy :: unlimited | non_neg_integer(),
-    disable_pull_data :: boolean(),
     dev_eui :: '*' | non_neg_integer(),
     app_eui :: non_neg_integer(),
     buying_active = true :: boolean(),
-    %% TODO
+    protocol :: protocol(),
+    %% TODO remove eventually
+    disable_pull_data = false :: boolean(),
     ignore_disable = false :: boolean()
 }).
 
@@ -136,6 +151,7 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
     ->
         EUI
     end),
+    ct:print("Looking for ~p , ~p", [DevEUI, AppEUI]),
     case ets:select(?EUI_ETS, Spec) of
         [] ->
             {error, unmapped_eui};
@@ -236,31 +252,51 @@ reset_config() ->
 
 -spec load_config(list(map())) -> ok.
 load_config(ConfigList) ->
-    {ok, PrevConfig} = ?MODULE:get_config(),
-    Config = ?MODULE:transform_config(ConfigList),
+    Entries = pp_config_v2:parse_config(ConfigList),
 
-    ok = ?MODULE:reset_config(),
-    ok = ?MODULE:write_config_to_ets(Config),
-
-    #{routing := PrevRouting} = PrevConfig,
-    #{routing := CurrRouting} = Config,
-
-    ok = lists:foreach(
-        fun(#devaddr{net_id = NetID, protocol = Protocol} = CurrEntry) ->
-            case lists:keyfind(NetID, #devaddr.net_id, PrevRouting) of
-                %% Added
-                false ->
-                    ok;
-                CurrEntry ->
-                    %% Unchanged
-                    ok;
-                _ExistingEntry ->
-                    %% Updated
-                    ok = update_udp_workers(NetID, Protocol)
-            end
+    {DevAddrs, Joins} = lists:partition(
+        fun
+            (#devaddr{}) -> true;
+            (_) -> false
         end,
-        CurrRouting
+        Entries
     ),
+
+    true = ets:insert(?EUI_ETS, Joins),
+    true = ets:insert(?DEVADDR_ETS, DevAddrs),
+
+    ct:print("~p", [ets:tab2list(?EUI_ETS)]),
+
+    %% {ok, PrevConfig} = ?MODULE:get_config(),
+    %% Config = ?MODULE:transform_config(ConfigList),
+
+    %% ok = ?MODULE:reset_config(),
+
+    %% #{joins := Joins, routing := Routing} = Config,
+    %% true = ets:insert(?EUI_ETS, Joins),
+    %% true = ets:insert(?DEVADDR_ETS, Routing),
+    %% ok.
+    %% %% ok = ?MODULE:write_config_to_ets(Config),
+
+    %% #{routing := PrevRouting} = PrevConfig,
+    %% #{routing := CurrRouting} = Config,
+
+    %% ok = lists:foreach(
+    %%     fun(#devaddr{net_id = NetID, protocol = Protocol} = CurrEntry) ->
+    %%         case lists:keyfind(NetID, #devaddr.net_id, PrevRouting) of
+    %%             %% Added
+    %%             false ->
+    %%                 ok;
+    %%             CurrEntry ->
+    %%                 %% Unchanged
+    %%                 ok;
+    %%             _ExistingEntry ->
+    %%                 %% Updated
+    %%                 ok = update_udp_workers(NetID, Protocol)
+    %%         end
+    %%     end,
+    %%     CurrRouting
+    %% ),
 
     ok.
 
@@ -297,17 +333,17 @@ delete_udp_worker(Pid) ->
     1 = ets:select_delete(?UDP_WORKER_ETS, Spec),
     ok.
 
--spec lookup_udp_workers_for_net_id(NetID :: integer()) -> list(pid()).
-lookup_udp_workers_for_net_id(NetID) ->
-    [P || {_, P} <- ets:lookup(?UDP_WORKER_ETS, NetID)].
+%% -spec lookup_udp_workers_for_net_id(NetID :: integer()) -> list(pid()).
+%% lookup_udp_workers_for_net_id(NetID) ->
+%%     [P || {_, P} <- ets:lookup(?UDP_WORKER_ETS, NetID)].
 
--spec update_udp_workers(NetID :: integer(), Protocol :: udp_protocol() | http_protocol()) -> ok.
-update_udp_workers(NetID, Protocol) ->
-    [
-        pp_udp_worker:update_address(WorkerPid, Protocol)
-        || WorkerPid <- lookup_udp_workers_for_net_id(NetID)
-    ],
-    ok.
+%% -spec update_udp_workers(NetID :: integer(), Protocol :: udp_protocol() | http_protocol()) -> ok.
+%% update_udp_workers(NetID, Protocol) ->
+%%     [
+%%         pp_udp_worker:update_address(WorkerPid, Protocol)
+%%         || WorkerPid <- lookup_udp_workers_for_net_id(NetID)
+%%     ],
+%%     ok.
 
 -spec start_buying(NetIDs :: [integer()]) -> ok | {error, any()}.
 start_buying([]) ->
