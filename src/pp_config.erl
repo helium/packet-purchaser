@@ -644,33 +644,6 @@ write_config_to_disk(Filename) ->
 
 %%--------------------------------------------------------------------
 %% @doc
-%% Valid config values include:
-%%   "*"        :: wildcard
-%%   "0x123abc" :: prefixed hex number
-%%   "123abc"   :: hex number
-%%   1337       :: integer
-%%
-%% @end
-%%--------------------------------------------------------------------
--spec clean_config_value(binary()) -> '*' | non_neg_integer().
-clean_config_value(Num) when erlang:is_integer(Num) ->
-    Num;
-clean_config_value(<<"*">>) ->
-    '*';
-clean_config_value(<<"0x", Base16Number/binary>>) ->
-    erlang:binary_to_integer(Base16Number, 16);
-clean_config_value(Bin) ->
-    try erlang:binary_to_integer(Bin, 16) of
-        Num -> Num
-    catch
-        error:_ ->
-            lager:warning("value is not hex: ~p", [Bin]),
-            Bin
-    end.
-%% clean_base16(_) -> throw(malformed_base16).
-
-%%--------------------------------------------------------------------
-%% @doc
 %% The storage of protocols was changed in ets.
 %% Here we honor the original expectation of pp_udp_worker
 %% in having the address and port broken out.
@@ -707,20 +680,6 @@ dedupe_udp_matches(Matches) ->
 -ifdef(TEST).
 
 -include_lib("eunit/include/eunit.hrl").
-
-unprefixed_hex_value_test() ->
-    lists:foreach(
-        fun(<<"0x", Inner/binary>> = X) ->
-            ?assertEqual(clean_config_value(Inner), clean_config_value(X))
-        end,
-        [
-            <<"0x0018b24441524632">>,
-            <<"0xF03D29AC71010002">>,
-            <<"0xf03d29ac71010002">>,
-            <<"0x20635f000300000f">>
-        ]
-    ),
-    ok.
 
 join_eui_to_net_id_test() ->
     ok = pp_config:init_ets(),

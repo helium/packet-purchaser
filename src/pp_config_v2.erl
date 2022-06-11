@@ -255,4 +255,18 @@ upgrade_config_test() ->
     ),
     ok.
 
+unprefixed_hex_value_test() ->
+    lists:foreach(
+        fun(<<"0x", Inner/binary>> = X) ->
+            ?assertEqual(hex_to_num(Inner), hex_to_num(X))
+        end,
+        [
+            <<"0x0018b24441524632">>,
+            <<"0xF03D29AC71010002">>,
+            <<"0xf03d29ac71010002">>,
+            <<"0x20635f000300000f">>
+        ]
+    ),
+    ok.
+
 -endif.
