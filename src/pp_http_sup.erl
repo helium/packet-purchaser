@@ -29,7 +29,11 @@
 
 -define(ETS, pp_http_sup_ets).
 
--type worker_key() :: {NetID :: non_neg_integer(), PHash :: binary()}.
+-type worker_key() :: {
+    NetID :: non_neg_integer(),
+    PHash :: binary(),
+    Protocol :: pp_config:http_protocol()
+}.
 
 %%====================================================================
 %% API functions
