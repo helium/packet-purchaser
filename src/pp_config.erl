@@ -33,8 +33,8 @@
     load_config/1,
     get_config/0,
     reload_config_from_file/1,
-    reload_config_from_file/0,
-    write_config_to_disk/1
+    reload_config_from_file/0
+    %% write_config_to_disk/1
 ]).
 
 %% gen_server callbacks
@@ -68,8 +68,6 @@
 -define(DEVADDR_ETS, pp_config_routing_ets).
 -define(UDP_WORKER_ETS, pp_config_udp_worker_ets).
 -define(TRANSACTION_ETS, pp_config_transaction_ets).
-
--define(DEFAULT_PROTOCOL, <<"udp">>).
 
 -record(state, {
     filename :: testing | string()
@@ -594,64 +592,65 @@ write_config_to_ets(Config) ->
     true = ets:insert(?DEVADDR_ETS, Routing),
     ok.
 
--spec write_config_to_disk(string()) -> ok.
-write_config_to_disk(Filename) ->
-    %% NOTE: Filename is fully qualified /var/data/temp_config.json
-    {ok, #{joins := Joins, routing := Routing}} = pp_config:get_config(),
+%% -spec write_config_to_disk(string()) -> ok.
+%% write_config_to_disk(Filename) ->
+%%     %% FIXME: Does not support config_v2 yet.
+%%     %% NOTE: Filename is fully qualified /var/data/temp_config.json
+%%     {ok, #{joins := Joins, routing := Routing}} = pp_config:get_config(),
 
-    CleanEUI = fun
-        ('*') -> '*';
-        (Num) -> pp_utils:hexstring(Num)
-    end,
+%%     CleanEUI = fun
+%%         ('*') -> '*';
+%%         (Num) -> pp_utils:hexstring(Num)
+%%     end,
 
-    MakeJoinMap = fun(#eui{app_eui = App, dev_eui = Dev}) ->
-        #{app_eui => CleanEUI(App), dev_eui => CleanEUI(Dev)}
-    end,
+%%     MakeJoinMap = fun(#eui{app_eui = App, dev_eui = Dev}) ->
+%%         #{app_eui => CleanEUI(App), dev_eui => CleanEUI(Dev)}
+%%     end,
 
-    Config = lists:map(
-        fun(#devaddr{name = Name, net_id = NetID, multi_buy = MultiBuy, protocol = Protocol}) ->
-            BaseMap = #{
-                name => Name,
-                net_id => pp_utils:hexstring(NetID),
-                multi_buy => MultiBuy,
-                joins => [MakeJoinMap(Join) || Join <- Joins, Join#eui.net_id == NetID]
-            },
-            ProtocolMap =
-                case Protocol of
-                    {udp, Address, Port} ->
-                        #{
-                            protocol => udp,
-                            address => erlang:list_to_binary(Address),
-                            port => Port
-                        };
-                    #http_protocol{
-                        endpoint = Endpoint,
-                        flow_type = Flow,
-                        dedupe_timeout = Dedupe,
-                        auth_header = Auth,
-                        protocol_version = ProtocolVersion
-                    } ->
-                        PV =
-                            case ProtocolVersion of
-                                pv_1_0 -> <<"1.0">>;
-                                pv_1_1 -> <<"1.1">>
-                            end,
-                        #{
-                            protocol => http,
-                            http_endpoint => Endpoint,
-                            http_flow_type => Flow,
-                            http_dedupe_timeout => Dedupe,
-                            http_auth_header => Auth,
-                            http_protocol_version => PV
-                        }
-                end,
-            maps:merge(BaseMap, ProtocolMap)
-        end,
-        Routing
-    ),
+%%     Config = lists:map(
+%%         fun(#devaddr{name = Name, net_id = NetID, multi_buy = MultiBuy, protocol = Protocol}) ->
+%%             BaseMap = #{
+%%                 name => Name,
+%%                 net_id => pp_utils:hexstring(NetID),
+%%                 multi_buy => MultiBuy,
+%%                 joins => [MakeJoinMap(Join) || Join <- Joins, Join#eui.net_id == NetID]
+%%             },
+%%             ProtocolMap =
+%%                 case Protocol of
+%%                     {udp, Address, Port} ->
+%%                         #{
+%%                             protocol => udp,
+%%                             address => erlang:list_to_binary(Address),
+%%                             port => Port
+%%                         };
+%%                     #http_protocol{
+%%                         endpoint = Endpoint,
+%%                         flow_type = Flow,
+%%                         dedupe_timeout = Dedupe,
+%%                         auth_header = Auth,
+%%                         protocol_version = ProtocolVersion
+%%                     } ->
+%%                         PV =
+%%                             case ProtocolVersion of
+%%                                 pv_1_0 -> <<"1.0">>;
+%%                                 pv_1_1 -> <<"1.1">>
+%%                             end,
+%%                         #{
+%%                             protocol => http,
+%%                             http_endpoint => Endpoint,
+%%                             http_flow_type => Flow,
+%%                             http_dedupe_timeout => Dedupe,
+%%                             http_auth_header => Auth,
+%%                             http_protocol_version => PV
+%%                         }
+%%                 end,
+%%             maps:merge(BaseMap, ProtocolMap)
+%%         end,
+%%         Routing
+%%     ),
 
-    Bytes = jsx:encode(Config),
-    file:write_file(Filename, Bytes).
+%%     Bytes = jsx:encode(Config),
+%%     file:write_file(Filename, Bytes).
 
 %%--------------------------------------------------------------------
 %% @doc
