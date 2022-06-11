@@ -43,7 +43,8 @@
     udp_multiple_joins_test/1,
     udp_multiple_joins_same_dest_test/1,
     http_multiple_joins_test/1,
-    http_multiple_joins_same_dest_test/1
+    http_multiple_joins_same_dest_test/1,
+    http_overlapping_devaddr_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -135,7 +136,8 @@ groups() ->
             udp_multiple_joins_test,
             udp_multiple_joins_same_dest_test,
             http_multiple_joins_test,
-            http_multiple_joins_same_dest_test
+            http_multiple_joins_same_dest_test,
+            http_overlapping_devaddr_test
         ]}
     ].
 
@@ -464,6 +466,55 @@ http_multiple_joins_same_dest_test(_Config) ->
     ok = pp_lns:not_http_rcv(250),
 
     ?assertNotEqual(ReceiverOne, ReceiverTwo),
+
+    ok.
+
+http_overlapping_devaddr_test(_Config) ->
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, ?DEVADDR_COMCAST, 0, #{
+        dont_encode => true
+    }),
+
+    DevAddrRangeSingle = #{<<"lower">> => <<"0x45000042">>, <<"upper">> => <<"0x45000042">>},
+    DevAddrInRange = #{<<"lower">> => <<"0x45000040">>, <<"upper">> => <<"0x45000044">>},
+
+    %% Overlapping Devaddrs, but going to different endpoints
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_COMCAST,
+            <<"configs">> => [
+                #{
+                    <<"protocol">> => <<"http">>,
+                    <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+                    <<"http_dedupe_timeout">> => 50,
+                    <<"joins">> => [],
+                    <<"devaddrs">> => [DevAddrRangeSingle]
+                },
+                #{
+                    <<"protocol">> => <<"http">>,
+                    <<"http_endpoint">> => <<"http://127.0.0.1:3003/uplink">>,
+                    <<"http_dedupe_timeout">> => 50,
+                    <<"joins">> => [],
+                    <<"devaddrs">> => [DevAddrInRange]
+                }
+            ]
+        }
+    ]),
+
+    ok = start_uplink_listener(#{port => 3002}),
+    ok = start_uplink_listener(#{port => 3003}),
+    ok = pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+
+    {ok, #{<<"ReceiverID">> := ReceiverOne}, _, _} = pp_lns:http_rcv(),
+    {ok, #{<<"ReceiverID">> := ReceiverTwo}, _, _} = pp_lns:http_rcv(),
+    ok = pp_lns:not_http_rcv(250),
+
+    %% Receiver ID must be the same because DevAddr is explicitly partitioned by
+    %% NetID, unlike Join EUI. And we got 2 requests.
+    ?assertEqual(ReceiverOne, ReceiverTwo),
 
     ok.
 

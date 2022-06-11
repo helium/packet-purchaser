@@ -202,29 +202,40 @@ lookup_devaddr({devaddr, DevAddr}) ->
             ) when Key == NetID andalso Lower =< DevAddr andalso DevAddr =< Upper ->
                 V
             end),
-            Found = ets:select(?DEVADDR_ETS, Spec),
-            case Found of
+
+            case ets:select(?DEVADDR_ETS, Spec) of
                 [] ->
                     {error, routing_not_found};
                 [#devaddr{protocol = not_configured, net_id = NetID}] ->
                     {error, {not_configured, NetID}};
                 [#devaddr{buying_active = false, net_id = NetID}] ->
                     {error, {buying_inactive, NetID}};
-                [
-                    #devaddr{
-                        protocol = Protocol,
-                        multi_buy = MultiBuy,
-                        disable_pull_data = DisablePullData
-                    }
-                ] ->
-                    {ok, [
-                        maybe_clean_udp(#{
-                            protocol => Protocol,
-                            net_id => NetID,
-                            multi_buy => MultiBuy,
-                            disable_pull_data => DisablePullData
-                        })
-                    ]}
+                Matches0 ->
+                    Matches1 = lists:filtermap(
+                        fun
+                            (#devaddr{buying_active = false}) ->
+                                false;
+                            (#devaddr{protocol = not_configured}) ->
+                                false;
+                            (
+                                #devaddr{
+                                    protocol = Protocol,
+                                    net_id = InnerNetID,
+                                    multi_buy = MultiBuy,
+                                    disable_pull_data = DisablePullData
+                                }
+                            ) ->
+                                {true,
+                                    maybe_clean_udp(#{
+                                        protocol => Protocol,
+                                        net_id => InnerNetID,
+                                        multi_buy => MultiBuy,
+                                        disable_pull_data => DisablePullData
+                                    })}
+                        end,
+                        Matches0
+                    ),
+                    {ok, Matches1}
             end;
         Err ->
             Err
