@@ -37,7 +37,7 @@
     net_id :: non_neg_integer(),
     multi_buy :: unlimited | non_neg_integer(),
     buying_active = true :: boolean(),
-    addr :: {single, integer()} | {range, integer(), integer()},
+    addr :: {range, integer(), integer()},
     protocol :: protocol(),
     %% TODO remove eventually
     disable_pull_data = false :: boolean(),
@@ -131,18 +131,13 @@ devaddr_from_configs(Name, NetID, Configs) ->
                 Protocol = get_protocol(Entry),
                 lists:map(
                     fun(#{<<"lower">> := Lower, <<"upper">> := Upper}) ->
-                        D =
-                            case {Lower, Upper} of
-                                {Same, Same} -> {single, hex_to_num(Same)};
-                                _ -> {range, hex_to_num(Lower), hex_to_num(Upper)}
-                            end,
                         #devaddr{
                             name = Name,
                             net_id = NetID,
                             protocol = Protocol,
                             multi_buy = MultiBuy,
                             buying_active = BuyingActive,
-                            addr = D
+                            addr = {range, hex_to_num(Lower), hex_to_num(Upper)}
                         }
                     end,
                     case DevAddrs of
