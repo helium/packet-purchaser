@@ -8,10 +8,12 @@
 
 -export([
     unfilled_config_test/1,
-    lookup_join_multiple_configurations_test/1
+    lookup_join_multiple_configurations_test/1,
+    default_net_id_protocol_version_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
+-include("http_protocol.hrl").
 
 %%--------------------------------------------------------------------
 %% COMMON TEST CALLBACK FUNCTIONS
@@ -26,7 +28,8 @@
 all() ->
     [
         unfilled_config_test,
-        lookup_join_multiple_configurations_test
+        lookup_join_multiple_configurations_test,
+        default_net_id_protocol_version_test
     ].
 
 %%--------------------------------------------------------------------
@@ -105,5 +108,45 @@ lookup_join_multiple_configurations_test(_Config) ->
         {ok, [#{net_id := 5678}]},
         pp_config:lookup_eui({eui, DevEUI, AppEUI})
     ),
+
+    ok.
+
+default_net_id_protocol_version_test(_Config) ->
+    application:set_env(packet_purchaser, force_net_id_protocol_version, #{}),
+    pp_config:load_config([
+        #{
+            <<"active">> => false,
+            <<"joins">> => [],
+            <<"multi_buy">> => 0,
+            <<"name">> => <<"Test Onboarding">>,
+            <<"net_id">> => 1234,
+            <<"protocol">> => <<"http">>,
+            <<"http_endpoint">> => <<"www.example.com">>
+        }
+    ]),
+
+    %% Defaults to default
+    {ok, #{routing := [Routing0]}} = pp_config:get_config(),
+    Protocol0 = pp_config:protocol(Routing0),
+    ?assertEqual(Protocol0#http_protocol.protocol_version, pv_1_1),
+
+    %% Change default specifically for this net id
+    application:set_env(packet_purchaser, force_net_id_protocol_version, #{1234 => pv_1_0}),
+    pp_config:load_config([
+        #{
+            <<"active">> => false,
+            <<"joins">> => [],
+            <<"multi_buy">> => 0,
+            <<"name">> => <<"Test Onboarding">>,
+            <<"net_id">> => 1234,
+            <<"protocol">> => <<"http">>,
+            <<"http_endpoint">> => <<"www.example.com">>
+        }
+    ]),
+
+    %% Defaults to force
+    {ok, #{routing := [Routing1]}} = pp_config:get_config(),
+    Protocol1 = pp_config:protocol(Routing1),
+    ?assertEqual(Protocol1#http_protocol.protocol_version, pv_1_0),
 
     ok.

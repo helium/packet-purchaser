@@ -52,7 +52,8 @@
     net_id/1,
     name/1,
     multi_buy/1,
-    buying_active/1
+    buying_active/1,
+    protocol/1
 ]).
 
 %% Websocket API
@@ -384,6 +385,10 @@ multi_buy(#devaddr{multi_buy = MB}) ->
 buying_active(#devaddr{buying_active = Active}) ->
     Active.
 
+-spec protocol(#devaddr{}) -> #http_protocol{}.
+protocol(#devaddr{protocol = P}) ->
+    P.
+
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
@@ -501,7 +506,8 @@ transform_config(ConfigList0) ->
 
 -spec transform_config_entry(Entry :: map()) -> proplists:proplist().
 transform_config_entry(Entry) ->
-    #{<<"name">> := Name, <<"net_id">> := NetID} = Entry,
+    #{<<"name">> := Name, <<"net_id">> := NetID0} = Entry,
+    NetID = clean_config_value(NetID0),
     MultiBuy =
         case maps:get(<<"multi_buy">>, Entry, null) of
             null -> unlimited;
@@ -549,17 +555,7 @@ transform_config_entry(Entry) ->
                         ?DEFAULT_HTTP_DEDUPE_TIMEOUT
                     ),
                     auth_header = maps:get(<<"http_auth_header">>, Entry, null),
-                    protocol_version =
-                        case
-                            maps:get(
-                                <<"http_protocol_version">>,
-                                Entry,
-                                ?DEFAULT_HTTP_PROTOCOL_VERSION
-                            )
-                        of
-                            <<"1.0">> -> pv_1_0;
-                            <<"1.1">> -> pv_1_1
-                        end
+                    protocol_version = get_protocol_version(NetID, Entry)
                 };
             Other ->
                 throw({invalid_protocol_type, Other})
@@ -569,7 +565,7 @@ transform_config_entry(Entry) ->
         fun(#{<<"dev_eui">> := DevEUI, <<"app_eui">> := AppEUI}) ->
             #eui{
                 name = Name,
-                net_id = clean_config_value(NetID),
+                net_id = NetID,
                 protocol = Protocol,
                 multi_buy = MultiBuy,
                 disable_pull_data = DisablePullData,
@@ -582,13 +578,32 @@ transform_config_entry(Entry) ->
     ),
     Routing = #devaddr{
         name = Name,
-        net_id = clean_config_value(NetID),
+        net_id = NetID,
         protocol = Protocol,
         multi_buy = MultiBuy,
         disable_pull_data = DisablePullData,
         buying_active = IsActive
     },
     [{joins, JoinRecords}, {routing, Routing}].
+
+-spec get_protocol_version(integer(), map()) -> protocol_version().
+get_protocol_version(NetID, Entry) ->
+    Forces = application:get_env(packet_purchaser, force_net_id_protocol_version, #{}),
+    case maps:get(NetID, Forces, undefined) of
+        undefined ->
+            case
+                maps:get(
+                    <<"http_protocol_version">>,
+                    Entry,
+                    ?DEFAULT_HTTP_PROTOCOL_VERSION
+                )
+            of
+                <<"1.0">> -> pv_1_0;
+                <<"1.1">> -> pv_1_1
+            end;
+        Val ->
+            Val
+    end.
 
 -spec write_config_to_ets(map()) -> ok.
 write_config_to_ets(Config) ->
