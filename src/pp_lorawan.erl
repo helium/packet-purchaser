@@ -31,7 +31,7 @@ datarate_to_index(Region, DR) ->
 
 -spec parse_netid(number() | binary()) -> {ok, temp_netid()} | {error, invalid_netid_type}.
 parse_netid(DevNum) ->
-    lora_subnet:parse_netid(DevNum).
+    lora_subnet:parse_netid(DevNum, big).
 
 %% ------------------------------------------------------------------
 %% @doc === Types and Terms ===
