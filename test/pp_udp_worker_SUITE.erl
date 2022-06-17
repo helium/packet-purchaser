@@ -80,7 +80,7 @@ init_per_testcase(TestCase, Config0) ->
             <<"name">> => <<"udp_worker_test">>,
             <<"net_id">> => NetID,
             <<"address">> => <<"127.0.0.1">>,
-            <<"port">> => 1337,
+            <<"port">> => 1700,
             <<"disable_pull_data">> => true
         }
     ]),

@@ -11,6 +11,7 @@
 -export([
     start_link/1,
     push_data/4,
+    push_data/5,
     update_address/2
 ]).
 
@@ -57,9 +58,24 @@
 start_link(Args) ->
     gen_server:start_link(?SERVER, Args, []).
 
--spec push_data(pid(), blockchain_state_channel_packet_v1:packet(), pos_integer(), pid()) ->
-    ok | {error, any()}.
+-spec push_data(
+    Pid :: pid(),
+    SCPacket :: blockchain_state_channel_packet_v1:packet(),
+    PacketTime :: pos_integer(),
+    HandlerPid :: pid()
+) -> ok | {error, any()}.
 push_data(WorkerPid, SCPacket, PacketTime, HandlerPid) ->
+    gen_server:call(WorkerPid, {push_data, SCPacket, PacketTime, HandlerPid}).
+
+-spec push_data(
+    Pid :: pid(),
+    SCPacket :: blockchain_state_channel_packet_v1:packet(),
+    PacketTime :: pos_integer(),
+    HandlerPid :: pid(),
+    Protocol :: {udp, string(), integer()}
+) -> ok | {error, any()}.
+push_data(WorkerPid, SCPacket, PacketTime, HandlerPid, Protocol) ->
+    ok = update_address(WorkerPid, Protocol),
     gen_server:call(WorkerPid, {push_data, SCPacket, PacketTime, HandlerPid}).
 
 -spec update_address(

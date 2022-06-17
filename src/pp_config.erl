@@ -33,8 +33,8 @@
     load_config/1,
     get_config/0,
     reload_config_from_file/1,
-    reload_config_from_file/0,
-    write_config_to_disk/1
+    reload_config_from_file/0
+    %% write_config_to_disk/1
 ]).
 
 %% gen_server callbacks
@@ -56,43 +56,53 @@
     protocol/1
 ]).
 
+%% downlink response ets
+-export([
+    insert_transaction_id/3,
+    lookup_transaction_id/1
+]).
+
 %% Websocket API
 -export([ws_update_config/1]).
 
 -define(EUI_ETS, pp_config_join_ets).
 -define(DEVADDR_ETS, pp_config_routing_ets).
 -define(UDP_WORKER_ETS, pp_config_udp_worker_ets).
-
--define(DEFAULT_PROTOCOL, <<"udp">>).
+-define(TRANSACTION_ETS, pp_config_transaction_ets).
 
 -record(state, {
     filename :: testing | string()
 }).
 
--type udp_protocol() :: {udp, Address :: string(), Port :: non_neg_integer()}.
--type http_protocol() :: #http_protocol{}.
+-record(udp_protocol, {
+    address :: string(),
+    port :: non_neg_integer()
+}).
+
+-type protocol() :: not_configured | #http_protocol{} | #udp_protocol{}.
 
 -record(eui, {
     name :: undefined | binary(),
     net_id :: non_neg_integer(),
-    protocol :: not_configured | udp_protocol() | http_protocol(),
     multi_buy :: unlimited | non_neg_integer(),
-    disable_pull_data :: boolean(),
     dev_eui :: '*' | non_neg_integer(),
     app_eui :: non_neg_integer(),
     buying_active = true :: boolean(),
-    %% TODO
+    protocol :: protocol(),
+    %% TODO remove eventually
+    disable_pull_data = false :: boolean(),
     ignore_disable = false :: boolean()
 }).
 
 -record(devaddr, {
     name :: undefined | binary(),
     net_id :: non_neg_integer(),
-    protocol :: not_configured | udp_protocol() | http_protocol(),
     multi_buy :: unlimited | non_neg_integer(),
-    disable_pull_data :: boolean(),
     buying_active = true :: boolean(),
-    %% TODO
+    addr :: {single, integer()} | {range, integer(), integer()},
+    protocol :: protocol(),
+    %% TODO remove eventually
+    disable_pull_data = false :: boolean(),
     ignore_disable = false :: boolean()
 }).
 
@@ -137,6 +147,7 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
     ->
         EUI
     end),
+
     case ets:select(?EUI_ETS, Spec) of
         [] ->
             {error, unmapped_eui};
@@ -182,28 +193,48 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
 lookup_devaddr({devaddr, DevAddr}) ->
     case pp_lorawan:parse_netid(DevAddr) of
         {ok, NetID} ->
-            case ets:lookup(?DEVADDR_ETS, NetID) of
+            Spec = ets:fun2ms(fun(
+                #devaddr{
+                    net_id = Key,
+                    addr = {range, Lower, Upper}
+                } = V
+            ) when Key == NetID andalso Lower =< DevAddr andalso DevAddr =< Upper ->
+                V
+            end),
+
+            case ets:select(?DEVADDR_ETS, Spec) of
                 [] ->
                     {error, routing_not_found};
                 [#devaddr{protocol = not_configured, net_id = NetID}] ->
                     {error, {not_configured, NetID}};
                 [#devaddr{buying_active = false, net_id = NetID}] ->
                     {error, {buying_inactive, NetID}};
-                [
-                    #devaddr{
-                        protocol = Protocol,
-                        multi_buy = MultiBuy,
-                        disable_pull_data = DisablePullData
-                    }
-                ] ->
-                    {ok, [
-                        maybe_clean_udp(#{
-                            protocol => Protocol,
-                            net_id => NetID,
-                            multi_buy => MultiBuy,
-                            disable_pull_data => DisablePullData
-                        })
-                    ]}
+                Matches0 ->
+                    Matches1 = lists:filtermap(
+                        fun
+                            (#devaddr{buying_active = false}) ->
+                                false;
+                            (#devaddr{protocol = not_configured}) ->
+                                false;
+                            (
+                                #devaddr{
+                                    protocol = Protocol,
+                                    net_id = InnerNetID,
+                                    multi_buy = MultiBuy,
+                                    disable_pull_data = DisablePullData
+                                }
+                            ) ->
+                                {true,
+                                    maybe_clean_udp(#{
+                                        protocol => Protocol,
+                                        net_id => InnerNetID,
+                                        multi_buy => MultiBuy,
+                                        disable_pull_data => DisablePullData
+                                    })}
+                        end,
+                        Matches0
+                    ),
+                    {ok, Matches1}
             end;
         Err ->
             Err
@@ -237,31 +268,18 @@ reset_config() ->
 
 -spec load_config(list(map())) -> ok.
 load_config(ConfigList) ->
-    {ok, PrevConfig} = ?MODULE:get_config(),
-    Config = ?MODULE:transform_config(ConfigList),
+    Entries = pp_config_v2:parse_config(ConfigList),
 
-    ok = ?MODULE:reset_config(),
-    ok = ?MODULE:write_config_to_ets(Config),
-
-    #{routing := PrevRouting} = PrevConfig,
-    #{routing := CurrRouting} = Config,
-
-    ok = lists:foreach(
-        fun(#devaddr{net_id = NetID, protocol = Protocol} = CurrEntry) ->
-            case lists:keyfind(NetID, #devaddr.net_id, PrevRouting) of
-                %% Added
-                false ->
-                    ok;
-                CurrEntry ->
-                    %% Unchanged
-                    ok;
-                _ExistingEntry ->
-                    %% Updated
-                    ok = update_udp_workers(NetID, Protocol)
-            end
+    {DevAddrs, Joins} = lists:partition(
+        fun
+            (#devaddr{}) -> true;
+            (_) -> false
         end,
-        CurrRouting
+        Entries
     ),
+    ok = ?MODULE:reset_config(),
+    true = ets:insert(?EUI_ETS, Joins),
+    true = ets:insert(?DEVADDR_ETS, DevAddrs),
 
     ok.
 
@@ -298,18 +316,6 @@ delete_udp_worker(Pid) ->
     1 = ets:select_delete(?UDP_WORKER_ETS, Spec),
     ok.
 
--spec lookup_udp_workers_for_net_id(NetID :: integer()) -> list(pid()).
-lookup_udp_workers_for_net_id(NetID) ->
-    [P || {_, P} <- ets:lookup(?UDP_WORKER_ETS, NetID)].
-
--spec update_udp_workers(NetID :: integer(), Protocol :: udp_protocol() | http_protocol()) -> ok.
-update_udp_workers(NetID, Protocol) ->
-    [
-        pp_udp_worker:update_address(WorkerPid, Protocol)
-        || WorkerPid <- lookup_udp_workers_for_net_id(NetID)
-    ],
-    ok.
-
 -spec start_buying(NetIDs :: [integer()]) -> ok | {error, any()}.
 start_buying([]) ->
     ok;
@@ -332,7 +338,7 @@ change_http_protocol_version(NetID, ProtocolVersion) ->
         false ->
             {error, {invalid_version, ProtocolVersion}};
         true ->
-            {ok, _} = update_devaddr_http_protocol_version(NetID, ProtocolVersion),
+            ok = update_devaddr_http_protocol_version(NetID, ProtocolVersion),
             ok = update_eui_http_protocol_version(NetID, ProtocolVersion)
     end.
 
@@ -404,9 +410,8 @@ init_ets() ->
     ?DEVADDR_ETS = ets:new(?DEVADDR_ETS, [
         public,
         named_table,
-        set,
-        {read_concurrency, true},
-        {keypos, #devaddr.net_id}
+        bag,
+        {read_concurrency, true}
     ]),
     ?UDP_WORKER_ETS = ets:new(?UDP_WORKER_ETS, [
         public,
@@ -415,22 +420,47 @@ init_ets() ->
         {write_concurrency, true},
         {read_concurrency, true}
     ]),
+    ?TRANSACTION_ETS = ets:new(?TRANSACTION_ETS, [
+        public,
+        named_table,
+        set,
+        {read_concurrency, true},
+        {write_concurrency, true}
+    ]),
     ok.
+
+insert_transaction_id(TransactionID, Endpoint, FlowType) ->
+    true = ets:insert(?TRANSACTION_ETS, {TransactionID, Endpoint, FlowType}),
+    ok.
+
+lookup_transaction_id(TransactionID) ->
+    case ets:lookup(?TRANSACTION_ETS, TransactionID) of
+        [] -> {error, routing_not_found};
+        [{_, Endpoint, FlowType}] -> {ok, Endpoint, FlowType}
+    end.
 
 -spec update_buying_devaddr(NetID :: integer(), BuyingActive :: boolean()) -> ok.
 update_buying_devaddr(NetID, BuyingActive) ->
-    DevaddrMS = ets:fun2ms(fun(#devaddr{net_id = Key} = Val) when Key == NetID ->
-        Val#devaddr{buying_active = BuyingActive}
-    end),
-    case ets:select_replace(?DEVADDR_ETS, DevaddrMS) of
-        1 ->
-            ok;
-        N ->
-            lager:warning(
-                "updating devaddr ets [net_id: ~p] [count: ~p] [buying_active_new_val: ~p] should be 1",
-                [NetID, N, BuyingActive]
-            )
-    end,
+    %% There are potentially many DevAddrs per NetID. `ets:select_replace/2'
+    %% requires you keep the key intact, in a bag table the whole record is
+    %% considered as part of the key. So the current solution is to grab
+    %% everything we know of, delete it all, update the items for the NetID in
+    %% question and reinsert everything.
+    AllDevAddrs = ets:tab2list(?DEVADDR_ETS),
+    NewDevAddrs = lists:map(
+        fun
+            (#devaddr{ignore_disable = true} = Val) ->
+                Val;
+            (#devaddr{net_id = Key} = Val) when Key == NetID ->
+                Val#devaddr{buying_active = BuyingActive};
+            (Val) ->
+                Val
+        end,
+        AllDevAddrs
+    ),
+
+    true = ets:delete_all_objects(?DEVADDR_ETS),
+    true = ets:insert(?DEVADDR_ETS, NewDevAddrs),
     ok.
 
 -spec update_buying_eui(NetID :: integer(), BuyingActive :: boolean()) -> ok.
@@ -441,7 +471,6 @@ update_buying_eui(NetID, BuyingActive) ->
     %% everything we know of, delete it all, update the items for the NetID in
     %% question and reinsert everything.
     AllEuis = ets:tab2list(?EUI_ETS),
-    true = ets:delete_all_objects(?EUI_ETS),
     NewEUIs = lists:map(
         fun
             %% TODO
@@ -451,21 +480,36 @@ update_buying_eui(NetID, BuyingActive) ->
         end,
         AllEuis
     ),
+    true = ets:delete_all_objects(?EUI_ETS),
     true = ets:insert(?EUI_ETS, NewEUIs),
     ok.
 
 -spec update_devaddr_http_protocol_version(
     NetID :: integer(),
     ProtocolVersion :: protocol_version()
-) -> {ok, integer()}.
+) -> ok.
 update_devaddr_http_protocol_version(NetID, ProtocolVersion) ->
-    DevAddrMS = ets:fun2ms(fun(
-        #devaddr{net_id = Key, protocol = Protocol} = Val
-    ) when Key == NetID ->
-        Val#devaddr{protocol = Protocol#http_protocol{protocol_version = ProtocolVersion}}
-    end),
-    N = ets:select_replace(?DEVADDR_ETS, DevAddrMS),
-    {ok, N}.
+    %% There are potentially many DevAddrs per NetID. `ets:select_replace/2'
+    %% requires you keep the key intact, in a bag table the whole record is
+    %% considered as part of the key. So the current solution is to grab
+    %% everything we know of, delete it all, update the items for the NetID in
+    %% question and reinsert everything.
+    AllDevAddrs = ets:tab2list(?DEVADDR_ETS),
+    NewDevAddrs = lists:map(
+        fun
+            (#devaddr{net_id = Key, protocol = #http_protocol{} = Protocol} = Val) when
+                Key == NetID
+            ->
+                Val#devaddr{protocol = Protocol#http_protocol{protocol_version = ProtocolVersion}};
+            (Val) ->
+                Val
+        end,
+        AllDevAddrs
+    ),
+
+    true = ets:delete_all_objects(?DEVADDR_ETS),
+    true = ets:insert(?DEVADDR_ETS, NewDevAddrs),
+    ok.
 
 -spec update_eui_http_protocol_version(
     NetID :: integer(),
@@ -493,98 +537,15 @@ read_config(Filename) ->
 
 -spec transform_config(list()) -> map().
 transform_config(ConfigList0) ->
-    ConfigList1 = lists:flatten(
-        lists:map(
-            fun transform_config_entry/1,
-            ConfigList0
-        )
+    Entries = pp_config_v2:parse_config(ConfigList0),
+    {DevAddrs, Joins} = lists:partition(
+        fun
+            (#devaddr{}) -> true;
+            (_) -> false
+        end,
+        lists:reverse(Entries)
     ),
-    #{
-        joins => proplists:append_values(joins, ConfigList1),
-        routing => proplists:append_values(routing, ConfigList1)
-    }.
-
--spec transform_config_entry(Entry :: map()) -> proplists:proplist().
-transform_config_entry(Entry) ->
-    #{<<"name">> := Name, <<"net_id">> := NetID0} = Entry,
-    NetID = clean_config_value(NetID0),
-    MultiBuy =
-        case maps:get(<<"multi_buy">>, Entry, null) of
-            null -> unlimited;
-            <<"unlimited">> -> unlimited;
-            Val -> Val
-        end,
-    Joins = maps:get(<<"joins">>, Entry, []),
-
-    DisablePullData =
-        case maps:get(<<"disable_pull_data">>, Entry, false) of
-            null -> false;
-            V1 -> V1
-        end,
-
-    IsActive =
-        case maps:get(<<"active">>, Entry, true) of
-            null -> true;
-            V2 -> V2
-        end,
-
-    Protocol =
-        case maps:get(<<"protocol">>, Entry, ?DEFAULT_PROTOCOL) of
-            <<"udp">> ->
-                try
-                    Address = erlang:binary_to_list(maps:get(<<"address">>, Entry)),
-                    Port = maps:get(<<"port">>, Entry),
-                    {udp, Address, Port}
-                catch
-                    error:{badkey, BadKey} ->
-                        lager:warning(
-                            "could not use defauflt protocol [badkey: ~p] [net_id: ~p]",
-                            [BadKey, NetID]
-                        ),
-                        not_configured
-                end;
-            <<"http">> ->
-                #http_protocol{
-                    endpoint = maps:get(<<"http_endpoint">>, Entry),
-                    flow_type = erlang:binary_to_existing_atom(
-                        maps:get(<<"http_flow_type">>, Entry, ?DEFAULT_HTTP_FLOW_TYPE)
-                    ),
-                    dedupe_timeout = maps:get(
-                        <<"http_dedupe_timeout">>,
-                        Entry,
-                        ?DEFAULT_HTTP_DEDUPE_TIMEOUT
-                    ),
-                    auth_header = maps:get(<<"http_auth_header">>, Entry, null),
-                    protocol_version = get_protocol_version(NetID, Entry)
-                };
-            Other ->
-                throw({invalid_protocol_type, Other})
-        end,
-
-    JoinRecords = lists:map(
-        fun(#{<<"dev_eui">> := DevEUI, <<"app_eui">> := AppEUI}) ->
-            #eui{
-                name = Name,
-                net_id = NetID,
-                protocol = Protocol,
-                multi_buy = MultiBuy,
-                disable_pull_data = DisablePullData,
-                dev_eui = clean_config_value(DevEUI),
-                app_eui = clean_config_value(AppEUI),
-                buying_active = IsActive
-            }
-        end,
-        Joins
-    ),
-    Routing = #devaddr{
-        name = Name,
-        net_id = NetID,
-        protocol = Protocol,
-        multi_buy = MultiBuy,
-        disable_pull_data = DisablePullData,
-        buying_active = IsActive
-    },
-    [{joins, JoinRecords}, {routing, Routing}].
+    #{joins => Joins, routing => DevAddrs}.
 
 -spec get_protocol_version(integer(), map()) -> protocol_version().
 get_protocol_version(NetID, Entry) ->
@@ -612,91 +573,65 @@ write_config_to_ets(Config) ->
     true = ets:insert(?DEVADDR_ETS, Routing),
     ok.
 
--spec write_config_to_disk(string()) -> ok.
-write_config_to_disk(Filename) ->
-    %% NOTE: Filename is fully qualified /var/data/temp_config.json
-    {ok, #{joins := Joins, routing := Routing}} = pp_config:get_config(),
+%% -spec write_config_to_disk(string()) -> ok.
+%% write_config_to_disk(Filename) ->
+%%     %% FIXME: Does not support config_v2 yet.
+%%     %% NOTE: Filename is fully qualified /var/data/temp_config.json
+%%     {ok, #{joins := Joins, routing := Routing}} = pp_config:get_config(),
 
-    CleanEUI = fun
-        ('*') -> '*';
-        (Num) -> pp_utils:hexstring(Num)
-    end,
+%%     CleanEUI = fun
+%%         ('*') -> '*';
+%%         (Num) -> pp_utils:hexstring(Num)
+%%     end,
 
-    MakeJoinMap = fun(#eui{app_eui = App, dev_eui = Dev}) ->
-        #{app_eui => CleanEUI(App), dev_eui => CleanEUI(Dev)}
-    end,
+%%     MakeJoinMap = fun(#eui{app_eui = App, dev_eui = Dev}) ->
+%%         #{app_eui => CleanEUI(App), dev_eui => CleanEUI(Dev)}
+%%     end,
 
-    Config = lists:map(
-        fun(#devaddr{name = Name, net_id = NetID, multi_buy = MultiBuy, protocol = Protocol}) ->
-            BaseMap = #{
-                name => Name,
-                net_id => pp_utils:hexstring(NetID),
-                multi_buy => MultiBuy,
-                joins => [MakeJoinMap(Join) || Join <- Joins, Join#eui.net_id == NetID]
-            },
-            ProtocolMap =
-                case Protocol of
-                    {udp, Address, Port} ->
-                        #{
-                            protocol => udp,
-                            address => erlang:list_to_binary(Address),
-                            port => Port
-                        };
-                    #http_protocol{
-                        endpoint = Endpoint,
-                        flow_type = Flow,
-                        dedupe_timeout = Dedupe,
-                        auth_header = Auth,
-                        protocol_version = ProtocolVersion
-                    } ->
-                        PV =
-                            case ProtocolVersion of
-                                pv_1_0 -> <<"1.0">>;
-                                pv_1_1 -> <<"1.1">>
-                            end,
-                        #{
-                            protocol => http,
-                            http_endpoint => Endpoint,
-                            http_flow_type => Flow,
-                            http_dedupe_timeout => Dedupe,
-                            http_auth_header => Auth,
-                            http_protocol_version => PV
-                        }
-                end,
-            maps:merge(BaseMap, ProtocolMap)
-        end,
-        Routing
-    ),
+%%     Config = lists:map(
+%%         fun(#devaddr{name = Name, net_id = NetID, multi_buy = MultiBuy, protocol = Protocol}) ->
+%%             BaseMap = #{
+%%                 name => Name,
+%%                 net_id => pp_utils:hexstring(NetID),
+%%                 multi_buy => MultiBuy,
+%%                 joins => [MakeJoinMap(Join) || Join <- Joins, Join#eui.net_id == NetID]
+%%             },
+%%             ProtocolMap =
+%%                 case Protocol of
+%%                     {udp, Address, Port} ->
+%%                         #{
+%%                             protocol => udp,
+%%                             address => erlang:list_to_binary(Address),
+%%                             port => Port
+%%                         };
+%%                     #http_protocol{
+%%                         endpoint = Endpoint,
+%%                         flow_type = Flow,
+%%                         dedupe_timeout = Dedupe,
+%%                         auth_header = Auth,
+%%                         protocol_version = ProtocolVersion
+%%                     } ->
+%%                         PV =
+%%                             case ProtocolVersion of
+%%                                 pv_1_0 -> <<"1.0">>;
+%%                                 pv_1_1 -> <<"1.1">>
+%%                             end,
+%%                         #{
+%%                             protocol => http,
+%%                             http_endpoint => Endpoint,
+%%                             http_flow_type => Flow,
+%%                             http_dedupe_timeout => Dedupe,
+%%                             http_auth_header => Auth,
+%%                             http_protocol_version => PV
+%%                         }
+%%                 end,
+%%             maps:merge(BaseMap, ProtocolMap)
+%%         end,
+%%         Routing
+%%     ),
 
-    Bytes = jsx:encode(Config),
-    file:write_file(Filename, Bytes).
-
-%%--------------------------------------------------------------------
-%% @doc
-%% Valid config values include:
-%%   "*"        :: wildcard
-%%   "0x123abc" :: prefixed hex number
-%%   "123abc"   :: hex number
-%%   1337       :: integer
-%%
-%% @end
-%%--------------------------------------------------------------------
--spec clean_config_value(binary()) -> '*' | non_neg_integer().
-clean_config_value(Num) when erlang:is_integer(Num) ->
-    Num;
-clean_config_value(<<"*">>) ->
-    '*';
-clean_config_value(<<"0x", Base16Number/binary>>) ->
-    erlang:binary_to_integer(Base16Number, 16);
-clean_config_value(Bin) ->
-    try erlang:binary_to_integer(Bin, 16) of
-        Num -> Num
-    catch
-        error:_ ->
-            lager:warning("value is not hex: ~p", [Bin]),
-            Bin
-    end.
-%% clean_base16(_) -> throw(malformed_base16).
+%%     Bytes = jsx:encode(Config),
+%%     file:write_file(Filename, Bytes).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -736,20 +671,6 @@ dedupe_udp_matches(Matches) ->
 -ifdef(TEST).
 
 -include_lib("eunit/include/eunit.hrl").
-
-unprefixed_hex_value_test() ->
-    lists:foreach(
-        fun(<<"0x", Inner/binary>> = X) ->
-            ?assertEqual(clean_config_value(Inner), clean_config_value(X))
-        end,
-        [
-            <<"0x0018b24441524632">>,
-            <<"0xF03D29AC71010002">>,
-            <<"0xf03d29ac71010002">>,
-            <<"0x20635f000300000f">>
-        ]
-    ),
-    ok.
 
 join_eui_to_net_id_test() ->
     ok = pp_config:init_ets(),

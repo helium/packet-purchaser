@@ -90,7 +90,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
             lists:foreach(
                 fun(Match) ->
                     case Match of
-                        #{net_id := NetID, protocol := {udp, _, _}} = WorkerArgs ->
+                        #{net_id := NetID, protocol := {udp, _, _} = Protocol} = WorkerArgs ->
                             case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs) of
                                 {ok, WorkerPid} ->
                                     lager:debug(
@@ -114,7 +114,13 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                                         PacketTime,
                                         PacketType
                                     ),
-                                    pp_udp_worker:push_data(WorkerPid, SCPacket, PacketTime, Pid);
+                                    pp_udp_worker:push_data(
+                                        WorkerPid,
+                                        SCPacket,
+                                        PacketTime,
+                                        Pid,
+                                        Protocol
+                                    );
                                 {error, worker_not_started} = Err ->
                                     lager:error(
                                         [{packet_type, PacketType}, {net_id, NetID}],
@@ -123,9 +129,9 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                                     ),
                                     Err
                             end;
-                        #{net_id := NetID, protocol := #http_protocol{flow_type = FlowType}} = Args ->
+                        #{net_id := NetID, protocol := #http_protocol{} = Protocol} = Args ->
                             PHash = blockchain_helium_packet_v1:packet_hash(Packet),
-                            case pp_http_sup:maybe_start_worker({NetID, PHash}, Args) of
+                            case pp_http_sup:maybe_start_worker({NetID, PHash, Protocol}, Args) of
                                 {error, worker_not_started, _} = Err ->
                                     lager:error(
                                         [{packet_type, PacketType}, {net_id, NetID}],
@@ -144,7 +150,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                                         [PacketType, RoutingInfo, NetID]
                                     ),
                                     ProtocolType =
-                                        case FlowType of
+                                        case Protocol#http_protocol.flow_type of
                                             sync -> http_sync;
                                             async -> http_async
                                         end,

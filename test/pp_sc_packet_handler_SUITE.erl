@@ -15,6 +15,7 @@
     net_ids_no_config_test/1,
     single_hotspot_multi_net_id_test/1,
     config_inactive_test/1,
+    udp_change_location_test/1,
     multi_buy_join_test/1,
     multi_buy_packet_test/1,
     multi_buy_eviction_test/1,
@@ -43,7 +44,8 @@
     udp_multiple_joins_test/1,
     udp_multiple_joins_same_dest_test/1,
     http_multiple_joins_test/1,
-    http_multiple_joins_same_dest_test/1
+    http_multiple_joins_same_dest_test/1,
+    http_overlapping_devaddr_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -98,6 +100,7 @@ all() ->
         single_hotspot_multi_net_id_test,
         config_inactive_test,
         multi_buy_join_test,
+        udp_change_location_test,
         multi_buy_packet_test,
         multi_buy_eviction_test,
         %%
@@ -135,7 +138,8 @@ groups() ->
             udp_multiple_joins_test,
             udp_multiple_joins_same_dest_test,
             http_multiple_joins_test,
-            http_multiple_joins_same_dest_test
+            http_multiple_joins_same_dest_test,
+            http_overlapping_devaddr_test
         ]}
     ].
 
@@ -341,6 +345,7 @@ http_protocol_version_test(_Config) ->
 
     %% Responses are whatever version was sent to us.
     Token = pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', 1234),
+    ok = pp_config:insert_transaction_id(2177, <<"http://127.0.0.1:3002">>, sync),
     SendDownlinkWithVersion = fun(ProtocolVersion) ->
         DownlinkBody = #{
             <<"ProtocolVersion">> => ProtocolVersion,
@@ -466,6 +471,55 @@ http_multiple_joins_same_dest_test(_Config) ->
 
     ok.
 
+http_overlapping_devaddr_test(_Config) ->
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, ?DEVADDR_COMCAST, 0, #{
+        dont_encode => true
+    }),
+
+    DevAddrRangeSingle = #{<<"lower">> => <<"0x45000042">>, <<"upper">> => <<"0x45000042">>},
+    DevAddrInRange = #{<<"lower">> => <<"0x45000040">>, <<"upper">> => <<"0x45000044">>},
+
+    %% Overlapping Devaddrs, but going to different endpoints
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_COMCAST,
+            <<"configs">> => [
+                #{
+                    <<"protocol">> => <<"http">>,
+                    <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+                    <<"http_dedupe_timeout">> => 50,
+                    <<"joins">> => [],
+                    <<"devaddrs">> => [DevAddrRangeSingle]
+                },
+                #{
+                    <<"protocol">> => <<"http">>,
+                    <<"http_endpoint">> => <<"http://127.0.0.1:3003/uplink">>,
+                    <<"http_dedupe_timeout">> => 50,
+                    <<"joins">> => [],
+                    <<"devaddrs">> => [DevAddrInRange]
+                }
+            ]
+        }
+    ]),
+
+    ok = start_uplink_listener(#{port => 3002}),
+    ok = start_uplink_listener(#{port => 3003}),
+    ok = pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+
+    {ok, #{<<"ReceiverID">> := ReceiverOne}, _, _} = pp_lns:http_rcv(),
+    {ok, #{<<"ReceiverID">> := ReceiverTwo}, _, _} = pp_lns:http_rcv(),
+    ok = pp_lns:not_http_rcv(250),
+
+    %% Receiver ID must be the same because DevAddr is explicitly partitioned by
+    %% NetID, unlike Join EUI. And we got 2 requests.
+    ?assertEqual(ReceiverOne, ReceiverTwo),
+
+    ok.
+
 http_sync_uplink_join_test(_Config) ->
     %% One Gateway is going to be sending all the packets.
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
@@ -504,11 +558,16 @@ http_sync_uplink_join_test(_Config) ->
         #{
             <<"name">> => <<"test">>,
             <<"net_id">> => ?NET_ID_ACTILITY,
-            <<"protocol">> => <<"http">>,
-            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
-            <<"http_flow_type">> => <<"sync">>,
-            <<"joins">> => [
-                #{<<"dev_eui">> => DevEUI, <<"app_eui">> => AppEUI}
+            <<"configs">> => [
+                #{
+                    <<"protocol">> => <<"http">>,
+                    <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+                    <<"http_flow_type">> => <<"sync">>,
+                    <<"joins">> => [
+                        #{<<"dev_eui">> => DevEUI, <<"app_eui">> => AppEUI}
+                    ],
+                    <<"devaddrs">> => []
+                }
             ]
         }
     ]),
@@ -764,6 +823,7 @@ http_sync_downlink_test(_Config) ->
         }
     },
 
+    ok = pp_config:insert_transaction_id(23, <<"http://127.0.0.1:3002/uplink">>, sync),
     ok = pp_config:load_config([
         #{
             <<"name">> => <<"test">>,
@@ -829,6 +889,7 @@ http_async_downlink_test(_Config) ->
 
     %% 2. insert sc handler and config
     ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+    ok = pp_config:insert_transaction_id(23, <<"http://127.0.0.1:3002/uplink">>, async),
     ok = pp_config:load_config([
         #{
             <<"name">> => <<"test">>,
@@ -945,6 +1006,7 @@ http_class_c_downlink_test(_Config) ->
 
     %% 2. insert sc handler and config
     ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+    ok = pp_config:insert_transaction_id(2176, <<"http://127.0.0.1:3002/uplink">>, async),
     ok = pp_config:load_config([
         #{
             <<"name">> => <<"test">>,
@@ -1081,7 +1143,8 @@ http_uplink_packet_no_roaming_agreement_test(_Config) ->
             <<"name">> => <<"test">>,
             <<"net_id">> => ?NET_ID_ACTILITY,
             <<"protocol">> => <<"http">>,
-            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+            <<"http_flow_type">> => <<"sync">>
         }
     ]),
     {ok, SCPacket, GatewayTime} = SendPacketFun(?DEVADDR_ACTILITY, 0),
@@ -1165,7 +1228,8 @@ http_uplink_packet_test(_Config) ->
             <<"name">> => <<"test">>,
             <<"net_id">> => ?NET_ID_ACTILITY,
             <<"protocol">> => <<"http">>,
-            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+            <<"http_flow_type">> => <<"sync">>
         }
     ]),
     {ok, SCPacket, GatewayTime} = SendPacketFun(?DEVADDR_ACTILITY),
@@ -1251,7 +1315,8 @@ http_uplink_packet_late_test(_Config) ->
             <<"net_id">> => ?NET_ID_ACTILITY,
             <<"protocol">> => <<"http">>,
             <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
-            <<"http_dedupe_timeout">> => 10
+            <<"http_dedupe_timeout">> => 10,
+            <<"http_flow_type">> => <<"sync">>
         }
     ]),
     {ok, SCPacket, GatewayTime} = SendPacketFun(PubKeyBin1, ?DEVADDR_ACTILITY),
@@ -1629,6 +1694,51 @@ multi_buy_join_test(_Config) ->
         end,
         lists:seq(1, 100)
     ),
+
+    ok.
+
+udp_change_location_test(_Config) ->
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    SendPacketFun = fun(DevAddr, NetID) ->
+        Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{
+            dont_encode => true
+        }),
+        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+
+        {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
+        get_udp_worker_address_port(Pid)
+    end,
+
+    %% Load a config,
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_COMCAST,
+            <<"address">> => <<"3.3.3.3">>,
+            <<"port">> => 3333,
+            <<"multi_buy">> => 1,
+            <<"joins">> => []
+        }
+    ]),
+    %% grab the worker and make sure it's pointed in the right direction
+    ?assertMatch({"3.3.3.3", 3333}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
+    ?assertMatch({"3.3.3.3", 3333}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
+
+    %% Reload the config, different dest
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_COMCAST,
+            <<"address">> => <<"4.4.4.4">>,
+            <<"port">> => 4444,
+            <<"multi_buy">> => 1,
+            <<"joins">> => []
+        }
+    ]),
+    %% grab the worker and make sure it's pointed in the right direction
+    ?assertMatch({"4.4.4.4", 4444}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
 
     ok.
 
