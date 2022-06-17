@@ -90,7 +90,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
             lists:foreach(
                 fun(Match) ->
                     case Match of
-                        #{net_id := NetID, protocol := {udp, _, _}} = WorkerArgs ->
+                        #{net_id := NetID, protocol := {udp, _, _} = Protocol} = WorkerArgs ->
                             case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs) of
                                 {ok, WorkerPid} ->
                                     lager:debug(
@@ -114,7 +114,13 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                                         PacketTime,
                                         PacketType
                                     ),
-                                    pp_udp_worker:push_data(WorkerPid, SCPacket, PacketTime, Pid);
+                                    pp_udp_worker:push_data(
+                                        WorkerPid,
+                                        SCPacket,
+                                        PacketTime,
+                                        Pid,
+                                        Protocol
+                                    );
                                 {error, worker_not_started} = Err ->
                                     lager:error(
                                         [{packet_type, PacketType}, {net_id, NetID}],

@@ -280,37 +280,6 @@ load_config(ConfigList) ->
     true = ets:insert(?EUI_ETS, Joins),
     true = ets:insert(?DEVADDR_ETS, DevAddrs),
 
-    %% {ok, PrevConfig} = ?MODULE:get_config(),
-    %% Config = ?MODULE:transform_config(ConfigList),
-
-    %% ok = ?MODULE:reset_config(),
-
-    %% #{joins := Joins, routing := Routing} = Config,
-    %% true = ets:insert(?EUI_ETS, Joins),
-    %% true = ets:insert(?DEVADDR_ETS, Routing),
-    %% ok.
-    %% %% ok = ?MODULE:write_config_to_ets(Config),
-
-    %% #{routing := PrevRouting} = PrevConfig,
-    %% #{routing := CurrRouting} = Config,
-
-    %% ok = lists:foreach(
-    %%     fun(#devaddr{net_id = NetID, protocol = Protocol} = CurrEntry) ->
-    %%         case lists:keyfind(NetID, #devaddr.net_id, PrevRouting) of
-    %%             %% Added
-    %%             false ->
-    %%                 ok;
-    %%             CurrEntry ->
-    %%                 %% Unchanged
-    %%                 ok;
-    %%             _ExistingEntry ->
-    %%                 %% Updated
-    %%                 ok = update_udp_workers(NetID, Protocol)
-    %%         end
-    %%     end,
-    %%     CurrRouting
-    %% ),
-
     ok.
 
 -spec reload_config_from_file(Filename :: string()) -> ok.
@@ -345,18 +314,6 @@ delete_udp_worker(Pid) ->
     %% There should only be 1 Pid for net_id
     1 = ets:select_delete(?UDP_WORKER_ETS, Spec),
     ok.
-
-%% -spec lookup_udp_workers_for_net_id(NetID :: integer()) -> list(pid()).
-%% lookup_udp_workers_for_net_id(NetID) ->
-%%     [P || {_, P} <- ets:lookup(?UDP_WORKER_ETS, NetID)].
-
-%% -spec update_udp_workers(NetID :: integer(), Protocol :: udp_protocol() | http_protocol()) -> ok.
-%% update_udp_workers(NetID, Protocol) ->
-%%     [
-%%         pp_udp_worker:update_address(WorkerPid, Protocol)
-%%         || WorkerPid <- lookup_udp_workers_for_net_id(NetID)
-%%     ],
-%%     ok.
 
 -spec start_buying(NetIDs :: [integer()]) -> ok | {error, any()}.
 start_buying([]) ->

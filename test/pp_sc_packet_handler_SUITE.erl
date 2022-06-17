@@ -15,6 +15,7 @@
     net_ids_no_config_test/1,
     single_hotspot_multi_net_id_test/1,
     config_inactive_test/1,
+    udp_change_location_test/1,
     multi_buy_join_test/1,
     multi_buy_packet_test/1,
     multi_buy_eviction_test/1,
@@ -99,6 +100,7 @@ all() ->
         single_hotspot_multi_net_id_test,
         config_inactive_test,
         multi_buy_join_test,
+        udp_change_location_test,
         multi_buy_packet_test,
         multi_buy_eviction_test,
         %%
@@ -1692,6 +1694,51 @@ multi_buy_join_test(_Config) ->
         end,
         lists:seq(1, 100)
     ),
+
+    ok.
+
+udp_change_location_test(_Config) ->
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    SendPacketFun = fun(DevAddr, NetID) ->
+        Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{
+            dont_encode => true
+        }),
+        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+
+        {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
+        get_udp_worker_address_port(Pid)
+    end,
+
+    %% Load a config,
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_COMCAST,
+            <<"address">> => <<"3.3.3.3">>,
+            <<"port">> => 3333,
+            <<"multi_buy">> => 1,
+            <<"joins">> => []
+        }
+    ]),
+    %% grab the worker and make sure it's pointed in the right direction
+    ?assertMatch({"3.3.3.3", 3333}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
+    ?assertMatch({"3.3.3.3", 3333}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
+
+    %% Reload the config, different dest
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => "test",
+            <<"net_id">> => ?NET_ID_COMCAST,
+            <<"address">> => <<"4.4.4.4">>,
+            <<"port">> => 4444,
+            <<"multi_buy">> => 1,
+            <<"joins">> => []
+        }
+    ]),
+    %% grab the worker and make sure it's pointed in the right direction
+    ?assertMatch({"4.4.4.4", 4444}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
 
     ok.
 
