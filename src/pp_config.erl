@@ -547,25 +547,6 @@ transform_config(ConfigList0) ->
     ),
     #{joins => Joins, routing => DevAddrs}.
 
--spec get_protocol_version(integer(), map()) -> protocol_version().
-get_protocol_version(NetID, Entry) ->
-    Forces = application:get_env(packet_purchaser, force_net_id_protocol_version, #{}),
-    case maps:get(NetID, Forces, undefined) of
-        undefined ->
-            case
-                maps:get(
-                    <<"http_protocol_version">>,
-                    Entry,
-                    ?DEFAULT_HTTP_PROTOCOL_VERSION
-                )
-            of
-                <<"1.0">> -> pv_1_0;
-                <<"1.1">> -> pv_1_1
-            end;
-        Val ->
-            Val
-    end.
-
 -spec write_config_to_ets(map()) -> ok.
 write_config_to_ets(Config) ->
     #{joins := Joins, routing := Routing} = Config,
