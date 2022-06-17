@@ -90,7 +90,7 @@ eui_from_configs(Name, NetID, Configs) ->
                 #{<<"joins">> := EUIs} = Entry,
                 BuyingActive = get_buying_active(Entry),
                 MultiBuy = get_multi_buy(Entry),
-                Protocol = get_protocol(Entry),
+                Protocol = get_protocol(NetID, Entry),
                 lists:map(
                     fun(#{<<"dev_eui">> := DevBin, <<"app_eui">> := AppBin}) ->
                         #eui{
@@ -128,7 +128,7 @@ devaddr_from_configs(Name, NetID, Configs) ->
                 #{<<"devaddrs">> := DevAddrs} = Entry,
                 BuyingActive = maps:get(<<"active">>, Entry, ?DEFAULT_ACTIVE),
                 MultiBuy = get_multi_buy(Entry),
-                Protocol = get_protocol(Entry),
+                Protocol = get_protocol(NetID, Entry),
                 lists:map(
                     fun(#{<<"lower">> := Lower, <<"upper">> := Upper}) ->
                         #devaddr{
@@ -150,19 +150,27 @@ devaddr_from_configs(Name, NetID, Configs) ->
         )
     ).
 
-get_protocol(#{
+get_protocol(NetID, #{
     <<"protocol_version">> := PV,
     <<"http_auth_header">> := AuthHeader,
     <<"http_dedupe_timeout">> := DedupeTimeout,
     <<"http_endpoint">> := Endpoint,
     <<"http_flow_type">> := FT
 }) ->
+    Forces = application:get_env(packet_purchaser, force_net_id_protocol_version, #{}),
+    ProtocolVersion =
+        case maps:get(NetID, Forces, undefined) of
+            undefined ->
+                case PV of
+                    <<"1.0">> -> pv_1_0;
+                    <<"1.1">> -> pv_1_1
+                end;
+            V ->
+                V
+        end,
+
     #http_protocol{
-        protocol_version =
-            case PV of
-                <<"1.0">> -> pv_1_0;
-                <<"1.1">> -> pv_1_1
-            end,
+        protocol_version = ProtocolVersion,
         auth_header = AuthHeader,
         dedupe_timeout = DedupeTimeout,
         endpoint = Endpoint,
@@ -172,9 +180,15 @@ get_protocol(#{
                 <<"sync">> -> sync
             end
     };
-get_protocol(#{<<"http_endpoint">> := Endpoint} = Entry) ->
+get_protocol(NetID, #{<<"http_endpoint">> := Endpoint} = Entry) ->
+    Forces = application:get_env(packet_purchaser, force_net_id_protocol_version, #{}),
+    ProtocolVersion =
+        case maps:get(NetID, Forces, undefined) of
+            undefined -> maps:get(<<"http_protocol_version">>, Entry, ?DEFAULT_PROTOCOL_VERSION);
+            V -> V
+        end,
     #http_protocol{
-        protocol_version = maps:get(<<"http_protocol_version">>, Entry, ?DEFAULT_PROTOCOL_VERSION),
+        protocol_version = ProtocolVersion,
         auth_header = maps:get(<<"http_auth_header">>, Entry, null),
         dedupe_timeout = maps:get(<<"http_dedupe_timeout">>, Entry, ?DEFAULT_DEDUPE_TIMEOUT),
         endpoint = Endpoint,
@@ -184,9 +198,9 @@ get_protocol(#{<<"http_endpoint">> := Endpoint} = Entry) ->
                 <<"sync">> -> sync
             end
     };
-get_protocol(#{<<"address">> := UDPAddress, <<"port">> := UDPPort}) ->
+get_protocol(_NetID, #{<<"address">> := UDPAddress, <<"port">> := UDPPort}) ->
     #udp{address = erlang:binary_to_list(UDPAddress), port = UDPPort};
-get_protocol(#{}) ->
+get_protocol(_NetID, #{}) ->
     not_configured.
 
 %%--------------------------------------------------------------------

@@ -190,6 +190,9 @@ send_data(#state{
         end,
 
     case hackney:post(Address, Headers, Data1, [with_body]) of
+        {ok, 200, _Headers, <<>>} ->
+            lager:info("~p empty response [flow_type: ~p]", [NetID, FlowType]),
+            ok;
         {ok, 200, _Headers, Res} ->
             case FlowType of
                 sync ->

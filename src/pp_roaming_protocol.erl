@@ -77,7 +77,7 @@ new_packet(SCPacket, GatewayTime) ->
     }.
 
 -spec make_uplink_payload(netid_num(), list(packet()), integer(), pv_1_0 | pv_1_1) -> prstart_req().
-make_uplink_payload(NetID, Uplinks, TransactionID, ProtocolVersion0) ->
+make_uplink_payload(NetID, Uplinks, TransactionID, ProtocolVersion) ->
     #packet{sc_packet = SCPacket, gateway_time = GatewayTime} = select_best(Uplinks),
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
@@ -97,14 +97,13 @@ make_uplink_payload(NetID, Uplinks, TransactionID, ProtocolVersion0) ->
         end,
 
     Token = make_uplink_token(PubKeyBin, Region, PacketTime),
-    ProtocolVersion =
-        case ProtocolVersion0 of
-            pv_1_0 -> <<"1.0">>;
-            pv_1_1 -> <<"1.1">>
+    VersionBase =
+        case ProtocolVersion of
+            pv_1_0 -> #{'ProtocolVersion' => <<"1.0">>};
+            pv_1_1 -> #{'ProtocolVersion' => <<"1.1">>, 'SenderNSID' => <<"">>}
         end,
 
-    #{
-        'ProtocolVersion' => ProtocolVersion,
+    VersionBase#{
         'SenderID' => <<"0xC00053">>,
         'ReceiverID' => pp_utils:hexstring(NetID),
         'TransactionID' => TransactionID,

@@ -52,7 +52,8 @@
     net_id/1,
     name/1,
     multi_buy/1,
-    buying_active/1
+    buying_active/1,
+    protocol/1
 ]).
 
 %% downlink response ets
@@ -389,6 +390,10 @@ multi_buy(#devaddr{multi_buy = MB}) ->
 -spec buying_active(#devaddr{}) -> boolean().
 buying_active(#devaddr{buying_active = Active}) ->
     Active.
+
+-spec protocol(#devaddr{}) -> #http_protocol{}.
+protocol(#devaddr{protocol = P}) ->
+    P.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
