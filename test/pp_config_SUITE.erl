@@ -49,61 +49,108 @@ end_per_testcase(_TestCase, _Config) ->
 unfilled_config_test(_Config) ->
     pp_config:load_config([
         #{
-            <<"active">> => false,
-            <<"joins">> => [],
-            <<"multi_buy">> => 0,
             <<"name">> => <<"Test Onboarding">>,
             <<"net_id">> => 1234,
-            <<"organization_id">> => <<"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee">>
+            <<"configs">> => [
+                #{
+                    <<"joins">> => [],
+                    <<"devaddrs">> => [],
+                    <<"active">> => false,
+                    <<"multi_buy">> => 0,
+
+                    <<"protocol">> => <<"http">>,
+                    <<"protocol_version">> => <<"1.1">>,
+                    <<"http_auth_header">> => null,
+                    <<"http_dedupe_timeout">> => 500,
+                    <<"http_endpoint">> => <<>>,
+                    <<"http_flow_type">> => <<"async">>
+                }
+            ]
         }
     ]),
 
     ok.
 
 lookup_join_multiple_configurations_test(_Config) ->
-    DevEUI = <<0, 0, 0, 0, 0, 0, 0, 1>>,
-    AppEUI = <<0, 0, 0, 2, 0, 0, 0, 1>>,
+    DevEUI = <<"0x0000000000000001">>,
+    AppEUI = <<"0x0000000000000002">>,
+
+    DevEUINum = pp_config_v2:hex_to_num(DevEUI),
+    AppEUINum = pp_config_v2:hex_to_num(AppEUI),
+
     pp_config:load_config([
         #{
-            <<"multi_buy">> => 0,
             <<"name">> => <<"Test Onboarding">>,
             <<"net_id">> => 1234,
-            <<"joins">> => [
-                #{<<"dev_eui">> => DevEUI, <<"app_eui">> => AppEUI}
+            <<"configs">> => [
+                #{
+                    <<"active">> => false,
+                    <<"multi_buy">> => 0,
+                    <<"joins">> => [
+                        #{<<"dev_eui">> => DevEUI, <<"app_eui">> => AppEUI}
+                    ],
+                    <<"devaddrs">> => []
+                }
             ]
         }
     ]),
     %% 1 bad result, return the error
     ?assertMatch(
         {error, {not_configured, 1234}},
-        pp_config:lookup_eui({eui, DevEUI, AppEUI})
+        pp_config:lookup_eui({eui, DevEUINum, AppEUINum})
     ),
 
     %% One valid, one invalid roamer for join
     pp_config:load_config([
         #{
-            <<"multi_buy">> => 0,
             <<"name">> => <<"Test Onboarding">>,
             <<"net_id">> => 1234,
-            <<"joins">> => [
-                #{<<"dev_eui">> => DevEUI, <<"app_eui">> => AppEUI}
+            <<"configs">> => [
+                #{
+                    <<"active">> => false,
+                    <<"multi_buy">> => 0,
+                    <<"joins">> => [
+                        #{<<"dev_eui">> => DevEUI, <<"app_eui">> => AppEUI}
+                    ],
+                    <<"devaddrs">> => [],
+                    %%
+                    <<"protocol">> => <<"http">>,
+                    <<"protocol_version">> => <<"1.1">>,
+                    <<"http_auth_header">> => null,
+                    <<"http_dedupe_timeout">> => 500,
+                    <<"http_endpoint">> => <<>>,
+                    <<"http_flow_type">> => <<"async">>
+                }
             ]
         },
         #{
             <<"name">> => "test",
             <<"net_id">> => 5678,
-            <<"address">> => <<"3.3.3.3">>,
-            <<"port">> => 3333,
-            <<"multi_buy">> => 1,
-            <<"joins">> => [
-                #{<<"dev_eui">> => DevEUI, <<"app_eui">> => AppEUI}
+            <<"configs">> => [
+                #{
+                    <<"active">> => true,
+                    <<"address">> => <<"3.3.3.3">>,
+                    <<"port">> => 3333,
+                    <<"multi_buy">> => 1,
+                    <<"joins">> => [
+                        #{<<"dev_eui">> => DevEUI, <<"app_eui">> => AppEUI}
+                    ],
+                    <<"devaddrs">> => [],
+                    %%
+                    <<"protocol">> => <<"http">>,
+                    <<"protocol_version">> => <<"1.1">>,
+                    <<"http_auth_header">> => null,
+                    <<"http_dedupe_timeout">> => 500,
+                    <<"http_endpoint">> => <<>>,
+                    <<"http_flow_type">> => <<"async">>
+                }
             ]
         }
     ]),
     %% 1 bad result, 1 good result, return good result
     ?assertMatch(
         {ok, [#{net_id := 5678}]},
-        pp_config:lookup_eui({eui, DevEUI, AppEUI})
+        pp_config:lookup_eui({eui, DevEUINum, AppEUINum})
     ),
 
     ok.

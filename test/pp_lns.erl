@@ -280,16 +280,16 @@ handle(Req, Args) ->
 handle('POST', [<<"downlink">>], Req, Args) ->
     Forward = maps:get(forward, Args),
     Body = elli_request:body(Req),
-    Decoded = jsx:decode(Body),
+    #{<<"TransactionID">> := TransactionID} = Decoded = jsx:decode(Body),
 
-    SenderNetIDBin = maps:get(<<"SenderID">>, Decoded),
-    SenderNetID = pp_utils:hexstring_to_int(SenderNetIDBin),
+    %% SenderNetIDBin = maps:get(<<"SenderID">>, Decoded),
+    %% SenderNetID = pp_utils:hexstring_to_int(SenderNetIDBin),
     FlowType =
-        case pp_config:lookup_netid(SenderNetID) of
-            {ok, #{protocol := Protocol}} ->
-                Protocol#http_protocol.flow_type;
+        case pp_config:lookup_transaction_id(TransactionID) of
+            {ok, _Endpoint, FT} ->
+                FT;
             {error, _} ->
-                Forward ! {http_downlink_data_error, {config_not_found, SenderNetIDBin}}
+                Forward ! {http_downlink_data_error, transaction_id_not_found}
         end,
 
     case FlowType of
@@ -311,13 +311,11 @@ handle('POST', [<<"downlink">>], Req, Args) ->
 handle('POST', [<<"uplink">>], Req, Args) ->
     Forward = maps:get(forward, Args),
     Body = elli_request:body(Req),
-    Decoded = jsx:decode(Body),
+    #{<<"TransactionID">> := TransactionID} = jsx:decode(Body),
 
-    ReceiverNetIDBin = maps:get(<<"ReceiverID">>, Decoded),
-    ReceiverNetID = pp_utils:hexstring_to_int(ReceiverNetIDBin),
-    {ok, #{protocol := #http_protocol{flow_type = FlowType}}} = pp_config:lookup_netid(
-        ReceiverNetID
-    ),
+    %% ReceiverNetIDBin = maps:get(<<"ReceiverID">>, Decoded),
+    %% ReceiverNetID = pp_utils:hexstring_to_int(ReceiverNetIDBin),
+    {ok, _, FlowType} = pp_config:lookup_transaction_id(TransactionID),
 
     ResponseBody =
         case maps:get(response, Args, undefined) of
@@ -354,7 +352,7 @@ handle('POST', [<<"uplink">>], Req, Args) ->
 
 handle_event(_Event, _Data, _Args) ->
     %% uncomment for Elli errors.
-    %% ct:print("Elli Event (~p):~nData~n~p~nArgs~n~p", [_Event, _Data, _Args]),
+    ct:print("Elli Event (~p):~nData~n~p~nArgs~n~p", [_Event, _Data, _Args]),
     ok.
 
 make_response_body(#{

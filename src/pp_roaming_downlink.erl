@@ -30,15 +30,15 @@ handle(Req, Args) ->
 
     lager:debug("request: ~p", [{Method, elli_request:path(Req), Req, Args}]),
     Body = elli_request:body(Req),
-    Decoded = jsx:decode(Body),
+    #{<<"TransactionID">> := TransactionID} = Decoded = jsx:decode(Body),
 
-    SenderNetIDBin = maps:get(<<"SenderID">>, Decoded),
-    SenderNetID = pp_utils:hexstring_to_int(SenderNetIDBin),
-    case pp_config:lookup_netid(SenderNetID) of
+    %% SenderNetIDBin = maps:get(<<"SenderID">>, Decoded),
+    %% SenderNetID = pp_utils:hexstring_to_int(SenderNetIDBin),
+    case pp_config:lookup_transaction_id(TransactionID) of
         {error, routing_not_found} ->
             lager:error("received message for partner not configured: ~p", [Decoded]),
             {500, [], <<"An error occured">>};
-        {ok, #{protocol := #http_protocol{endpoint = Endpoint, flow_type = FlowType}}} ->
+        {ok, Endpoint, FlowType} ->
             case pp_roaming_protocol:handle_message(Decoded) of
                 ok ->
                     {200, [], <<"OK">>};
