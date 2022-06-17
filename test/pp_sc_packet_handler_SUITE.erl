@@ -587,6 +587,7 @@ http_sync_uplink_join_test(_Config) ->
     {ok, #{<<"TransactionID">> := TransactionID}, _, {200, RespBody}} = pp_lns:http_rcv(
         #{
             <<"ProtocolVersion">> => <<"1.1">>,
+            <<"SenderNSID">> => fun erlang:is_binary/1,
             <<"TransactionID">> => fun erlang:is_number/1,
             <<"SenderID">> => <<"0xC00053">>,
             <<"ReceiverID">> => ?NET_ID_ACTILITY_BIN,
@@ -722,6 +723,7 @@ http_async_uplink_join_test(_Config) ->
     %% 4. Roamer receive http uplink
     {ok, #{<<"TransactionID">> := TransactionID}} = roamer_expect_uplink_data(#{
         <<"ProtocolVersion">> => <<"1.1">>,
+        <<"SenderNSID">> => fun erlang:is_binary/1,
         <<"TransactionID">> => fun erlang:is_number/1,
         <<"SenderID">> => <<"0xC00053">>,
         <<"ReceiverID">> => ?NET_ID_ACTILITY_BIN,
@@ -1156,6 +1158,7 @@ http_uplink_packet_no_roaming_agreement_test(_Config) ->
     {ok, _Data, _, {200, _RespBody}} = pp_lns:http_rcv(
         #{
             <<"ProtocolVersion">> => <<"1.1">>,
+            <<"SenderNSID">> => fun erlang:is_binary/1,
             <<"TransactionID">> => fun erlang:is_number/1,
             <<"SenderID">> => <<"0xC00053">>,
             <<"ReceiverID">> => ?NET_ID_ACTILITY_BIN,
@@ -1240,6 +1243,7 @@ http_uplink_packet_test(_Config) ->
     {ok, _Data, _, {200, _RespBody}} = pp_lns:http_rcv(
         #{
             <<"ProtocolVersion">> => <<"1.1">>,
+            <<"SenderNSID">> => fun erlang:is_binary/1,
             <<"TransactionID">> => fun erlang:is_number/1,
             <<"SenderID">> => <<"0xC00053">>,
             <<"ReceiverID">> => ?NET_ID_ACTILITY_BIN,
@@ -1331,6 +1335,7 @@ http_uplink_packet_late_test(_Config) ->
     {ok, _Data, _, {200, _RespBody}} = pp_lns:http_rcv(
         #{
             <<"ProtocolVersion">> => <<"1.1">>,
+            <<"SenderNSID">> => fun erlang:is_binary/1,
             <<"TransactionID">> => fun erlang:is_number/1,
             <<"SenderID">> => <<"0xC00053">>,
             <<"ReceiverID">> => ?NET_ID_ACTILITY_BIN,
@@ -1417,6 +1422,7 @@ http_multiple_gateways_test(_Config) ->
 
     {ok, _Data, _, {200, _RespBody}} = pp_lns:http_rcv(#{
         <<"ProtocolVersion">> => <<"1.1">>,
+        <<"SenderNSID">> => fun erlang:is_binary/1,
         <<"TransactionID">> => fun erlang:is_number/1,
         <<"SenderID">> => <<"0xC00053">>,
         <<"ReceiverID">> => ?NET_ID_ACTILITY_BIN,
