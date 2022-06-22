@@ -9,7 +9,7 @@
 -export([
     unfilled_config_test/1,
     lookup_join_multiple_configurations_test/1,
-    default_net_id_protocol_version_test/1
+    default_net_id_protocol_version_test/1,start_buying_inactive_config_ignore_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -29,7 +29,8 @@ all() ->
     [
         unfilled_config_test,
         lookup_join_multiple_configurations_test,
-        default_net_id_protocol_version_test
+        default_net_id_protocol_version_test,
+    start_buying_inactive_config_ignore_test
     ].
 
 %%--------------------------------------------------------------------
@@ -48,6 +49,15 @@ end_per_testcase(_TestCase, _Config) ->
 %%--------------------------------------------------------------------
 %% TEST CASES
 %%--------------------------------------------------------------------
+
+start_buying_inactive_config_ignore_test(_Config) ->
+    pp_config:load_config([]),
+
+    pp_config:start_buying([1234]),
+
+    ?assertEqual({error, not_buying}, pp_config:lookup_netid(1234)),
+
+    ok.
 
 unfilled_config_test(_Config) ->
     pp_config:load_config([
