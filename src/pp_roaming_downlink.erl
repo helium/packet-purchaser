@@ -1,7 +1,7 @@
 -module(pp_roaming_downlink).
 
 -include_lib("elli/include/elli.hrl").
--include("http_protocol.hrl").
+-include("config.hrl").
 
 -behaviour(elli_handler).
 

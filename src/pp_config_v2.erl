@@ -1,48 +1,10 @@
 -module(pp_config_v2).
 
--include("http_protocol.hrl").
+-include("config.hrl").
 
 -export([parse_config/1]).
 
 -export([hex_to_num/1]).
-
--define(DEFAULT_ACTIVE, true).
--define(DEFAULT_MULTI_BUY, unlimited).
--define(DEFAULT_PROTOCOL_VERSION, pv_1_1).
--define(DEFAULT_DEDUPE_TIMEOUT, 200).
--define(DEFAULT_FLOW_TYPE, <<"sync">>).
-
--record(udp, {
-    address :: string(),
-    port :: non_neg_integer()
-}).
-
--type protocol() :: not_configured | #http_protocol{} | #udp{}.
-
--record(eui, {
-    name :: undefined | binary(),
-    net_id :: non_neg_integer(),
-    multi_buy :: unlimited | non_neg_integer(),
-    dev_eui :: '*' | non_neg_integer(),
-    app_eui :: non_neg_integer(),
-    buying_active = true :: boolean(),
-    protocol :: protocol(),
-    %% TODO remove eventually
-    disable_pull_data = false :: boolean(),
-    ignore_disable = false :: boolean()
-}).
-
--record(devaddr, {
-    name :: undefined | binary(),
-    net_id :: non_neg_integer(),
-    multi_buy :: unlimited | non_neg_integer(),
-    buying_active = true :: boolean(),
-    addr :: {range, integer(), integer()},
-    protocol :: protocol(),
-    %% TODO remove eventually
-    disable_pull_data = false :: boolean(),
-    ignore_disable = false :: boolean()
-}).
 
 -spec parse_config(list(map())) -> list(#devaddr{} | #eui{}).
 parse_config(Configs) ->
@@ -100,6 +62,7 @@ eui_from_configs(Name, NetID, Configs) ->
                             dev_eui = hex_to_num(DevBin),
                             multi_buy = MultiBuy,
                             protocol = Protocol,
+                            console_active = BuyingActive,
                             buying_active = BuyingActive
                         }
                     end,
@@ -136,6 +99,7 @@ devaddr_from_configs(Name, NetID, Configs) ->
                             net_id = NetID,
                             protocol = Protocol,
                             multi_buy = MultiBuy,
+                            console_active = BuyingActive,
                             buying_active = BuyingActive,
                             addr = {range, hex_to_num(Lower), hex_to_num(Upper)}
                         }

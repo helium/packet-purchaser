@@ -4,7 +4,7 @@
 
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
--include("http_protocol.hrl").
+-include("config.hrl").
 
 %% gen_server API
 -export([
@@ -72,38 +72,6 @@
 
 -record(state, {
     filename :: testing | string()
-}).
-
--record(udp_protocol, {
-    address :: string(),
-    port :: non_neg_integer()
-}).
-
--type protocol() :: not_configured | #http_protocol{} | #udp_protocol{}.
-
--record(eui, {
-    name :: undefined | binary(),
-    net_id :: non_neg_integer(),
-    multi_buy :: unlimited | non_neg_integer(),
-    dev_eui :: '*' | non_neg_integer(),
-    app_eui :: non_neg_integer(),
-    buying_active = true :: boolean(),
-    protocol :: protocol(),
-    %% TODO remove eventually
-    disable_pull_data = false :: boolean(),
-    ignore_disable = false :: boolean()
-}).
-
--record(devaddr, {
-    name :: undefined | binary(),
-    net_id :: non_neg_integer(),
-    multi_buy :: unlimited | non_neg_integer(),
-    buying_active = true :: boolean(),
-    addr :: {single, integer()} | {range, integer(), integer()},
-    protocol :: protocol(),
-    %% TODO remove eventually
-    disable_pull_data = false :: boolean(),
-    ignore_disable = false :: boolean()
 }).
 
 -type config() :: #{joins := [#eui{}], routing := [#devaddr{}]}.
@@ -451,7 +419,7 @@ update_buying_devaddr(NetID, BuyingActive) ->
         fun
             (#devaddr{ignore_disable = true} = Val) ->
                 Val;
-            (#devaddr{net_id = Key} = Val) when Key == NetID ->
+            (#devaddr{net_id = Key, console_active = true} = Val) when Key == NetID ->
                 Val#devaddr{buying_active = BuyingActive};
             (Val) ->
                 Val
@@ -474,9 +442,12 @@ update_buying_eui(NetID, BuyingActive) ->
     NewEUIs = lists:map(
         fun
             %% TODO
-            (#eui{ignore_disable = true} = Val) -> Val;
-            (#eui{net_id = Key} = Val) when Key == NetID -> Val#eui{buying_active = BuyingActive};
-            (Val) -> Val
+            (#eui{ignore_disable = true} = Val) ->
+                Val;
+            (#eui{net_id = Key, console_active = true} = Val) when Key == NetID ->
+                Val#eui{buying_active = BuyingActive};
+            (Val) ->
+                Val
         end,
         AllEuis
     ),
