@@ -62,6 +62,7 @@ eui_from_configs(Name, NetID, Configs) ->
                             dev_eui = hex_to_num(DevBin),
                             multi_buy = MultiBuy,
                             protocol = Protocol,
+                            console_active = BuyingActive,
                             buying_active = BuyingActive
                         }
                     end,
@@ -98,6 +99,7 @@ devaddr_from_configs(Name, NetID, Configs) ->
                             net_id = NetID,
                             protocol = Protocol,
                             multi_buy = MultiBuy,
+                            console_active = BuyingActive,
                             buying_active = BuyingActive,
                             addr = {range, hex_to_num(Lower), hex_to_num(Upper)}
                         }
