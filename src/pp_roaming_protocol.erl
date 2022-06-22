@@ -2,7 +2,7 @@
 
 %% Uplinking
 -export([
-    make_uplink_payload/4
+    make_uplink_payload/5
 ]).
 
 %% Downlinking
@@ -76,8 +76,14 @@ new_packet(SCPacket, GatewayTime) ->
         location = pp_utils:get_hotspot_location(PubKeyBin)
     }.
 
--spec make_uplink_payload(netid_num(), list(packet()), integer(), pv_1_0 | pv_1_1) -> prstart_req().
-make_uplink_payload(NetID, Uplinks, TransactionID, ProtocolVersion) ->
+-spec make_uplink_payload(
+    NetID :: netid_num(),
+    Uplinks :: list(packet()),
+    TransactionID :: integer(),
+    ProtocolVersion :: pv_1_0 | pv_1_1,
+    DedupWindowSize :: non_neg_integer()
+) -> prstart_req().
+make_uplink_payload(NetID, Uplinks, TransactionID, ProtocolVersion, DedupWindowSize) ->
     #packet{sc_packet = SCPacket, gateway_time = GatewayTime} = select_best(Uplinks),
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
@@ -99,8 +105,14 @@ make_uplink_payload(NetID, Uplinks, TransactionID, ProtocolVersion) ->
     Token = make_uplink_token(PubKeyBin, Region, PacketTime),
     VersionBase =
         case ProtocolVersion of
-            pv_1_0 -> #{'ProtocolVersion' => <<"1.0">>};
-            pv_1_1 -> #{'ProtocolVersion' => <<"1.1">>, 'SenderNSID' => <<"">>}
+            pv_1_0 ->
+                #{'ProtocolVersion' => <<"1.0">>};
+            pv_1_1 ->
+                #{
+                    'ProtocolVersion' => <<"1.1">>,
+                    'SenderNSID' => <<"">>,
+                    'DedupWindowSize' => DedupWindowSize
+                }
         end,
 
     VersionBase#{
@@ -355,7 +367,6 @@ handle_xmitdata_req(#{
                 {ok, SCPid} -> {downlink, PayloadResponse, {SCPid, SCResp}}
             end
     end.
-
 
 rx2_from_dlmetadata(
     #{
