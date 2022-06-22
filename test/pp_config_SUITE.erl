@@ -15,7 +15,7 @@
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
--include("http_protocol.hrl").
+-include("config.hrl").
 
 %%--------------------------------------------------------------------
 %% COMMON TEST CALLBACK FUNCTIONS

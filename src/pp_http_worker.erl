@@ -2,7 +2,7 @@
 
 -behavior(gen_server).
 
--include("http_protocol.hrl").
+-include("config.hrl").
 
 %% ------------------------------------------------------------------
 %% API Function Exports

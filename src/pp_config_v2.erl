@@ -1,6 +1,6 @@
 -module(pp_config_v2).
 
--include("http_protocol.hrl").
+-include("config.hrl").
 
 -export([parse_config/1]).
 

@@ -4,7 +4,7 @@
 
 -include_lib("helium_proto/include/blockchain_state_channel_v1_pb.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
--include("http_protocol.hrl").
+-include("config.hrl").
 
 %% gen_server API
 -export([
