@@ -174,13 +174,20 @@ send_data(#state{
     transaction_id = TransactionID,
     flow_type = FlowType,
     auth_header = Auth,
-    protocol_version = ProtocolVersion
+    protocol_version = ProtocolVersion,
+    send_data_timer = DedupWindow
 }) ->
     %% NOTE: We do this here so we don't pass unnecessary things to
     %% pp_roaming_protocol.
     ok = pp_config:insert_transaction_id(TransactionID, Address, FlowType),
 
-    Data = pp_roaming_protocol:make_uplink_payload(NetID, Packets, TransactionID, ProtocolVersion),
+    Data = pp_roaming_protocol:make_uplink_payload(
+        NetID,
+        Packets,
+        TransactionID,
+        ProtocolVersion,
+        DedupWindow
+    ),
     Data1 = jsx:encode(Data, [{float_formatter, fun round_to_fourth_decimal/1}]),
 
     Headers =
