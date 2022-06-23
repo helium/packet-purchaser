@@ -64,8 +64,8 @@ end_per_testcase(TestCase, Config) ->
 %% TESTS
 %%--------------------------------------------------------------------
 net_id_offer_test(_Config) ->
-    UnusedNetID = 16#5FFFFF,
-    DevaddrWithUnassignedNetID = <<UnusedNetID:7/integer, 0:25/integer-unsigned-little>>,
+    %% UnusedNetID = 16#5F_FF_FF,
+    DevaddrWithUnassignedNetID = <<(16#DF_F0_00_00):32/integer-unsigned>>,
 
     lists:foreach(fun send_offer/1, [
         ?DEVADDR_ACTILITY,
