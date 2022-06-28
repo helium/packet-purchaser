@@ -2056,19 +2056,8 @@ packet_websocket_test(_Config) ->
     SendPacketFun = fun(DevAddr, NetID) ->
         #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
         PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
-
-        Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{
-            dont_encode => true
-        }),
-        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
-
-        {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        get_udp_worker_address_port(Pid)
+        send_packet_and_lookup_upd_worker(PubKeyBin, DevAddr, NetID)
     end,
-
-    %% ok = pp_console_dc_tracker:refill(?NET_ID_ACTILITY, 1, 100),
-    %% ok = pp_console_dc_tracker:refill(?NET_ID_ORANGE, 1, 100),
-    %% ok = pp_console_dc_tracker:refill(?NET_ID_COMCAST, 1, 100),
 
     ok = pp_config:load_config([
         #{
@@ -2135,14 +2124,7 @@ packet_websocket_inactive_test(_Config) ->
     SendPacketFun = fun(DevAddr, NetID) ->
         #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
         PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
-
-        Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{
-            dont_encode => true
-        }),
-        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
-
-        {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        get_udp_worker_address_port(Pid)
+        send_packet_and_lookup_upd_worker(PubKeyBin, DevAddr, NetID)
     end,
 
     ok = pp_config:load_config([
@@ -2268,29 +2250,29 @@ stop_start_purchasing_net_id_packet_test(_Config) ->
         }
     ],
     ok = pp_config:load_config(Config),
-    Offer1 = MakePacketOffer(?DEVADDR_COMCAST),
-    Offer2 = MakePacketOffer(?DEVADDR_ORANGE),
+    MakeOffer1 = fun() -> MakePacketOffer(?DEVADDR_COMCAST) end,
+    MakeOffer2 = fun() -> MakePacketOffer(?DEVADDR_ORANGE) end,
 
     %% -------------------------------------------------------------------
     %% Default we should buy all packets in config
-    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer1, self())),
-    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer2, self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(MakeOffer1(), self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(MakeOffer2(), self())),
 
     %% -------------------------------------------------------------------
     %% Stop buying
     ok = pp_config:stop_buying([?NET_ID_COMCAST]),
     ?assertMatch(
         {error, {buying_inactive, ?NET_ID_COMCAST}},
-        pp_sc_packet_handler:handle_offer(Offer1, self())
+        pp_sc_packet_handler:handle_offer(MakeOffer1(), self())
     ),
     %% Offer from different NetID should still be purchased
-    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer2, self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(MakeOffer2(), self())),
 
     %% -------------------------------------------------------------------
     %% Start buying again
     ok = pp_config:start_buying([?NET_ID_COMCAST]),
-    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer1, self())),
-    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Offer2, self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(MakeOffer1(), self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(MakeOffer2(), self())),
 
     ok.
 
@@ -2332,36 +2314,36 @@ stop_start_purchasing_net_id_join_test(_Config) ->
         }
     ],
     ok = pp_config:load_config(Config),
-    Dev1Offer = MakeJoinOffer(DevEUI1, AppEUI1),
-    Dev2Offer = MakeJoinOffer(DevEUI2, AppEUI2),
-    Dev3Offer = MakeJoinOffer(DevEUI3, AppEUI3),
+    MakeDev1Offer = fun() -> MakeJoinOffer(DevEUI1, AppEUI1) end,
+    MakeDev2Offer = fun() -> MakeJoinOffer(DevEUI2, AppEUI2) end,
+    MakeDev3Offer = fun() -> MakeJoinOffer(DevEUI3, AppEUI3) end,
 
     %% -------------------------------------------------------------------
     %% Default we should buy all Joins in configs
-    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Dev1Offer, self())),
-    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Dev2Offer, self())),
-    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Dev3Offer, self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(MakeDev1Offer(), self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(MakeDev2Offer(), self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(MakeDev3Offer(), self())),
 
     %% -------------------------------------------------------------------
     %% Stop buying
     ok = pp_config:stop_buying([?NET_ID_COMCAST]),
     ?assertMatch(
         {error, {buying_inactive, ?NET_ID_COMCAST}},
-        pp_sc_packet_handler:handle_offer(Dev1Offer, self())
+        pp_sc_packet_handler:handle_offer(MakeDev1Offer(), self())
     ),
     ?assertMatch(
         {error, {buying_inactive, ?NET_ID_COMCAST}},
-        pp_sc_packet_handler:handle_offer(Dev2Offer, self())
+        pp_sc_packet_handler:handle_offer(MakeDev2Offer(), self())
     ),
     %% Offer from different NetID should still be purchased
-    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Dev3Offer, self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(MakeDev3Offer(), self())),
 
     %% -------------------------------------------------------------------
     %% Start buying again
     ok = pp_config:start_buying([?NET_ID_COMCAST]),
-    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Dev1Offer, self())),
-    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Dev2Offer, self())),
-    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(Dev3Offer, self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(MakeDev1Offer(), self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(MakeDev2Offer(), self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(MakeDev3Offer(), self())),
 
     ok.
 
@@ -2430,14 +2412,7 @@ net_ids_map_packet_test(_Config) ->
     SendPacketFun = fun(DevAddr, NetID) ->
         #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
         PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
-
-        Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{
-            dont_encode => true
-        }),
-        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
-
-        {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        get_udp_worker_address_port(Pid)
+        send_packet_and_lookup_upd_worker(PubKeyBin, DevAddr, NetID)
     end,
     ok = pp_config:load_config([
         #{
@@ -2468,13 +2443,7 @@ net_ids_no_config_test(_Config) ->
     SendPacketFun = fun(DevAddr, NetID) ->
         #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
         PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
-
-        Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{
-            dont_encode => true
-        }),
-        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
-
-        pp_udp_sup:lookup_worker({PubKeyBin, NetID})
+        send_packet_and_lookup_upd_worker(PubKeyBin, DevAddr, NetID)
     end,
     ok = pp_config:load_config([
         #{
@@ -2484,7 +2453,7 @@ net_ids_no_config_test(_Config) ->
             <<"port">> => 1111
         }
     ]),
-    ?assertMatch({ok, _}, SendPacketFun(?DEVADDR_ACTILITY, ?NET_ID_ACTILITY)),
+    ?assertMatch({"1.1.1.1", 1111}, SendPacketFun(?DEVADDR_ACTILITY, ?NET_ID_ACTILITY)),
     ?assertMatch({error, not_found}, SendPacketFun(?DEVADDR_ORANGE, ?NET_ID_ORANGE)),
     ?assertMatch({error, not_found}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
 
@@ -2496,13 +2465,7 @@ single_hotspot_multi_net_id_test(_Config) ->
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
     SendPacketFun = fun(DevAddr, NetID) ->
-        Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{
-            dont_encode => true
-        }),
-        pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
-
-        {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        get_udp_worker_address_port(Pid)
+        send_packet_and_lookup_upd_worker(PubKeyBin, DevAddr, NetID)
     end,
     ok = pp_config:load_config([
         #{
@@ -2771,4 +2734,18 @@ gateway_expect_downlink(ExpectFn) ->
         {send_response, SCResp} ->
             ExpectFn(SCResp)
     after 1000 -> ct:fail(gateway_expect_downlink_timeout)
+    end.
+
+send_packet_and_lookup_upd_worker(PubKeyBin, DevAddr, NetID) ->
+    Packet = test_utils:frame_packet(?UNCONFIRMED_UP, PubKeyBin, DevAddr, 0, #{
+        dont_encode => true
+    }),
+    pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+    timer:sleep(5),
+
+    case pp_udp_sup:lookup_worker({PubKeyBin, NetID}) of
+        {ok, Pid} ->
+            get_udp_worker_address_port(Pid);
+        V ->
+            V
     end.
