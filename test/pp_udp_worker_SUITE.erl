@@ -330,6 +330,10 @@ pull_resp(Config) ->
 
     _Opts = pp_lns:send_packet(PubKeyBin, #{}),
     #state{socket = {socket, Socket, _, _}} = sys:get_state(WorkerPid),
+    ok = test_utils:wait_until(fun() ->
+        #state{sc_pid = HandlerPid} = sys:get_state(WorkerPid),
+        HandlerPid /= undefined
+    end),
     {ok, Port} = inet:port(Socket),
 
     Token = semtech_udp:token(),
