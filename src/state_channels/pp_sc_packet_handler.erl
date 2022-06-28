@@ -35,11 +35,10 @@ handle_packet(SCPacket, PacketTime, HandlerPid) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
     PHash = blockchain_helium_packet_v1:packet_hash(Packet),
-    Routing = blockchain_helium_packet_v1:routing_info(Packet),
 
     ok = pp_roaming_downlink:insert_handler(PubKeyBin, HandlerPid),
 
-    case pp_packet_sup:maybe_start_worker(PHash, #{routing => Routing, phash => PHash}) of
+    case pp_packet_sup:lookup_worker(PHash) of
         {ok, PacketPid} ->
             pp_packet_worker:handle_packet(PacketPid, SCPacket, PacketTime, HandlerPid);
         {error, Reason} = Err ->
