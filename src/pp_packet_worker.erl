@@ -170,6 +170,9 @@ handle_cast(
         Configs
     ),
     {noreply, State, ?TIMEOUT};
+handle_cast({handle_packet, _, _, _}, #state{configs = {error, Reason}}=State)->
+    lager:warning("received packet with no configs: ~p", [Reason]),
+    {noreply, State, ?TIMEOUT};
 handle_cast(_Msg, State) ->
     lager:warning("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State, ?TIMEOUT}.
@@ -184,6 +187,8 @@ handle_info(_Msg, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+terminate(normal, #state{}) ->
+    ok;
 terminate(_Reason, #state{}) ->
     lager:info("going down ~p", [_Reason]),
     ok.
