@@ -85,6 +85,7 @@ init([]) ->
         ?WORKER(pp_sc_worker, [#{}]),
         ?SUP(pp_udp_sup, []),
         ?SUP(pp_http_sup, []),
+        ?SUP(pp_packet_sup, []),
         ?SUP(pp_console_sup, []),
         ?WORKER(pp_metrics, []),
         #{

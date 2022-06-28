@@ -82,6 +82,8 @@
     | {eui, DevEUI :: non_neg_integer(), AppEUI :: non_neg_integer()}.
 -type devaddr() :: {devaddr, DevAddr :: non_neg_integer()}.
 
+-export_type([eui/0, devaddr/0]).
+
 %% -------------------------------------------------------------------
 %% API Functions
 %% -------------------------------------------------------------------
