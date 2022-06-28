@@ -27,7 +27,7 @@
 -export([get_net_ids/2]).
 
 -define(SERVER, ?MODULE).
--define(TIMEOUT, timer:seconds(10)).
+-define(TIMEOUT, timer:seconds(60)).
 
 -type config_maps() :: {ok, list(map())} | {error, any()}.
 
