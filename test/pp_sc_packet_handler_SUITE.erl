@@ -198,13 +198,15 @@ drop_not_configured_orgs_join_test(_Config) ->
     DevEUI = <<0, 0, 0, 0, 0, 0, 0, 1>>,
     AppEUI = <<0, 0, 0, 2, 0, 0, 0, 1>>,
 
-    DevNonce = crypto:strong_rand_bytes(2),
+    DevNonce1 = crypto:strong_rand_bytes(2),
+    DevNonce2 = crypto:strong_rand_bytes(2),
     AppKey = <<245, 16, 127, 141, 191, 84, 201, 16, 111, 172, 36, 152, 70, 228, 52, 95>>,
 
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
-    JoinOffer = test_utils:join_offer(PubKeyBin, AppKey, DevNonce, DevEUI, AppEUI),
+    JoinOffer1 = test_utils:join_offer(PubKeyBin, AppKey, DevNonce1, DevEUI, AppEUI),
+    JoinOffer2 = test_utils:join_offer(PubKeyBin, AppKey, DevNonce2, DevEUI, AppEUI),
 
     %% Single non-buying roamer for join
     pp_config:load_config([
@@ -221,7 +223,7 @@ drop_not_configured_orgs_join_test(_Config) ->
     %% Offer is rejected for single roamer
     ?assertMatch(
         {error, {not_configured, ?NET_ID_ACTILITY}},
-        pp_sc_packet_handler:handle_offer(JoinOffer, self())
+        pp_sc_packet_handler:handle_offer(JoinOffer1, self())
     ),
 
     %% One valid, one invalid roamer for join
@@ -248,7 +250,7 @@ drop_not_configured_orgs_join_test(_Config) ->
         }
     ]),
     %% Offer is purchased for single configured roamer
-    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(JoinOffer, self())),
+    ?assertMatch(ok, pp_sc_packet_handler:handle_offer(JoinOffer2, self())),
 
     ok.
 
@@ -1623,6 +1625,8 @@ join_net_id_packet_test(_Config) ->
 
     {error, not_found} = pp_udp_sup:lookup_worker({PubKeyBin1, NetID}),
     pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
+    %% NOTE: have to wait for packet worker to handle packet
+    timer:sleep(10),
     {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin1, NetID}),
 
     AddressPort = get_udp_worker_address_port(Pid),
