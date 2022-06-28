@@ -66,8 +66,7 @@ handle_packet(Pid, SCPacket, GatewayTime, HandlerPid) ->
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
-init(#{routing := Routing, phash := PHash}) ->
-    Configs = pp_config:lookup(Routing),
+init(#{routing := Routing, phash := PHash, configs := Configs}) ->
     PacketType = get_packet_type(Routing),
     NetIDs = get_net_ids(Routing, Configs),
     MaxMultiBuy = get_max_multi_buy(Configs),
