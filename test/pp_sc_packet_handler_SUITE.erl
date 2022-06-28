@@ -1396,13 +1396,21 @@ http_multiple_gateways_test(_Config) ->
 
     ok = start_uplink_listener(),
 
+    NWKSessionKey = crypto:strong_rand_bytes(16),
+    AppSessionKey = crypto:strong_rand_bytes(16),
+
     SendPacketFun = fun(PubKeyBin, DevAddr, RSSI) ->
         Packet1 = test_utils:frame_packet(
             ?UNCONFIRMED_UP,
             PubKeyBin,
             DevAddr,
             0,
-            #{dont_encode => true, rssi => RSSI}
+            #{
+                dont_encode => true,
+                rssi => RSSI,
+                nwk_session_key => NWKSessionKey,
+                app_session_key => AppSessionKey
+            }
         ),
         PacketTime1 = erlang:system_time(millisecond),
         pp_sc_packet_handler:handle_packet(Packet1, PacketTime1, self()),

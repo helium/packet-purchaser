@@ -288,8 +288,8 @@ frame_packet(MType, PubKeyBin, DevAddr, FCnt, Options) ->
     frame_packet(MType, PubKeyBin, DevAddr, FCnt, Routing, Options).
 
 frame_packet(MType, PubKeyBin, DevAddr, FCnt, Routing, Options) ->
-    NwkSessionKey = <<81, 103, 129, 150, 35, 76, 17, 164, 210, 66, 210, 149, 120, 193, 251, 85>>,
-    AppSessionKey = <<245, 16, 127, 141, 191, 84, 201, 16, 111, 172, 36, 152, 70, 228, 52, 95>>,
+    NwkSessionKey = maps:get(nwk_session_key, Options, crypto:strong_rand_bytes(16)),
+    AppSessionKey = maps:get(app_session_key, Options, crypto:strong_rand_bytes(16)),
     Payload1 = frame_payload(MType, DevAddr, NwkSessionKey, AppSessionKey, FCnt),
 
     HeliumPacket = #packet_pb{
