@@ -100,13 +100,11 @@ handle_unique_frame(NetID, OfferType) ->
     prometheus_counter:inc(?METRICS_UNIQUE_FRAME_COUNT, [clean_net_id(NetID), OfferType]).
 
 -spec handle_offer(
-    PubKeyBin :: libp2p_crypto:pubkey_bin(),
     NetID :: non_neg_integer(),
     OfferType :: join | packet,
-    Action :: accepted | rejected,
-    PayloadSize :: non_neg_integer()
+    Action :: accepted | rejected
 ) -> ok.
-handle_offer(_PubKeyBin, NetID, OfferType, Action, _PayloadSize) ->
+handle_offer(NetID, OfferType, Action) ->
     prometheus_counter:inc(?METRICS_OFFER_COUNT, [clean_net_id(NetID), OfferType, Action]).
 
 -spec handle_packet(

@@ -29,10 +29,13 @@
 -define(SERVER, ?MODULE).
 -define(TIMEOUT, timer:seconds(10)).
 
+-type config_maps() :: {ok, list(map())} | {error, any()}.
+
 -record(state, {
     phash :: binary(),
-    configs :: {error, any()} | {ok, list(map())},
+    configs :: config_maps(),
     packet_type :: join | packet,
+    max_multi_buy :: non_neg_integer() | unlimited,
     routing :: {devaddr, any()} | {eui, any()} | {eui, any(), any()},
     net_ids :: list(atom() | non_neg_integer())
 }).
@@ -67,6 +70,7 @@ init(#{routing := Routing, phash := PHash}) ->
     Configs = pp_config:lookup(Routing),
     PacketType = get_packet_type(Routing),
     NetIDs = get_net_ids(Routing, Configs),
+    MaxMultiBuy = get_max_multi_buy(Configs),
 
     lager:debug("~p init with ~p for ~p", [?MODULE, Configs, NetIDs]),
 
@@ -76,6 +80,7 @@ init(#{routing := Routing, phash := PHash}) ->
         phash = PHash,
         configs = Configs,
         packet_type = PacketType,
+        max_multi_buy = MaxMultiBuy,
         routing = Routing,
         net_ids = NetIDs
     }}.
@@ -83,20 +88,29 @@ init(#{routing := Routing, phash := PHash}) ->
 handle_call(
     {handle_offer, Offer},
     _From,
-    #state{configs = Configs, routing = Routing, net_ids = NetIDs} = State
+    #state{
+        max_multi_buy = MaxMultiBuy,
+        configs = Configs,
+        net_ids = NetIDs,
+        packet_type = PacketType
+    } = State
 ) ->
     Resp =
         case Configs of
             {error, _} ->
                 Configs;
-            {ok, InnerConfigs} ->
-                MultiBuyMax = lists:max([maps:get(multi_buy, M) || M <- InnerConfigs]),
-                Res = pp_multi_buy:maybe_buy_offer(Offer, MultiBuyMax),
-                Res
+            {ok, _} ->
+                pp_multi_buy:maybe_buy_offer(Offer, MaxMultiBuy)
         end,
-    erlang:spawn(fun() ->
-        handle_offer_resp(Routing, NetIDs, Offer, Resp)
-    end),
+    Action =
+        case Resp of
+            ok -> accepted;
+            {error, _} -> rejected
+        end,
+    lists:foreach(
+        fun(NetID) -> ok = pp_metrics:handle_offer(NetID, PacketType, Action) end,
+        NetIDs
+    ),
     {reply, Resp, State, ?TIMEOUT};
 handle_call(_Msg, _From, State) ->
     ct:print("rcvd unknown call msg: ~p from: ~p with: ~p", [_Msg, _From, State]),
@@ -109,42 +123,50 @@ handle_cast(
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
     lists:foreach(
-        fun(#{net_id := NetID, protocol := Protocol} = WorkerArgs) ->
-            case Protocol of
-                {udp, _, _} ->
-                    case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs) of
-                        {ok, Pid} ->
-                            ct:print("pushing to udp worker: ~p", [NetID]),
-                            ok = pp_metrics:handle_packet(PubKeyBin, NetID, PacketType, udp),
-                            ok = pp_console_ws_worker:handle_packet(NetID, Packet, GatewayTime, PacketType),
-                            pp_udp_worker:push_data(Pid, SCPacket, GatewayTime, HandlerPid, Protocol);
-                        {error, worker_not_started} ->
-                            lager:error(
-                                [{packet_type, PacketType}, {net_id, NetID}],
-                                "failed to start udp connector for: ~p",
-                                [blockchain_utils:addr2name(PubKeyBin)]
-                            )
-                    end;
-                #http_protocol{} ->
-                    PHash = blockchain_helium_packet_v1:packet_hash(Packet),
-                    case pp_http_sup:maybe_start_worker({NetID, PHash, Protocol}, WorkerArgs) of
-                        {ok, Pid} ->
-                            ProtocolType =
-                                case Protocol#http_protocol.flow_type of
-                                    sync -> http_sync;
-                                    async -> http_async
-                                end,
-                            ok = pp_metrics:handle_packet(PubKeyBin, NetID, PacketType, ProtocolType),
-                            ok = pp_console_ws_worker:handle_packet(NetID, Packet, GatewayTime, PacketType),
-                            pp_http_worker:handle_packet(Pid, SCPacket, GatewayTime);
-                        {error, worker_not_started, _} ->
-                            lager:error(
-                                [{packet_type, PacketType}, {net_id, NetID}],
-                                "fialed to start http connector for: ~p",
-                                [blockchain_utils:addr2name(PubKeyBin)]
-                            )
-                    end
-            end
+        fun
+            (#{net_id := NetID, protocol := {udp, _, _} = Protocol} = WorkerArgs) ->
+                case pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, WorkerArgs) of
+                    {ok, Pid} ->
+                        ok = pp_metrics:handle_packet(PubKeyBin, NetID, PacketType, udp),
+                        ok = pp_console_ws_worker:handle_packet(
+                            NetID,
+                            Packet,
+                            GatewayTime,
+                            PacketType
+                        ),
+                        pp_udp_worker:push_data(Pid, SCPacket, GatewayTime, HandlerPid, Protocol);
+                    {error, worker_not_started} ->
+                        lager:error(
+                            [{packet_type, PacketType}, {net_id, NetID}],
+                            "failed to start udp connector for: ~p",
+                            [blockchain_utils:addr2name(PubKeyBin)]
+                        )
+                end;
+            (#{net_id := NetID, protocol := #http_protocol{} = Protocol} = WorkerArgs) ->
+                PHash = blockchain_helium_packet_v1:packet_hash(Packet),
+                case pp_http_sup:maybe_start_worker({NetID, PHash, Protocol}, WorkerArgs) of
+                    {ok, Pid} ->
+                        ProtocolType =
+                            case Protocol#http_protocol.flow_type of
+                                sync -> http_sync;
+                                async -> http_async
+                            end,
+                        ok = pp_metrics:handle_packet(PubKeyBin, NetID, PacketType, ProtocolType),
+                        ok = pp_console_ws_worker:handle_packet(
+                            NetID,
+                            Packet,
+                            GatewayTime,
+                            PacketType
+                        ),
+                        pp_http_worker:handle_packet(Pid, SCPacket, GatewayTime);
+                    {error, worker_not_started, _} ->
+                        lager:error(
+                            [{packet_type, PacketType}, {net_id, NetID}],
+                            "fialed to start http connector for: ~p",
+                            [blockchain_utils:addr2name(PubKeyBin)]
+                        )
+                    %% end
+                end
         end,
         Configs
     ),
@@ -171,6 +193,13 @@ terminate(_Reason, #state{}) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
+-spec get_max_multi_buy(config_maps()) -> non_neg_integer() | unlimited.
+get_max_multi_buy(Configs) ->
+    case Configs of
+        {error, _} -> 0;
+        {ok, Inner} -> lists:max([maps:get(multi_buy, M) || M <- Inner])
+    end.
+
 -spec get_packet_type(Routing :: pp_config:eui() | pp_config:devaddr()) -> join | packet.
 get_packet_type({devaddr, _}) -> packet;
 get_packet_type({eui, _, _}) -> join;
@@ -178,7 +207,7 @@ get_packet_type({eui, _}) -> join.
 
 -spec get_net_ids(
     Routing :: pp_config:eui() | pp_config:devaddr(),
-    Configs :: {error, any()} | {ok, list(map())}
+    Configs :: config_maps()
 ) -> list(atom() | non_neg_integer()).
 get_net_ids({devaddr, DevAddr}, _) ->
     case pp_lorawan:parse_netid(DevAddr) of
@@ -189,38 +218,3 @@ get_net_ids(_, {error, Reason}) ->
     [Reason];
 get_net_ids(_, {ok, Configs}) ->
     [NetID || #{net_id := NetID} <- Configs].
-
--spec handle_offer_resp(
-    Routing :: {devaddr, non_neg_integer()} | {eui, blockchain_state_channel_v1_pb:eui_pb()},
-    NetIDs :: list(atom() | non_neg_integer()),
-    Offer :: blockchain_state_channel_offer_v1:offer(),
-    Resp :: ok | {error, any()}
-) -> ok.
-
-handle_offer_resp(Routing, NetIDs, Offer, Resp) ->
-    PubKeyBin = blockchain_state_channel_offer_v1:hotspot(Offer),
-
-    Action =
-        case Resp of
-            ok -> accepted;
-            {error, _} -> rejected
-        end,
-    OfferType =
-        case Routing of
-            {eui, _} -> join;
-            {devaddr, _} -> packet
-        end,
-
-    PayloadSize = blockchain_state_channel_offer_v1:payload_size(Offer),
-    lists:foreach(
-        fun(NetID) ->
-            ok = pp_metrics:handle_offer(PubKeyBin, NetID, OfferType, Action, PayloadSize),
-
-            lager:debug(
-                [{action, Action}, {offer_type, OfferType}, {net_id, NetID}],
-                "offer: ~s ~s [net_id: ~p] [routing: ~p] [resp: ~p]",
-                [Action, OfferType, NetID, Routing, Resp]
-            )
-        end,
-        NetIDs
-    ).
