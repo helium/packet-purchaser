@@ -5,6 +5,7 @@
 
 -include_lib("elli/include/elli.hrl").
 
+-define(METRICS_UNIQUE_FRAME_COUNT, packet_purchaser_unique_frame_count).
 -define(METRICS_OFFER_COUNT, packet_purchaser_offer_count).
 -define(METRICS_PACKET_COUNT, packet_purchaser_packet_count).
 -define(METRICS_GWMP_COUNT, packet_purchaser_gwmp_counter).
@@ -36,7 +37,8 @@
 
 %% Prometheus API
 -export([
-    handle_offer/5,
+    handle_unique_frame/2,
+    handle_offer/3,
     handle_packet/4,
     %% GWMP
     pull_ack/2,
@@ -92,6 +94,10 @@ start_link() ->
 %% -------------------------------------------------------------------
 %% Prometheus API Functions
 %% -------------------------------------------------------------------
+
+-spec handle_unique_frame(NetID :: non_neg_integer(), OfferType :: join | packet) -> ok.
+handle_unique_frame(NetID, OfferType) ->
+    prometheus_counter:inc(?METRICS_UNIQUE_FRAME_COUNT, [clean_net_id(NetID), OfferType]).
 
 -spec handle_offer(
     PubKeyBin :: libp2p_crypto:pubkey_bin(),
@@ -260,6 +266,13 @@ handle_event(_Event, _Data, _Args) ->
 
 -spec declare_metrics() -> ok.
 declare_metrics() ->
+    %% type = frame type :: join | packet
+    prometheus_counter:declare([
+        {name, ?METRICS_UNIQUE_FRAME_COUNT},
+        {help, "Unique frame count for NetID"},
+        {labels, [net_id, type]}
+    ]),
+
     %% type = frame type :: join | packet
     %% status = bought :: accepted | rejected
     prometheus_counter:declare([

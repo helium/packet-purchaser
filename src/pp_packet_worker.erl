@@ -70,6 +70,8 @@ init(#{routing := Routing, phash := PHash}) ->
 
     lager:debug("~p init with ~p for ~p", [?MODULE, Configs, NetIDs]),
 
+    lists:foreach(fun(NetID) -> pp_metrics:handle_unique_frame(NetID, PacketType) end, NetIDs),
+
     {ok, #state{
         phash = PHash,
         configs = Configs,
