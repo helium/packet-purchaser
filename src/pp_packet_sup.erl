@@ -87,8 +87,7 @@ init([]) ->
 -spec start_worker(WorkerKey :: worker_key(), WorkerArgs :: worker_args()) ->
     {ok, pid()} | {error, any()}.
 start_worker(WorkerKey, WorkerArgs) ->
-    Configs = pp_config:lookup(maps:get(routing, WorkerArgs)),
-    case supervisor:start_child(?MODULE, [WorkerArgs#{configs => Configs}]) of
+    case supervisor:start_child(?MODULE, [WorkerArgs]) of
         {error, Err} ->
             {error, {worker_not_started, Err}};
         {ok, Pid} = OK ->

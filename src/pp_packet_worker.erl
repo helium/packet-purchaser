@@ -21,6 +21,7 @@
     handle_call/3,
     handle_cast/2,
     handle_info/2,
+    handle_continue/2,
     terminate/2,
     code_change/3
 ]).
@@ -33,11 +34,11 @@
 
 -record(state, {
     phash :: binary(),
-    configs :: config_maps(),
+    configs :: undefined | config_maps(),
     packet_type :: join | packet,
-    max_multi_buy :: non_neg_integer() | unlimited,
+    max_multi_buy :: undefined | non_neg_integer() | unlimited,
     routing :: {devaddr, any()} | {eui, any()} | {eui, any(), any()},
-    net_ids :: list(atom() | non_neg_integer())
+    net_ids :: undefined | list(atom() | non_neg_integer())
 }).
 
 %% ------------------------------------------------------------------
@@ -66,22 +67,31 @@ handle_packet(Pid, SCPacket, GatewayTime, HandlerPid) ->
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
-init(#{routing := Routing, phash := PHash, configs := Configs}) ->
+init(#{routing := Routing, phash := PHash}) ->
     PacketType = get_packet_type(Routing),
+
+    {ok,
+        #state{
+            phash = PHash,
+            packet_type = PacketType,
+            routing = Routing
+        },
+        {continue, log_unique_frame}}.
+
+handle_continue(log_unique_frame, #state{routing = Routing, packet_type = PacketType} = State) ->
+    Configs = pp_config:lookup(Routing),
     NetIDs = get_net_ids(Routing, Configs),
     MaxMultiBuy = get_max_multi_buy(Configs),
-
-    lager:debug("~p init with ~p for ~p", [?MODULE, Configs, NetIDs]),
-
-    lists:foreach(fun(NetID) -> pp_metrics:handle_unique_frame(NetID, PacketType) end, NetIDs),
-
-    {ok, #state{
-        phash = PHash,
+    lists:foreach(
+        fun(NetID) ->
+            pp_metrics:handle_unique_frame(NetID, PacketType)
+        end,
+        NetIDs
+    ),
+    {noreply, State#state{
         configs = Configs,
-        packet_type = PacketType,
-        max_multi_buy = MaxMultiBuy,
-        routing = Routing,
-        net_ids = NetIDs
+        net_ids = NetIDs,
+        max_multi_buy = MaxMultiBuy
     }}.
 
 handle_call(
