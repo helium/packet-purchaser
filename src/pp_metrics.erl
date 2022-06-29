@@ -5,6 +5,7 @@
 
 -include_lib("elli/include/elli.hrl").
 
+-define(METRICS_UNIQUE_OFFER_COUNT, packet_purchaser_unique_offer_count).
 -define(METRICS_OFFER_COUNT, packet_purchaser_offer_count).
 -define(METRICS_PACKET_COUNT, packet_purchaser_packet_count).
 -define(METRICS_GWMP_COUNT, packet_purchaser_gwmp_counter).
@@ -32,11 +33,12 @@
 -define(METRICS_WORKER_TICK, '__pp_metrics_tick').
 
 %% gen_server API
--export([start_link/0]).
+-export([start_link/1]).
 
 %% Prometheus API
 -export([
-    handle_offer/5,
+    handle_unique_offer/2,
+    handle_offer/4,
     handle_packet/4,
     %% GWMP
     pull_ack/2,
@@ -86,21 +88,28 @@
 %% API Functions
 %% -------------------------------------------------------------------
 
-start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+start_link(Args) ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
 %% -------------------------------------------------------------------
 %% Prometheus API Functions
 %% -------------------------------------------------------------------
 
+-spec handle_unique_offer(
+    Key :: {NetID :: non_neg_integer(), PHash :: binary()},
+    Type :: join | packet
+) -> ok.
+handle_unique_offer({NetID, _PHash}, Type) ->
+    prometheus_counter:inc(?METRICS_UNIQUE_OFFER_COUNT, [clean_net_id(NetID), Type]).
+
 -spec handle_offer(
-    PubKeyBin :: libp2p_crypto:pubkey_bin(),
     NetID :: non_neg_integer(),
     OfferType :: join | packet,
     Action :: accepted | rejected,
-    PayloadSize :: non_neg_integer()
+    PHash :: binary()
 ) -> ok.
-handle_offer(_PubKeyBin, NetID, OfferType, Action, _PayloadSize) ->
+handle_offer(NetID, OfferType, Action, PHash) ->
+    lru:add(unique_offer, {NetID, PHash}, OfferType),
     prometheus_counter:inc(?METRICS_OFFER_COUNT, [clean_net_id(NetID), OfferType, Action]).
 
 -spec handle_packet(
@@ -174,11 +183,19 @@ clean_net_id(NetID) ->
 %% -------------------------------------------------------------------
 
 init(Args) ->
+    ct:print("starting metrics with ~p", [Args]),
     ElliOpts = [
         {callback, ?MODULE},
         {port, proplists:get_value(port, Args, 3000)}
     ],
     {ok, _Pid} = elli:start_link(ElliOpts),
+    {ok, _Pid2} = lru:start_link(
+        {local, unique_offer},
+        [
+            {max_objs, proplists:get_value(lru_cache_size, Args)},
+            {evict_fun, fun ?MODULE:handle_unique_offer/2}
+        ]
+    ),
 
     {ok, PubKey, _, _} = blockchain_swarm:keys(),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
@@ -260,6 +277,13 @@ handle_event(_Event, _Data, _Args) ->
 
 -spec declare_metrics() -> ok.
 declare_metrics() ->
+    %% type = frame_type :: join | packet
+    prometheus_counter:declare([
+        {name, ?METRICS_UNIQUE_OFFER_COUNT},
+        {help, "Unique Offer count for NetID"},
+        {labels, [net_id, type]}
+    ]),
+
     %% type = frame type :: join | packet
     %% status = bought :: accepted | rejected
     prometheus_counter:declare([

@@ -52,6 +52,7 @@ all() ->
 %% TEST CASE SETUP
 %%--------------------------------------------------------------------
 init_per_testcase(TestCase, Config) ->
+    application:set_env(packet_purchaser, metrics_unique_packet_lru_size, 2),
     test_utils:init_per_testcase(TestCase, Config).
 
 %%--------------------------------------------------------------------
@@ -82,6 +83,9 @@ net_id_offer_test(_Config) ->
     OfferCountForNetID = fun(NetID) ->
         prometheus_counter:value(packet_purchaser_offer_count, [NetID, packet, rejected])
     end,
+    UniqueOfferCountForNetID = fun(NetID) ->
+        prometheus_counter:value(packet_purchaser_unique_offer_count, [NetID, packet])
+    end,
 
     %% 1 offer provided
     ?assertEqual(1, OfferCountForNetID(?NET_ID_ACTILITY)),
@@ -89,6 +93,14 @@ net_id_offer_test(_Config) ->
     ?assertEqual(1, OfferCountForNetID(?NET_ID_ORANGE)),
     ?assertEqual(1, OfferCountForNetID(?NET_ID_TEKTELIC)),
     ?assertEqual(1, OfferCountForNetID(unofficial_net_id)),
+
+    %% For testing, the LRU is set to 2
+    %% 1 unique offer
+    ?assertEqual(1, UniqueOfferCountForNetID(?NET_ID_ACTILITY)),
+    ?assertEqual(1, UniqueOfferCountForNetID(?NET_ID_COMCAST)),
+    ?assertEqual(1, UniqueOfferCountForNetID(?NET_ID_ORANGE)),
+    ?assertEqual(undefined, UniqueOfferCountForNetID(?NET_ID_TEKTELIC)),
+    ?assertEqual(undefined, UniqueOfferCountForNetID(unofficial_net_id)),
 
     ok.
 

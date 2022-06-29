@@ -78,6 +78,9 @@ init([]) ->
         {callback, pp_roaming_downlink},
         {port, pp_utils:get_env_int(http_roaming_port, 8081)}
     ],
+    MetricsConfigs = [
+        {lru_cache_size, pp_utils:get_env_int(metrics_unique_packet_lru_size, 1000)}
+    ],
 
     ChildSpecs = [
         ?WORKER(pp_config, [ConfigFilename]),
@@ -86,7 +89,7 @@ init([]) ->
         ?SUP(pp_udp_sup, []),
         ?SUP(pp_http_sup, []),
         ?SUP(pp_console_sup, []),
-        ?WORKER(pp_metrics, []),
+        ?WORKER(pp_metrics, [MetricsConfigs]),
         #{
             id => pp_roaming_downlink,
             start => {elli, start_link, [ElliConfig]},

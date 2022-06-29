@@ -207,7 +207,6 @@ handle_packet_offer(DevAddr, Offer) ->
     Resp :: ok | {error, any()}
 ) -> ok.
 handle_offer_resp(Routing, Offer, Resp) ->
-    PubKeyBin = blockchain_state_channel_offer_v1:hotspot(Offer),
     {ok, NetIDs} =
         case Routing of
             {eui, _} = EUI ->
@@ -236,10 +235,10 @@ handle_offer_resp(Routing, Offer, Resp) ->
             {devaddr, _} -> packet
         end,
 
-    PayloadSize = blockchain_state_channel_offer_v1:payload_size(Offer),
+    PHash = blockchain_state_channel_offer_v1:packet_hash(Offer),
     lists:foreach(
         fun(NetID) ->
-            ok = pp_metrics:handle_offer(PubKeyBin, NetID, OfferType, Action, PayloadSize),
+            ok = pp_metrics:handle_offer(NetID, OfferType, Action, PHash),
 
             lager:debug(
                 [{action, Action}, {offer_type, OfferType}, {net_id, NetID}],
