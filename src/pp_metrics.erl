@@ -217,7 +217,7 @@ init(Args) ->
 crawl_packets(Timer) ->
     Now = erlang:system_time(millisecond) - Timer,
     %% MS = ets:fun2ms(fun({Key, Count, Time}) when Time < Now -> Key end),
-    MS = [{{'$1', '$2', '$4'}, [{'<', '$3', {const, Now}}], ['$1']}],
+    MS = [{{'$1', '$2', '$3'}, [{'<', '$3', {const, Now}}], ['$1']}],
     Expired = ets:select(?UNIQUE_OFFER_ETS, MS),
     lists:foreach(
         fun({NetID, _PHash, OfferType} = Key) ->
