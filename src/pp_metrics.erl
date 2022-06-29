@@ -101,7 +101,7 @@ start_link(Args) ->
     Key :: {NetID :: non_neg_integer(), PHash :: binary()},
     Type :: join | packet
 ) -> ok.
-handle_unique_offer({NetID, _PHash}, Type) ->
+handle_unique_offer(NetID, Type) ->
     prometheus_counter:inc(?METRICS_UNIQUE_OFFER_COUNT, [clean_net_id(NetID), Type]).
 
 -spec handle_offer(
@@ -113,7 +113,7 @@ handle_unique_offer({NetID, _PHash}, Type) ->
 handle_offer(NetID, OfferType, Action, PHash) ->
     _ = ets:update_counter(
         ?UNIQUE_OFFER_ETS,
-        {NetID, PHash},
+        {NetID, PHash, OfferType},
         {2, 1},
         {default, 0, erlang:system_time(millisecond)}
     ),
@@ -217,12 +217,15 @@ init(Args) ->
 crawl_packets(Timer) ->
     Now = erlang:system_time(millisecond) - Timer,
     %% MS = ets:fun2ms(fun({Key, Count, Time}) when Time < Now -> Key end),
-    MS = [{{'$1','$2','$3'}, [{'<','$3',{const,Now}}], ['$1']}],
+    MS = [{{'$1', '$2', '$4'}, [{'<', '$3', {const, Now}}], ['$1']}],
     Expired = ets:select(?UNIQUE_OFFER_ETS, MS),
-    lists:foreach(fun({NetID, PHash}=Key) ->
-                          true = ets:delete(?UNIQUE_OFFER_ETS, Key),
-                          ?MODULE:handle_unique_offer(NetID, PHash)
-                  end,Expired),
+    lists:foreach(
+        fun({NetID, _PHash, OfferType} = Key) ->
+            true = ets:delete(?UNIQUE_OFFER_ETS, Key),
+            ?MODULE:handle_unique_offer(NetID, OfferType)
+        end,
+        Expired
+    ),
     ok.
 
 spawn_crawl_packets(Timer) ->
