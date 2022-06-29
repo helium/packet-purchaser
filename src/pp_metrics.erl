@@ -183,7 +183,7 @@ clean_net_id(NetID) ->
 %% -------------------------------------------------------------------
 
 init(Args) ->
-    ct:print("starting metrics with ~p", [Args]),
+    lager:info("starting metrics with ~p", [Args]),
     ElliOpts = [
         {callback, ?MODULE},
         {port, proplists:get_value(port, Args, 3000)}
