@@ -27,7 +27,8 @@
         clique,
         grpcbox,
         grpc_client,
-        erlang_lorawan
+        erlang_lorawan,
+        lru
     ]},
     {included_applications, [blockchain]},
     {env, []},
