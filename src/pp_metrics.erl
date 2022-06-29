@@ -215,7 +215,7 @@ init(Args) ->
     {ok, #state{pubkey_bin = PubKeyBin}}.
 
 crawl_packets(Timer) ->
-    Now = erlang:system_time(millisecond) - Timer,
+    Now = erlang:system_time(millisecond) - (Timer * 6),
     %% MS = ets:fun2ms(fun({Key, Count, Time}) when Time < Now -> Key end),
     MS = [{{'$1', '$2', '$3'}, [{'<', '$3', {const, Now}}], ['$1']}],
     Expired = ets:select(?UNIQUE_OFFER_ETS, MS),
