@@ -71,6 +71,8 @@
     handle_event/3
 ]).
 
+-define(UNIQUE_OFFER_ETS, pp_metrics_unique_offer_ets).
+
 %% erlfmt-ignore
 -define(VALID_NET_IDS, sets:from_list(
     lists:seq(16#000000, 16#0000FF) ++
@@ -109,7 +111,12 @@ handle_unique_offer({NetID, _PHash}, Type) ->
     PHash :: binary()
 ) -> ok.
 handle_offer(NetID, OfferType, Action, PHash) ->
-    lru:add(unique_offer, {NetID, PHash}, OfferType),
+    _ = ets:update_counter(
+        ?UNIQUE_OFFER_ETS,
+        {NetID, PHash},
+        {2, 1},
+        {default, 0, erlang:system_time(millisecond)}
+    ),
     prometheus_counter:inc(?METRICS_OFFER_COUNT, [clean_net_id(NetID), OfferType, Action]).
 
 -spec handle_packet(
@@ -189,22 +196,42 @@ init(Args) ->
         {port, proplists:get_value(port, Args, 3000)}
     ],
     {ok, _Pid} = elli:start_link(ElliOpts),
-    {ok, _Pid2} = lru:start_link(
-        {local, unique_offer},
-        [
-            {max_objs, proplists:get_value(lru_cache_size, Args)},
-            {evict_fun, fun ?MODULE:handle_unique_offer/2}
-        ]
-    ),
+
+    ?UNIQUE_OFFER_ETS = ets:new(?UNIQUE_OFFER_ETS, [
+        public,
+        named_table,
+        set,
+        {write_concurrency, true}
+    ]),
 
     {ok, PubKey, _, _} = blockchain_swarm:keys(),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
     ok = declare_metrics(),
+    ok = spawn_crawl_packets(timer:seconds(10)),
 
     _ = erlang:send_after(500, self(), post_init),
 
     {ok, #state{pubkey_bin = PubKeyBin}}.
+
+crawl_packets(Timer) ->
+    Now = erlang:system_time(millisecond) - Timer,
+    %% MS = ets:fun2ms(fun({Key, Count, Time}) when Time < Now -> Key end),
+    MS = [{{'$1','$2','$3'}, [{'<','$3',{const,Now}}], ['$1']}],
+    Expired = ets:select(?UNIQUE_OFFER_ETS, MS),
+    lists:foreach(fun({NetID, PHash}=Key) ->
+                          true = ets:delete(?UNIQUE_OFFER_ETS, Key),
+                          ?MODULE:handle_unique_offer(NetID, PHash)
+                  end,Expired),
+    ok.
+
+spawn_crawl_packets(Timer) ->
+    _ = erlang:spawn(fun() ->
+        ok = timer:sleep(Timer),
+        ok = crawl_packets(Timer),
+        ok = spawn_crawl_packets(Timer)
+    end),
+    ok.
 
 handle_call(_Request, _From, State) ->
     {reply, ignored, State}.
