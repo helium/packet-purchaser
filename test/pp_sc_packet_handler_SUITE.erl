@@ -34,6 +34,7 @@
     http_uplink_packet_test/1,
     http_uplink_packet_no_roaming_agreement_test/1,
     http_multiple_gateways_test/1,
+    http_multiple_gateways_single_shot_test/1,
     http_sync_downlink_test/1,
     http_async_downlink_test/1,
     http_class_c_downlink_test/1,
@@ -131,6 +132,7 @@ groups() ->
             http_uplink_packet_no_roaming_agreement_test,
             http_uplink_packet_late_test,
             http_multiple_gateways_test,
+            http_multiple_gateways_single_shot_test,
             http_auth_header_test,
             http_protocol_version_test
         ]},
@@ -1475,6 +1477,106 @@ http_multiple_gateways_test(_Config) ->
             ]
         }
     }),
+
+    ok.
+
+http_multiple_gateways_single_shot_test(_Config) ->
+    %% One Gateway is going to be sending all the packets.
+    #{public := PubKey1} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin1 = libp2p_crypto:pubkey_to_bin(PubKey1),
+
+    #{public := PubKey2} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin2 = libp2p_crypto:pubkey_to_bin(PubKey2),
+
+    ok = start_uplink_listener(),
+
+    SendPacketFun = fun(PubKeyBin, DevAddr, RSSI) ->
+        Packet1 = test_utils:frame_packet(
+            ?UNCONFIRMED_UP,
+            PubKeyBin,
+            DevAddr,
+            0,
+            #{dont_encode => true, rssi => RSSI}
+        ),
+        PacketTime1 = erlang:system_time(millisecond),
+        pp_sc_packet_handler:handle_packet(Packet1, PacketTime1, self()),
+        {ok, Packet1, PacketTime1}
+    end,
+
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => <<"test">>,
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"protocol">> => <<"http">>,
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+            <<"http_dedupe_timeout">> => 0
+        }
+    ]),
+
+    {ok, SCPacket1, GatewayTime1} = SendPacketFun(PubKeyBin1, ?DEVADDR_ACTILITY, -25.0),
+    {ok, SCPacket2, _PacketTime2} = SendPacketFun(PubKeyBin2, ?DEVADDR_ACTILITY, -30.0),
+    Packet1 = blockchain_state_channel_packet_v1:packet(SCPacket1),
+    PacketTime1 = blockchain_helium_packet_v1:timestamp(Packet1),
+    Packet2 = blockchain_state_channel_packet_v1:packet(SCPacket2),
+    Region = blockchain_state_channel_packet_v1:region(SCPacket1),
+
+    MakeBaseExpect = fun(PubKeyBin, GatewayInfo) ->
+        #{
+            <<"ProtocolVersion">> => <<"1.1">>,
+            <<"SenderNSID">> => fun erlang:is_binary/1,
+            <<"DedupWindowSize">> => fun erlang:is_integer/1,
+            <<"TransactionID">> => fun erlang:is_number/1,
+            <<"SenderID">> => <<"0xC00053">>,
+            <<"ReceiverID">> => ?NET_ID_ACTILITY_BIN,
+            <<"MessageType">> => <<"PRStartReq">>,
+            <<"PHYPayload">> => pp_utils:binary_to_hexstring(
+                blockchain_helium_packet_v1:payload(Packet1)
+            ),
+            <<"ULMetaData">> => #{
+                <<"DevAddr">> => ?DEVADDR_ACTILITY_BIN,
+                <<"DataRate">> => pp_lorawan:datarate_to_index(
+                    Region,
+                    blockchain_helium_packet_v1:datarate(Packet1)
+                ),
+                <<"ULFreq">> => blockchain_helium_packet_v1:frequency(Packet1),
+                <<"RFRegion">> => erlang:atom_to_binary(Region),
+                <<"RecvTime">> => pp_utils:format_time(GatewayTime1),
+
+                %% Gateway with better RSSI should be chosen
+                <<"FNSULToken">> => pp_roaming_protocol:make_uplink_token(
+                    PubKeyBin,
+                    'US915',
+                    PacketTime1
+                ),
+                <<"GWCnt">> => 1,
+                <<"GWInfo">> => [GatewayInfo]
+            }
+        }
+    end,
+
+    {ok, _Data1, _, {200, _RespBody1}} = pp_lns:http_rcv(
+        MakeBaseExpect(PubKeyBin1, #{
+            <<"ID">> => pp_utils:binary_to_hexstring(pp_utils:pubkeybin_to_mac(PubKeyBin1)),
+            <<"RFRegion">> => erlang:atom_to_binary(Region),
+            <<"RSSI">> => erlang:trunc(
+                blockchain_helium_packet_v1:signal_strength(Packet1)
+            ),
+            <<"SNR">> => blockchain_helium_packet_v1:snr(Packet1),
+            <<"DLAllowed">> => true
+        })
+    ),
+
+    {ok, _Data2, _, {200, _RespBody2}} = pp_lns:http_rcv(
+        MakeBaseExpect(PubKeyBin2, #{
+            <<"ID">> => pp_utils:binary_to_hexstring(pp_utils:pubkeybin_to_mac(PubKeyBin2)),
+            <<"RFRegion">> => erlang:atom_to_binary(Region),
+            <<"RSSI">> => erlang:trunc(
+                blockchain_helium_packet_v1:signal_strength(Packet2)
+            ),
+            <<"SNR">> => blockchain_helium_packet_v1:snr(Packet2),
+            <<"DLAllowed">> => true
+        })
+    ),
 
     ok.
 
