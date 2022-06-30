@@ -93,6 +93,14 @@ handle_call(_Msg, _From, State) ->
 
 handle_cast(
     {handle_packet, SCPacket, GatewayTime},
+    #state{send_data_timer = 0, shutdown_timer_ref = ShutdownTimerRef0} = State
+) ->
+    {ok, StateWithPacket} = do_handle_packet(SCPacket, GatewayTime, State),
+    ok = send_data(StateWithPacket),
+    {ok, ShutdownTimerRef1} = maybe_schedule_shutdown(ShutdownTimerRef0),
+    {noreply, State#state{shutdown_timer_ref = ShutdownTimerRef1}};
+handle_cast(
+    {handle_packet, SCPacket, GatewayTime},
     #state{
         should_shutdown = false,
         send_data_timer = Timeout,
