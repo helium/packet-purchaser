@@ -34,6 +34,7 @@ RUN make
 COPY include/ include/
 COPY priv/ priv/
 COPY src/ src/
+COPY scripts/ scripts/
 RUN make
 
 COPY config/ config/
