@@ -73,11 +73,14 @@ init([]) ->
     ok = pp_config:init_ets(),
     ok = pp_roaming_downlink:init_ets(),
     ok = pp_utils:init_ets(),
+    ok = pp_metrics:init_ets(),
 
     ElliConfig = [
         {callback, pp_roaming_downlink},
         {port, pp_utils:get_env_int(http_roaming_port, 8081)}
     ],
+
+    MetricsConfig = application:get_env(packet_purchaser, metrics, []),
 
     ChildSpecs = [
         ?WORKER(pp_config, [ConfigFilename]),
@@ -86,7 +89,7 @@ init([]) ->
         ?SUP(pp_udp_sup, []),
         ?SUP(pp_http_sup, []),
         ?SUP(pp_console_sup, []),
-        ?WORKER(pp_metrics, []),
+        ?WORKER(pp_metrics, [MetricsConfig]),
         #{
             id => pp_roaming_downlink,
             start => {elli, start_link, [ElliConfig]},

@@ -16,7 +16,10 @@
         {sc_expiration_interval, "${PP_SC_EXPIRATION_INTERVAL}"},
         {sc_expiration_buffer, "${PP_SC_EXPIRATION_BUFFER}"},
         {pp_routing_config_filename, "${PP_BASE_DIR}/${PP_ROUTING_CONFIG_FILE}"},
-        {metrics, [{record_queue_min_length, 50}]},
+        {metrics, [
+            {unique_offers_cleanup_timer, 10},
+            {unique_offers_window, 180}
+        ]},
         {http_roaming_port, "${PP_HTTP_DOWNLINK_PORT}"},
         {force_net_id_protocol_version, #{
             16#600013 => pv_1_0
