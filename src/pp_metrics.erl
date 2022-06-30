@@ -111,11 +111,10 @@ handle_unique_offer(NetID, Type) ->
     PHash :: binary()
 ) -> ok.
 handle_offer(NetID, OfferType, Action, PHash) ->
-    _ = ets:update_counter(
+    _ = ets:update_element(
         ?UNIQUE_OFFER_ETS,
         {NetID, PHash, OfferType},
-        {2, 1},
-        {default, 0, erlang:system_time(millisecond)}
+        {2, erlang:system_time(millisecond)}
     ),
     prometheus_counter:inc(?METRICS_OFFER_COUNT, [clean_net_id(NetID), OfferType, Action]).
 
@@ -611,8 +610,8 @@ name_to_pid(Name) ->
 -spec crawl_offers(Window :: non_neg_integer()) -> ok.
 crawl_offers(Window) ->
     Now = erlang:system_time(millisecond) - Window,
-    %% MS = ets:fun2ms(fun({Key, Count, Time}) when Time < Now -> Key end),
-    MS = [{{'$1', '$2', '$3'}, [{'<', '$3', {const, Now}}], ['$1']}],
+    %% MS = ets:fun2ms(fun({Key, Time}) when Time < Now -> Key end),
+    MS = [{{'$1', '$2'}, [{'<', '$2', {const, Now}}], ['$1']}],
     Expired = ets:select(?UNIQUE_OFFER_ETS, MS),
     lists:foreach(
         fun({NetID, _PHash, OfferType} = Key) ->
