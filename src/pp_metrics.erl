@@ -5,6 +5,7 @@
 
 -include_lib("elli/include/elli.hrl").
 
+-define(METRICS_UNIQUE_OFFER_COUNT, packet_purchaser_unique_offer_count).
 -define(METRICS_OFFER_COUNT, packet_purchaser_offer_count).
 -define(METRICS_PACKET_COUNT, packet_purchaser_packet_count).
 -define(METRICS_GWMP_COUNT, packet_purchaser_gwmp_counter).
@@ -32,11 +33,12 @@
 -define(METRICS_WORKER_TICK, '__pp_metrics_tick').
 
 %% gen_server API
--export([start_link/0]).
+-export([start_link/1]).
 
 %% Prometheus API
 -export([
-    handle_offer/5,
+    handle_unique_offer/2,
+    handle_offer/4,
     handle_packet/4,
     %% GWMP
     pull_ack/2,
@@ -52,6 +54,9 @@
     ws_state/1,
     ws_send_msg/1
 ]).
+
+%% Helper API
+-export([init_ets/0]).
 
 %% gen_server callbacks
 -export([
@@ -77,6 +82,8 @@
     lists:seq(16#E00000, 16#E000FF)
 )).
 
+-define(UNIQUE_OFFER_ETS, pp_metrics_unique_offer_ets).
+
 -record(state, {
     chain = undefined :: undefined | blockchain:blockchain(),
     pubkey_bin :: libp2p_crypto:pubkey_bin()
@@ -86,21 +93,30 @@
 %% API Functions
 %% -------------------------------------------------------------------
 
-start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+start_link(Args) ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
 %% -------------------------------------------------------------------
 %% Prometheus API Functions
 %% -------------------------------------------------------------------
 
+-spec handle_unique_offer(NetID :: non_neg_integer(), Type :: join | packet) -> ok.
+handle_unique_offer(NetID, Type) ->
+    prometheus_counter:inc(?METRICS_UNIQUE_OFFER_COUNT, [clean_net_id(NetID), Type]).
+
 -spec handle_offer(
-    PubKeyBin :: libp2p_crypto:pubkey_bin(),
     NetID :: non_neg_integer(),
     OfferType :: join | packet,
     Action :: accepted | rejected,
-    PayloadSize :: non_neg_integer()
+    PHash :: binary()
 ) -> ok.
-handle_offer(_PubKeyBin, NetID, OfferType, Action, _PayloadSize) ->
+handle_offer(NetID, OfferType, Action, PHash) ->
+    _ = ets:update_counter(
+        ?UNIQUE_OFFER_ETS,
+        {NetID, PHash, OfferType},
+        {2, 1},
+        {default, 0, erlang:system_time(millisecond)}
+    ),
     prometheus_counter:inc(?METRICS_OFFER_COUNT, [clean_net_id(NetID), OfferType, Action]).
 
 -spec handle_packet(
@@ -183,7 +199,11 @@ init(Args) ->
     {ok, PubKey, _, _} = blockchain_swarm:keys(),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
+    Timer = proplists:get_value(unique_offers_cleanup_timer, Args, 10),
+    Window = proplists:get_value(unique_offers_window, Args, 60),
+
     ok = declare_metrics(),
+    ok = spawn_crawl_offers(timer:seconds(Timer), timer:seconds(Window)),
 
     _ = erlang:send_after(500, self(), post_init),
 
@@ -257,6 +277,16 @@ handle_event(_Event, _Data, _Args) ->
 %% -------------------------------------------------------------------
 %% Internal Functions
 %% -------------------------------------------------------------------
+
+-spec init_ets() -> ok.
+init_ets() ->
+    ?UNIQUE_OFFER_ETS = ets:new(?UNIQUE_OFFER_ETS, [
+        public,
+        named_table,
+        set,
+        {write_concurrency, true}
+    ]),
+    ok.
 
 -spec declare_metrics() -> ok.
 declare_metrics() ->
@@ -577,3 +607,27 @@ name_to_pid(Name) ->
         false ->
             erlang:whereis(erlang:list_to_atom(Name))
     end.
+
+-spec crawl_offers(Window :: non_neg_integer()) -> ok.
+crawl_offers(Window) ->
+    Now = erlang:system_time(millisecond) - Window,
+    %% MS = ets:fun2ms(fun({Key, Count, Time}) when Time < Now -> Key end),
+    MS = [{{'$1', '$2', '$3'}, [{'<', '$3', {const, Now}}], ['$1']}],
+    Expired = ets:select(?UNIQUE_OFFER_ETS, MS),
+    lists:foreach(
+        fun({NetID, _PHash, OfferType} = Key) ->
+            true = ets:delete(?UNIQUE_OFFER_ETS, Key),
+            ?MODULE:handle_unique_offer(NetID, OfferType)
+        end,
+        Expired
+    ),
+    ok.
+
+-spec spawn_crawl_offers(Timer :: non_neg_integer(), Window :: non_neg_integer()) -> ok.
+spawn_crawl_offers(Timer, Window) ->
+    _ = erlang:spawn(fun() ->
+        ok = timer:sleep(Timer),
+        ok = crawl_offers(Window),
+        ok = spawn_crawl_offers(Timer, Window)
+    end),
+    ok.
