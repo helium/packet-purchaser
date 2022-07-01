@@ -111,11 +111,7 @@ handle_unique_offer(NetID, Type) ->
     PHash :: binary()
 ) -> ok.
 handle_offer(NetID, OfferType, Action, PHash) ->
-    _ = ets:update_element(
-        ?UNIQUE_OFFER_ETS,
-        {NetID, PHash, OfferType},
-        {2, erlang:system_time(millisecond)}
-    ),
+    _ = ets:insert(?UNIQUE_OFFER_ETS, {{NetID, PHash, OfferType}, erlang:system_time(millisecond)}),
     prometheus_counter:inc(?METRICS_OFFER_COUNT, [clean_net_id(NetID), OfferType, Action]).
 
 -spec handle_packet(
