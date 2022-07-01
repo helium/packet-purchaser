@@ -2,7 +2,7 @@
 
 %% Uplinking
 -export([
-    make_uplink_payload/5
+    make_uplink_payload/7
 ]).
 
 %% Downlinking
@@ -14,7 +14,7 @@
 
 %% Tokens
 -export([
-    make_uplink_token/3,
+    make_uplink_token/5,
     parse_uplink_token/1
 ]).
 
@@ -45,8 +45,10 @@
 -type pubkeybin() :: libp2p_crypto:pubkey_bin().
 -type region() :: atom().
 -type token() :: binary().
+-type dest_url() :: binary().
+-type flow_type() :: sync | async.
 
--define(TOKEN_SEP, <<":">>).
+-define(TOKEN_SEP, <<"::">>).
 
 -record(packet, {
     sc_packet :: sc_packet(),
@@ -81,9 +83,19 @@ new_packet(SCPacket, GatewayTime) ->
     Uplinks :: list(packet()),
     TransactionID :: integer(),
     ProtocolVersion :: pv_1_0 | pv_1_1,
-    DedupWindowSize :: non_neg_integer()
+    DedupWindowSize :: non_neg_integer(),
+    Destination :: binary(),
+    FlowType :: sync | async
 ) -> prstart_req().
-make_uplink_payload(NetID, Uplinks, TransactionID, ProtocolVersion, DedupWindowSize) ->
+make_uplink_payload(
+    NetID,
+    Uplinks,
+    TransactionID,
+    ProtocolVersion,
+    DedupWindowSize,
+    Destination,
+    FlowType
+) ->
     #packet{sc_packet = SCPacket, gateway_time = GatewayTime} = select_best(Uplinks),
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
@@ -102,7 +114,7 @@ make_uplink_payload(NetID, Uplinks, TransactionID, ProtocolVersion, DedupWindowS
             {eui, DevEUI, _AppEUI} -> {'DevEUI', encode_deveui(DevEUI)}
         end,
 
-    Token = make_uplink_token(PubKeyBin, Region, PacketTime),
+    Token = make_uplink_token(PubKeyBin, Region, PacketTime, Destination, FlowType),
     VersionBase =
         case ProtocolVersion of
             pv_1_0 ->
@@ -139,7 +151,7 @@ make_uplink_payload(NetID, Uplinks, TransactionID, ProtocolVersion, DedupWindowS
 
 -spec handle_message(prstart_ans() | xmitdata_req()) ->
     ok
-    | {downlink, xmitdata_ans(), downlink()}
+    | {downlink, xmitdata_ans(), downlink(), {dest_url(), flow_type()}}
     | {join_accept, downlink()}
     | {error, any()}.
 handle_message(#{<<"MessageType">> := MT} = M) ->
@@ -166,7 +178,7 @@ handle_prstart_ans(#{
         <<"FNSULToken">> := Token
     } = DLMeta
 }) ->
-    {ok, PubKeyBin, Region, PacketTime} = parse_uplink_token(Token),
+    {ok, PubKeyBin, Region, PacketTime, _, _} = parse_uplink_token(Token),
 
     DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
         pp_utils:hexstring_to_binary(Payload),
@@ -199,7 +211,7 @@ handle_prstart_ans(#{
     case parse_uplink_token(Token) of
         {error, _} = Err ->
             Err;
-        {ok, PubKeyBin, Region, PacketTime} ->
+        {ok, PubKeyBin, Region, PacketTime, _, _} ->
             DataRate = pp_lorawan:index_to_datarate(Region, DR),
 
             DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
@@ -247,7 +259,7 @@ handle_prstart_ans(Res) ->
     throw({bad_response, Res}).
 
 -spec handle_xmitdata_req(xmitdata_req()) ->
-    {downlink, xmitdata_ans(), downlink()} | {error, any()}.
+    {downlink, xmitdata_ans(), downlink(), {dest_url(), flow_type()}} | {error, any()}.
 %% Class A ==========================================
 handle_xmitdata_req(#{
     <<"MessageType">> := <<"XmitDataReq">>,
@@ -277,7 +289,7 @@ handle_xmitdata_req(#{
     case parse_uplink_token(Token) of
         {error, _} = Err ->
             Err;
-        {ok, PubKeyBin, Region, PacketTime} ->
+        {ok, PubKeyBin, Region, PacketTime, DestURL, FlowType} ->
             DataRate1 = pp_lorawan:index_to_datarate(Region, DR1),
 
             Delay1 =
@@ -299,7 +311,7 @@ handle_xmitdata_req(#{
 
             case pp_roaming_downlink:lookup_handler(PubKeyBin) of
                 {error, _} = Err -> Err;
-                {ok, SCPid} -> {downlink, PayloadResponse, {SCPid, SCResp}}
+                {ok, SCPid} -> {downlink, PayloadResponse, {SCPid, SCResp}, {DestURL, FlowType}}
             end
     end;
 %% Class C ==========================================
@@ -330,7 +342,7 @@ handle_xmitdata_req(#{
     case parse_uplink_token(Token) of
         {error, _} = Err ->
             Err;
-        {ok, PubKeyBin, Region, PacketTime} ->
+        {ok, PubKeyBin, Region, PacketTime, DestURL, FlowType} ->
             DataRate = pp_lorawan:index_to_datarate(Region, DR),
 
             Delay1 =
@@ -364,7 +376,7 @@ handle_xmitdata_req(#{
 
             case pp_roaming_downlink:lookup_handler(PubKeyBin) of
                 {error, _} = Err -> Err;
-                {ok, SCPid} -> {downlink, PayloadResponse, {SCPid, SCResp}}
+                {ok, SCPid} -> {downlink, PayloadResponse, {SCPid, SCResp}, {DestURL, FlowType}}
             end
     end.
 
@@ -397,29 +409,32 @@ rx2_from_dlmetadata(_, _, _, _) ->
 %% Tokens
 %% ------------------------------------------------------------------
 
--spec make_uplink_token(pubkeybin(), region(), non_neg_integer()) -> token().
-make_uplink_token(PubKeyBin, Region, PacketTime) ->
+-spec make_uplink_token(pubkeybin(), region(), non_neg_integer(), binary(), atom()) -> token().
+make_uplink_token(PubKeyBin, Region, PacketTime, DestURL, FlowType) ->
     Parts = [
         libp2p_crypto:bin_to_b58(PubKeyBin),
         erlang:atom_to_binary(Region),
-        erlang:integer_to_binary(PacketTime)
+        erlang:integer_to_binary(PacketTime),
+        DestURL,
+        erlang:atom_to_binary(FlowType)
     ],
     Token0 = lists:join(?TOKEN_SEP, Parts),
     Token1 = erlang:iolist_to_binary(Token0),
     pp_utils:binary_to_hexstring(Token1).
 
 -spec parse_uplink_token(token()) ->
-    {ok, pubkeybin(), region(), non_neg_integer()} | {error, any()}.
+    {ok, pubkeybin(), region(), non_neg_integer(), dest_url(), flow_type()} | {error, any()}.
 parse_uplink_token(<<"0x", Token/binary>>) ->
     parse_uplink_token(Token);
 parse_uplink_token(Token) ->
     Bin = pp_utils:hex_to_binary(Token),
     case binary:split(Bin, ?TOKEN_SEP, [global]) of
-        [B58, RegionBin, PacketTimeBin] ->
+        [B58, RegionBin, PacketTimeBin, DestURLBin, FlowTypeBin] ->
             PubKeyBin = libp2p_crypto:b58_to_bin(erlang:binary_to_list(B58)),
             Region = erlang:binary_to_atom(RegionBin),
             PacketTime = erlang:binary_to_integer(PacketTimeBin),
-            {ok, PubKeyBin, Region, PacketTime};
+            FlowType = erlang:binary_to_existing_atom(FlowTypeBin),
+            {ok, PubKeyBin, Region, PacketTime, DestURLBin, FlowType};
         _ ->
             {error, malformed_token}
     end.
