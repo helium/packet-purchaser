@@ -194,7 +194,9 @@ send_data(#state{
         Packets,
         TransactionID,
         ProtocolVersion,
-        DedupWindow
+        DedupWindow,
+        Address,
+        FlowType
     ),
     Data1 = jsx:encode(Data, [{float_formatter, fun round_to_fourth_decimal/1}]),
 

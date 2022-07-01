@@ -30,41 +30,33 @@ handle(Req, Args) ->
 
     lager:debug("request: ~p", [{Method, elli_request:path(Req), Req, Args}]),
     Body = elli_request:body(Req),
-    #{<<"TransactionID">> := TransactionID} = Decoded = jsx:decode(Body),
+    Decoded = jsx:decode(Body),
 
-    %% SenderNetIDBin = maps:get(<<"SenderID">>, Decoded),
-    %% SenderNetID = pp_utils:hexstring_to_int(SenderNetIDBin),
-    case pp_config:lookup_transaction_id(TransactionID) of
-        {error, routing_not_found} ->
-            lager:error("received message for partner not configured: ~p", [Decoded]),
-            {500, [], <<"An error occured">>};
-        {ok, Endpoint, FlowType} ->
-            case pp_roaming_protocol:handle_message(Decoded) of
-                ok ->
-                    {200, [], <<"OK">>};
-                {error, _} = Err ->
-                    lager:error("dowlink handle message error ~p", [Err]),
-                    {500, [], <<"An error occurred">>};
-                {join_accept, {SCPid, SCResp}} ->
-                    lager:debug("sending downlink [sc_pid: ~p]", [SCPid]),
-                    ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
-                    {200, [], <<"downlink sent: 1">>};
-                {downlink, Response, {SCPid, SCResp}} ->
-                    lager:debug(
-                        "sending downlink [sc_pid: ~p] [response: ~p]",
-                        [SCPid, Response]
-                    ),
-                    ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
-                    case FlowType of
-                        sync ->
-                            {200, [], jsx:encode(Response)};
-                        async ->
-                            spawn(fun() ->
-                                Res = hackney:post(Endpoint, [], jsx:encode(Response), [with_body]),
-                                lager:debug("async downlink repsonse ~p", [?MODULE, Res])
-                            end),
-                            {200, [], <<"downlink sent: 2">>}
-                    end
+    case pp_roaming_protocol:handle_message(Decoded) of
+        ok ->
+            {200, [], <<"OK">>};
+        {error, _} = Err ->
+            lager:error("dowlink handle message error ~p", [Err]),
+            {500, [], <<"An error occurred">>};
+        {join_accept, {SCPid, SCResp}} ->
+            lager:debug("sending downlink [sc_pid: ~p]", [SCPid]),
+            ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
+            {200, [], <<"downlink sent: 1">>};
+        {downlink, Response, {SCPid, SCResp}, {Endpoint, FlowType}} ->
+            lager:debug(
+                "sending downlink [sc_pid: ~p] [response: ~p]",
+                [SCPid, Response]
+            ),
+            ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
+            case FlowType of
+                sync ->
+                    {200, [], jsx:encode(Response)};
+                async ->
+                    spawn(fun() ->
+                        Res = hackney:post(Endpoint, [], jsx:encode(Response), [with_body]),
+                        lager:debug("async downlink repsonse ~p", [?MODULE, Res])
+                    end),
+                    {200, [], <<"downlink sent: 2">>}
             end
     end.
 
