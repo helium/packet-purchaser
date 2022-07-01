@@ -286,6 +286,13 @@ init_ets() ->
 -spec declare_metrics() -> ok.
 declare_metrics() ->
     %% type = frame type :: join | packet
+    prometheus_counter:declare([
+        {name, ?METRICS_UNIQUE_OFFER_COUNT},
+        {help, "Unique frame count for NetID"},
+        {labels, [net_id, type]}
+    ]),
+
+    %% type = frame type :: join | packet
     %% status = bought :: accepted | rejected
     prometheus_counter:declare([
         {name, ?METRICS_OFFER_COUNT},
