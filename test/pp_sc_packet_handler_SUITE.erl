@@ -346,7 +346,13 @@ http_protocol_version_test(_Config) ->
     ?assertEqual(maps:get(<<"ProtocolVersion">>, Uplink3), <<"1.1">>),
 
     %% Responses are whatever version was sent to us.
-    Token = pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', 1234),
+    Token = pp_roaming_protocol:make_uplink_token(
+        PubKeyBin,
+        'US915',
+        1234,
+        <<"www.example.com">>,
+        sync
+    ),
     ok = pp_config:insert_transaction_id(2177, <<"http://127.0.0.1:3002">>, sync),
     SendDownlinkWithVersion = fun(ProtocolVersion) ->
         DownlinkBody = #{
@@ -583,7 +589,13 @@ http_sync_uplink_join_test(_Config) ->
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
 
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
-    Token = pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', PacketTime),
+    Token = pp_roaming_protocol:make_uplink_token(
+        PubKeyBin,
+        'US915',
+        PacketTime,
+        <<"http://127.0.0.1:3002/uplink">>,
+        sync
+    ),
 
     %% 2. Expect a PRStartReq to the lns
     {ok, #{<<"TransactionID">> := TransactionID}, _, {200, RespBody}} = pp_lns:http_rcv(
@@ -721,7 +733,13 @@ http_async_uplink_join_test(_Config) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
-    Token = pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', PacketTime),
+    Token = pp_roaming_protocol:make_uplink_token(
+        PubKeyBin,
+        'US915',
+        PacketTime,
+        <<"http://127.0.0.1:3002/uplink">>,
+        async
+    ),
 
     %% 4. Roamer receive http uplink
     {ok, #{<<"TransactionID">> := TransactionID}} = roamer_expect_uplink_data(#{
@@ -805,7 +823,13 @@ http_sync_downlink_test(_Config) ->
     DownlinkFreq = 915.0,
     DownlinkDatr = "SF10BW125",
 
-    Token = pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', DownlinkTimestamp),
+    Token = pp_roaming_protocol:make_uplink_token(
+        PubKeyBin,
+        'US915',
+        DownlinkTimestamp,
+        <<"http://127.0.0.1:3002/uplink">>,
+        sync
+    ),
     RXDelay = 1,
 
     DownlinkBody = #{
@@ -912,7 +936,13 @@ http_async_downlink_test(_Config) ->
     DownlinkFreq = 915.0,
     DownlinkDatr = "SF10BW125",
 
-    Token = pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', DownlinkTimestamp),
+    Token = pp_roaming_protocol:make_uplink_token(
+        PubKeyBin,
+        'US915',
+        DownlinkTimestamp,
+        <<"http://127.0.0.1:3002/uplink">>,
+        async
+    ),
     RXDelay = 1,
 
     DownlinkBody = #{
@@ -1029,7 +1059,7 @@ http_class_c_downlink_test(_Config) ->
     DownlinkFreq = 915.0,
     DownlinkDatr = "SF10BW125",
 
-    Token = pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', DownlinkTimestamp),
+    Token = pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', DownlinkTimestamp, <<"http://127.0.0.1:3002/uplink">>, async),
     RXDelay = 0,
 
     DownlinkBody = #{
@@ -1184,7 +1214,9 @@ http_uplink_packet_no_roaming_agreement_test(_Config) ->
                 <<"FNSULToken">> => pp_roaming_protocol:make_uplink_token(
                     PubKeyBin,
                     'US915',
-                    PacketTime
+                    PacketTime,
+                    <<"http://127.0.0.1:3002/uplink">>,
+                    sync
                 ),
                 <<"GWCnt">> => 1,
                 <<"GWInfo">> => [
@@ -1270,7 +1302,9 @@ http_uplink_packet_test(_Config) ->
                 <<"FNSULToken">> => pp_roaming_protocol:make_uplink_token(
                     PubKeyBin,
                     'US915',
-                    PacketTime
+                    PacketTime,
+                    <<"http://127.0.0.1:3002/uplink">>,
+                    sync
                 ),
                 <<"GWCnt">> => 1,
                 <<"GWInfo">> => [
@@ -1363,7 +1397,9 @@ http_uplink_packet_late_test(_Config) ->
                 <<"FNSULToken">> => pp_roaming_protocol:make_uplink_token(
                     PubKeyBin1,
                     'US915',
-                    PacketTime
+                    PacketTime,
+                    <<"http://127.0.0.1:3002/uplink">>,
+                    sync
                 ),
                 <<"GWCnt">> => 1,
                 <<"GWInfo">> => [
@@ -1452,7 +1488,9 @@ http_multiple_gateways_test(_Config) ->
             <<"FNSULToken">> => pp_roaming_protocol:make_uplink_token(
                 PubKeyBin1,
                 'US915',
-                PacketTime1
+                PacketTime1,
+                <<"http://127.0.0.1:3002/uplink">>,
+                sync
             ),
             <<"GWCnt">> => 2,
             <<"GWInfo">> => [
@@ -1546,7 +1584,9 @@ http_multiple_gateways_single_shot_test(_Config) ->
                 <<"FNSULToken">> => pp_roaming_protocol:make_uplink_token(
                     PubKeyBin,
                     'US915',
-                    PacketTime1
+                    PacketTime1,
+                    <<"http://127.0.0.1:3002/uplink">>,
+                    sync
                 ),
                 <<"GWCnt">> => 1,
                 <<"GWInfo">> => [GatewayInfo]

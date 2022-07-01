@@ -55,11 +55,19 @@ end_per_testcase(_TestCase, _Config) ->
 %%--------------------------------------------------------------------
 
 class_c_downlink_test(_Config) ->
-    pp_roaming_downlink:insert_handler(
+    PubKeyBin =
         <<0, 97, 6, 18, 79, 240, 99, 255, 196, 76, 155, 129, 218, 223, 22, 235, 57, 180, 244, 232,
             142, 120, 120, 58, 206, 246, 188, 125, 38, 161, 39, 35, 133>>,
-        self()
+    pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+
+    Token = pp_roaming_protocol:make_uplink_token(
+        PubKeyBin,
+        'US915',
+        erlang:system_time(millisecond),
+        <<"www.example.com">>,
+        sync
     ),
+
     Input = #{
         <<"ProtocolVersion">> => <<"1.1">>,
         <<"MessageType">> => <<"XmitDataReq">>,
@@ -70,8 +78,7 @@ class_c_downlink_test(_Config) ->
             <<"DLFreq2">> => 869.525,
             <<"DataRate2">> => 8,
             <<"DevEUI">> => <<"0x6081f9c306a777fd">>,
-            <<"FNSULToken">> =>
-                <<"0x31316A6A4C6B73717734597A646E6B54666939735A73334537617241657767586A4771516735394662554D78673750396774533A55533931353A3131383839323136">>,
+            <<"FNSULToken">> => Token,
             <<"HiPriorityFlag">> => false,
             <<"RXDelay1">> => 0
         },
@@ -80,16 +87,23 @@ class_c_downlink_test(_Config) ->
     },
 
     Self = self(),
-    ?assertMatch({downlink, #{}, {Self, _}}, pp_roaming_protocol:handle_message(Input)),
+    ?assertMatch({downlink, #{}, {Self, _}, _Dest}, pp_roaming_protocol:handle_message(Input)),
 
     ok.
 
 chirpstack_join_accept_test(_Config) ->
-    pp_roaming_downlink:insert_handler(
+    PubKeyBin =
         <<0, 145, 110, 53, 166, 115, 179, 88, 16, 245, 204, 205, 12, 28, 192, 140, 95, 240, 148,
             120, 101, 37, 142, 25, 41, 159, 165, 128, 221, 94, 89, 242, 128>>,
-        self()
+    pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+    Token = pp_roaming_protocol:make_uplink_token(
+        PubKeyBin,
+        'US915',
+        erlang:system_time(millisecond),
+        <<"www.example.com">>,
+        sync
     ),
+
     A = #{
         <<"ProtocolVersion">> => <<"1.1">>,
         <<"MessageType">> => <<"PRStartAns">>,
@@ -102,8 +116,7 @@ chirpstack_join_accept_test(_Config) ->
             <<"DataRate1">> => 10,
             <<"DataRate2">> => 8,
             <<"DevEUI">> => <<"6081f9c306a777fd">>,
-            <<"FNSULToken">> =>
-                <<"313132373370794c4d6b48314d67786177555045575a4c6644656478344e64395742326d3250636855725961784b5539795644723a55533931353a33383333313734393934">>,
+            <<"FNSULToken">> => Token,
             <<"GWInfo">> => [#{}],
             <<"RXDelay1">> => 5
         },
@@ -133,7 +146,13 @@ rx1_timestamp_test(_Config) ->
     ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
 
     PacketTime = 0,
-    Token = pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', PacketTime),
+    Token = pp_roaming_protocol:make_uplink_token(
+        PubKeyBin,
+        'US915',
+        PacketTime,
+        <<"www.example.com">>,
+        sync
+    ),
 
     MakeInput = fun(RXDelay) ->
         #{
@@ -162,7 +181,7 @@ rx1_timestamp_test(_Config) ->
     lists:foreach(
         fun({RXDelay, ExpectedTimestamp}) ->
             Input = MakeInput(RXDelay),
-            {downlink, _, {_, SCResp}} = pp_roaming_protocol:handle_xmitdata_req(Input),
+            {downlink, _, {_, SCResp}, _} = pp_roaming_protocol:handle_xmitdata_req(Input),
             Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
             Timestamp = blockchain_helium_packet_v1:timestamp(Downlink),
             ?assertEqual(ExpectedTimestamp, Timestamp)
@@ -188,6 +207,14 @@ rx1_downlink_test(_Config) ->
     Frequency = 925.1,
     DataRate = 10,
 
+    Token = pp_roaming_protocol:make_uplink_token(
+        PubKeyBin,
+        'US915',
+        erlang:system_time(millisecond),
+        <<"www.example.com">>,
+        sync
+    ),
+
     Input = #{
         <<"ProtocolVersion">> => <<"1.1">>,
         <<"SenderID">> => <<"0x600013">>,
@@ -202,14 +229,13 @@ rx1_downlink_test(_Config) ->
             <<"DLFreq1">> => Frequency,
             <<"DataRate1">> => DataRate,
 
-            <<"FNSULToken">> =>
-                <<"0x31316A6A4C6B73717734597A646E6B54666939735A73334537617241657767586A4771516735394662554D78673750396774533A55533931353A3831393139303636">>,
+            <<"FNSULToken">> => Token,
             <<"ClassMode">> => <<"A">>,
             <<"HiPriorityFlag">> => false
         }
     },
 
-    {downlink, _Output, {Pid, SCResp}} = pp_roaming_protocol:handle_xmitdata_req(Input),
+    {downlink, _Output, {Pid, SCResp}, _Dest} = pp_roaming_protocol:handle_xmitdata_req(Input),
     ?assertEqual(Pid, self()),
 
     Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
@@ -233,6 +259,14 @@ rx2_downlink_test(_Config) ->
             142, 120, 120, 58, 206, 246, 188, 125, 38, 161, 39, 35, 133>>,
     ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
 
+    Token = pp_roaming_protocol:make_uplink_token(
+        PubKeyBin,
+        'US915',
+        erlang:system_time(millisecond),
+        <<"www.example.com">>,
+        sync
+    ),
+
     Input = #{
         <<"ProtocolVersion">> => <<"1.1">>,
         <<"SenderID">> => <<"0x600013">>,
@@ -251,14 +285,13 @@ rx2_downlink_test(_Config) ->
             <<"DLFreq2">> => 923.3,
             <<"DataRate2">> => 8,
 
-            <<"FNSULToken">> =>
-                <<"0x31316A6A4C6B73717734597A646E6B54666939735A73334537617241657767586A4771516735394662554D78673750396774533A55533931353A3831393139303636">>,
+            <<"FNSULToken">> => Token,
             <<"ClassMode">> => <<"A">>,
             <<"HiPriorityFlag">> => false
         }
     },
 
-    {downlink, _Output, {Pid, SCResp}} = pp_roaming_protocol:handle_xmitdata_req(Input),
+    {downlink, _Output, {Pid, SCResp}, _Dest} = pp_roaming_protocol:handle_xmitdata_req(Input),
     ?assertEqual(Pid, self()),
 
     Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
