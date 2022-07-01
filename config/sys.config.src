@@ -56,7 +56,7 @@
         }},
         {max_tcp_connections, 500000}
     ]},
-    {disabled_grpcbox, [
+    {grpcbox, [
         {servers, [
             #{
                 grpc_opts => #{
