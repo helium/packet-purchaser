@@ -168,7 +168,7 @@
  {<<"websocket_client">>,{pkg,<<"websocket_client">>,<<"1.3.0">>},0},
  {<<"xxhash">>,
   {git,"https://github.com/pierreis/erlang-xxhash",
-       {ref,"5d222dcb54c9dd8247d4429174126ebda52b0e2d"}},
+       {ref,"92fcfe57a74d3ea1fe794ccdfdf62ce4a036c01b"}},
   0}]}.
 [
 {pkg_hash,[
