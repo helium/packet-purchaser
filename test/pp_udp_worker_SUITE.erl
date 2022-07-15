@@ -2,9 +2,9 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("router_utils/include/semtech_udp.hrl").
 
 -include("packet_purchaser.hrl").
--include("semtech_udp.hrl").
 
 -export([
     all/0,

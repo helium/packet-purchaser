@@ -3,7 +3,8 @@
 -behavior(gen_server).
 
 -include("packet_purchaser.hrl").
--include("semtech_udp.hrl").
+
+-include_lib("router_utils/include/semtech_udp.hrl").
 
 %% ------------------------------------------------------------------
 %% API Function Exports

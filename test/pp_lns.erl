@@ -2,7 +2,8 @@
 
 -behavior(gen_server).
 
--include("semtech_udp.hrl").
+-include_lib("router_utils/include/semtech_udp.hrl").
+
 -include("config.hrl").
 
 %% ------------------------------------------------------------------
