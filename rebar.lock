@@ -1,4 +1,4 @@
-{"1.2.0",
+
 [{<<"acceptor_pool">>,
   {git,"https://github.com/novalabsxyz/acceptor_pool",
        {ref,"56d676e00c11fd071a6bcc4059e3454960900af7"}},
