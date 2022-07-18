@@ -603,7 +603,7 @@ get_pid_name(Pid) ->
 
 -spec name_to_pid(list()) -> pid() | undefined.
 name_to_pid(Name) ->
-    case erlang:length(string:split(Name, ".")) == 2 of
+    case erlang:length(string:split(Name, ".", all)) == 3 of
         true ->
             erlang:list_to_pid(Name);
         false ->
