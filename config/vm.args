@@ -5,4 +5,7 @@
 -setcookie packet_purchaser
 
 ## Up the number of processes allowed
-+P 524289
++P 2097151
+
+# Tweak GC to run more often
+-env ERL_FULLSWEEP_AFTER 3
