@@ -6,3 +6,6 @@
 
 ## Up the number of processes allowed
 +P 524289
+
+# Tweak GC to run more often
+-env ERL_FULLSWEEP_AFTER 3
