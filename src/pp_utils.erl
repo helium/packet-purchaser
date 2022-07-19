@@ -75,7 +75,7 @@ get_oui() ->
 
 -spec pubkeybin_to_mac(binary()) -> binary().
 pubkeybin_to_mac(PubKeyBin) ->
-    <<(xxhash:hash64(PubKeyBin)):64/unsigned-integer>>.
+    udp_worker_utils:pubkeybin_to_mac(PubKeyBin).
 
 -spec animal_name(PubKeyBin :: libp2p_crypto:pubkey_bin()) -> {ok, string()}.
 animal_name(PubKeyBin) ->

@@ -245,56 +245,8 @@ terminate(_Reason, #state{socket = Socket}) ->
 ) -> {binary(), binary()}.
 handle_sc_packet_data(SCPacket, PacketTime, Location) ->
     PushDataMap = values_for_push_from(SCPacket),
-    handle_push_data(PushDataMap, Location, PacketTime).
+    udp_worker_utils:handle_push_data(PushDataMap, Location, PacketTime).
 
-handle_push_data(PushDataMap, Location, PacketTime) ->
-    #{pub_key_bin := PubKeyBin,
-        region := Region,
-        tmst := Tmst,
-        payload := Payload,
-        frequency := Frequency,
-        datarate := Datarate,
-        signal_strength := SignalStrength,
-        snr := Snr} = PushDataMap,
-
-    MAC = pp_utils:pubkeybin_to_mac(PubKeyBin),
-    Token = semtech_udp:token(),
-    {Index, Lat, Long} =
-        case Location of
-            undefined -> {undefined, undefined, undefined};
-            no_location -> {undefined, undefined, undefined};
-            {_, _, _} = L -> L
-        end,
-
-    Data = semtech_udp:push_data(
-        Token,
-        MAC,
-        #{
-            time => iso8601:format(
-                calendar:system_time_to_universal_time(PacketTime, millisecond)
-            ),
-            tmst => Tmst band 16#FFFFFFFF,
-            freq => Frequency,
-            rfch => 0,
-            modu => <<"LORA">>,
-            codr => <<"4/5">>,
-            stat => 1,
-            chan => 0,
-            datr => erlang:list_to_binary(Datarate),
-            rssi => erlang:trunc(SignalStrength),
-            lsnr => Snr,
-            size => erlang:byte_size(Payload),
-            data => base64:encode(Payload)
-        },
-        #{
-            regi => Region,
-            inde => Index,
-            lati => Lat,
-            long => Long,
-            pubk => libp2p_crypto:bin_to_b58(PubKeyBin)
-        }
-    ),
-    {Token, Data}.
 
 values_for_push_from(SCPacket) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
