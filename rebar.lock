@@ -81,7 +81,7 @@
   2},
  {<<"grpcbox">>,
   {git,"https://github.com/novalabsxyz/grpcbox.git",
-       {ref,"a3c1092cc9f77263c2ce0d9d2ba480482987a06d"}},
+       {ref,"d75ffe8e31b544c1105c3498676abf279996c348"}},
   0},
  {<<"gun">>,
   {git,"https://github.com/ninenines/gun",
