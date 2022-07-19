@@ -153,7 +153,7 @@ handle_call(
         State
 ) ->
     _ = erlang:cancel_timer(ShutdownRef),
-    {Token, Data} = handle_data(SCPacket, PacketTime, Loc),
+    {Token, Data} = handle_sc_packet_data(SCPacket, PacketTime, Loc),
     {Reply, TimerRef} = send_push_data(Token, Data, State),
     {reply, Reply, State#state{
         push_data = maps:put(Token, {Data, TimerRef}, PushData),
@@ -238,25 +238,34 @@ terminate(_Reason, #state{socket = Socket}) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
--spec handle_data(
+-spec handle_sc_packet_data(
     SCPacket :: blockchain_state_channel_packet_v1:packet(),
     PacketTime :: pos_integer(),
     Location :: {pos_integer(), float(), float()} | no_location | undefined
 ) -> {binary(), binary()}.
-handle_data(SCPacket, PacketTime, Location) ->
-    Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
-    PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
-    Region = blockchain_state_channel_packet_v1:region(SCPacket),
-    Token = semtech_udp:token(),
+handle_sc_packet_data(SCPacket, PacketTime, Location) ->
+    PushDataMap = values_for_push_from(SCPacket),
+    handle_push_data(PushDataMap, Location, PacketTime).
+
+handle_push_data(PushDataMap, Location, PacketTime) ->
+    #{pub_key_bin := PubKeyBin,
+        region := Region,
+        tmst := Tmst,
+        payload := Payload,
+        frequency := Frequency,
+        datarate := Datarate,
+        signal_strength := SignalStrength,
+        snr := Snr} = PushDataMap,
+
     MAC = pp_utils:pubkeybin_to_mac(PubKeyBin),
-    Tmst = blockchain_helium_packet_v1:timestamp(Packet),
-    Payload = blockchain_helium_packet_v1:payload(Packet),
+    Token = semtech_udp:token(),
     {Index, Lat, Long} =
         case Location of
             undefined -> {undefined, undefined, undefined};
             no_location -> {undefined, undefined, undefined};
             {_, _, _} = L -> L
         end,
+
     Data = semtech_udp:push_data(
         Token,
         MAC,
@@ -265,15 +274,15 @@ handle_data(SCPacket, PacketTime, Location) ->
                 calendar:system_time_to_universal_time(PacketTime, millisecond)
             ),
             tmst => Tmst band 16#FFFFFFFF,
-            freq => blockchain_helium_packet_v1:frequency(Packet),
+            freq => Frequency,
             rfch => 0,
             modu => <<"LORA">>,
             codr => <<"4/5">>,
             stat => 1,
             chan => 0,
-            datr => erlang:list_to_binary(blockchain_helium_packet_v1:datarate(Packet)),
-            rssi => erlang:trunc(blockchain_helium_packet_v1:signal_strength(Packet)),
-            lsnr => blockchain_helium_packet_v1:snr(Packet),
+            datr => erlang:list_to_binary(Datarate),
+            rssi => erlang:trunc(SignalStrength),
+            lsnr => Snr,
             size => erlang:byte_size(Payload),
             data => base64:encode(Payload)
         },
@@ -286,6 +295,25 @@ handle_data(SCPacket, PacketTime, Location) ->
         }
     ),
     {Token, Data}.
+
+values_for_push_from(SCPacket) ->
+    Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
+    PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
+    Region = blockchain_state_channel_packet_v1:region(SCPacket),
+    Tmst = blockchain_helium_packet_v1:timestamp(Packet),
+    Payload = blockchain_helium_packet_v1:payload(Packet),
+    Frequency = blockchain_helium_packet_v1:frequency(Packet),
+    Datarate = blockchain_helium_packet_v1:datarate(Packet),
+    SignalStrength = blockchain_helium_packet_v1:signal_strength(Packet),
+    Snr = blockchain_helium_packet_v1:snr(Packet),
+    #{pub_key_bin => PubKeyBin,
+        region => Region,
+        tmst => Tmst,
+        payload => Payload,
+        frequency => Frequency,
+        datarate => Datarate,
+        signal_strength =>SignalStrength,
+        snr => Snr}.
 
 -spec handle_udp(binary(), #state{}) -> {noreply, #state{}}.
 handle_udp(Data, State) ->
