@@ -288,7 +288,6 @@ handle_push_ack(
     Data,
     #state{
         push_data = PushData,
-        pubkeybin = PBK,
         net_id = NetID
     } = State
 ) ->
@@ -300,7 +299,7 @@ handle_push_ack(
         {_, TimerRef} ->
             lager:debug("got push ack ~p", [Token]),
             _ = erlang:cancel_timer(TimerRef),
-            ok = pp_metrics:push_ack(PBK, NetID),
+            ok = gwmp_metrics:push_ack("packet_purchaser_", NetID),
             {noreply, State#state{push_data = maps:remove(Token, PushData)}}
     end.
 

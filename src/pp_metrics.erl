@@ -43,7 +43,6 @@
     %% GWMP
     pull_ack/2,
     pull_ack_missed/2,
-    push_ack/2,
     push_ack_missed/2,
     %% Stats
     dcs/1,
@@ -74,14 +73,6 @@
     handle_event/3
 ]).
 
-%% erlfmt-ignore
--define(VALID_NET_IDS, sets:from_list(
-    lists:seq(16#000000, 16#0000FF) ++
-    lists:seq(16#600000, 16#6000FF) ++
-    lists:seq(16#C00000, 16#C000FF) ++
-    lists:seq(16#E00000, 16#E000FF)
-)).
-
 -define(UNIQUE_OFFER_ETS, pp_metrics_unique_offer_ets).
 
 -record(state, {
@@ -102,7 +93,7 @@ start_link(Args) ->
 
 -spec handle_unique_offer(NetID :: non_neg_integer(), Type :: join | packet) -> ok.
 handle_unique_offer(NetID, Type) ->
-    prometheus_counter:inc(?METRICS_UNIQUE_OFFER_COUNT, [clean_net_id(NetID), Type]).
+    prometheus_counter:inc(?METRICS_UNIQUE_OFFER_COUNT, [gwmp_metrics:clean_net_id(NetID), Type]).
 
 -spec handle_offer(
     NetID :: non_neg_integer(),
@@ -112,7 +103,7 @@ handle_unique_offer(NetID, Type) ->
 ) -> ok.
 handle_offer(NetID, OfferType, Action, PHash) ->
     _ = ets:insert(?UNIQUE_OFFER_ETS, {{NetID, PHash, OfferType}, erlang:system_time(millisecond)}),
-    prometheus_counter:inc(?METRICS_OFFER_COUNT, [clean_net_id(NetID), OfferType, Action]).
+    prometheus_counter:inc(?METRICS_OFFER_COUNT, [gwmp_metrics:clean_net_id(NetID), OfferType, Action]).
 
 -spec handle_packet(
     PubKeyBin :: libp2p_crypto:pubkey_bin(),
@@ -121,23 +112,19 @@ handle_offer(NetID, OfferType, Action, PHash) ->
     ProtocolType :: udp | http_sync | http_async
 ) -> ok.
 handle_packet(_PubKeyBin, NetID, PacketType, ProtocolType) ->
-    prometheus_counter:inc(?METRICS_PACKET_COUNT, [clean_net_id(NetID), PacketType, ProtocolType]).
-
--spec push_ack(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
-push_ack(_PubKeyBin, NetID) ->
-    prometheus_counter:inc(?METRICS_GWMP_COUNT, [clean_net_id(NetID), push_ack, hit]).
+    prometheus_counter:inc(?METRICS_PACKET_COUNT, [gwmp_metrics:clean_net_id(NetID), PacketType, ProtocolType]).
 
 -spec push_ack_missed(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
 push_ack_missed(_PubKeyBin, NetID) ->
-    prometheus_counter:inc(?METRICS_GWMP_COUNT, [clean_net_id(NetID), push_ack, miss]).
+    prometheus_counter:inc(?METRICS_GWMP_COUNT, [gwmp_metrics:clean_net_id(NetID), push_ack, miss]).
 
 -spec pull_ack(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
 pull_ack(_PubKeyBin, NetID) ->
-    prometheus_counter:inc(?METRICS_GWMP_COUNT, [clean_net_id(NetID), pull_ack, hit]).
+    prometheus_counter:inc(?METRICS_GWMP_COUNT, [gwmp_metrics:clean_net_id(NetID), pull_ack, hit]).
 
 -spec pull_ack_missed(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
 pull_ack_missed(_PubKeyBin, NetID) ->
-    prometheus_counter:inc(?METRICS_GWMP_COUNT, [clean_net_id(NetID), pull_ack, miss]).
+    prometheus_counter:inc(?METRICS_GWMP_COUNT, [gwmp_metrics:clean_net_id(NetID), pull_ack, miss]).
 
 -spec dcs(Balance :: non_neg_integer()) -> ok.
 dcs(Balance) ->
@@ -172,13 +159,6 @@ ws_state(State) ->
 -spec ws_send_msg(NetID :: non_neg_integer()) -> ok.
 ws_send_msg(NetID) ->
     prometheus_counter:inc(?METRICS_WS_MSG_COUNT, [NetID]).
-
--spec clean_net_id(non_neg_integer()) -> unofficial_net_id | non_neg_integer().
-clean_net_id(NetID) ->
-    case sets:is_element(NetID, ?VALID_NET_IDS) of
-        true -> NetID;
-        false -> unofficial_net_id
-    end.
 
 %% -------------------------------------------------------------------
 %% gen_server Callbacks
