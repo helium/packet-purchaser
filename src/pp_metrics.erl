@@ -37,7 +37,7 @@
 
 %% Prometheus API
 -export([
-    handle_unique_offer/2,
+    handle_unique_offer/3,
     handle_offer/4,
     handle_packet/4,
     %% GWMP
@@ -100,9 +100,13 @@ start_link(Args) ->
 %% Prometheus API Functions
 %% -------------------------------------------------------------------
 
--spec handle_unique_offer(NetID :: non_neg_integer(), Type :: join | packet) -> ok.
-handle_unique_offer(NetID, Type) ->
-    prometheus_counter:inc(?METRICS_UNIQUE_OFFER_COUNT, [clean_net_id(NetID), Type]).
+-spec handle_unique_offer(
+    NetID :: non_neg_integer(),
+    Type :: join | packet,
+    Inc :: non_neg_integer()
+) -> ok.
+handle_unique_offer(NetID, Type, Inc) ->
+    prometheus_counter:inc(?METRICS_UNIQUE_OFFER_COUNT, [clean_net_id(NetID), Type], Inc).
 
 -spec handle_offer(
     NetID :: non_neg_integer(),
@@ -616,13 +620,21 @@ crawl_offers(Window) ->
     %% MS = ets:fun2ms(fun({Key, Time}) when Time < Now -> Key end),
     MS = [{{'$1', '$2'}, [{'<', '$2', {const, Now}}], ['$1']}],
     Expired = ets:select(?UNIQUE_OFFER_ETS, MS),
+
+    %% Directly increment by the number we're about to delete by each key
+    Counts = [
+        {Key, erlang:length(proplists:lookup_all(Key, Expired))}
+        || Key <- proplists:get_keys(Expired)
+    ],
     lists:foreach(
-        fun({NetID, _PHash, OfferType} = Key) ->
-            true = ets:delete(?UNIQUE_OFFER_ETS, Key),
-            ?MODULE:handle_unique_offer(NetID, OfferType)
+        fun({{NetID, _PHash, OfferType}, Count}) ->
+            ?MODULE:handle_unique_offer(NetID, OfferType, Count)
         end,
-        Expired
+        Counts
     ),
+
+    %% Remove all accounted for
+    lists:foreach(fun(Key) -> true = ets:delete(?UNIQUE_OFFER_ETS, Key) end, Expired),
     ok.
 
 -spec spawn_crawl_offers(Timer :: non_neg_integer(), Window :: non_neg_integer()) -> ok.
