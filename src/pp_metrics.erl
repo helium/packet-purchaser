@@ -622,12 +622,16 @@ crawl_offers(Window) ->
     Expired = ets:select(?UNIQUE_OFFER_ETS, MS),
 
     %% Directly increment by the number we're about to delete by each key
-    Counts = [
-        {Key, erlang:length(proplists:lookup_all(Key, Expired))}
-        || Key <- proplists:get_keys(Expired)
-    ],
-    lists:foreach(
-        fun({{NetID, _PHash, OfferType}, Count}) ->
+    Counts = lists:foldl(
+        fun({NetID, _Phash, OfferType}, Acc) ->
+            Key = {NetID, OfferType},
+            Acc#{Key => maps:get(Key, Acc, 0) + 1}
+        end,
+        #{},
+        Expired
+    ),
+    maps:foreach(
+        fun({NetID, OfferType}, Count) ->
             ?MODULE:handle_unique_offer(NetID, OfferType, Count)
         end,
         Counts
