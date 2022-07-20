@@ -40,10 +40,6 @@
     handle_unique_offer/2,
     handle_offer/4,
     handle_packet/4,
-    %% GWMP
-    pull_ack/2,
-    pull_ack_missed/2,
-    push_ack_missed/2,
     %% Stats
     dcs/1,
     blocks/1,
@@ -113,18 +109,6 @@ handle_offer(NetID, OfferType, Action, PHash) ->
 ) -> ok.
 handle_packet(_PubKeyBin, NetID, PacketType, ProtocolType) ->
     prometheus_counter:inc(?METRICS_PACKET_COUNT, [gwmp_metrics:clean_net_id(NetID), PacketType, ProtocolType]).
-
--spec push_ack_missed(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
-push_ack_missed(_PubKeyBin, NetID) ->
-    prometheus_counter:inc(?METRICS_GWMP_COUNT, [gwmp_metrics:clean_net_id(NetID), push_ack, miss]).
-
--spec pull_ack(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
-pull_ack(_PubKeyBin, NetID) ->
-    prometheus_counter:inc(?METRICS_GWMP_COUNT, [gwmp_metrics:clean_net_id(NetID), pull_ack, hit]).
-
--spec pull_ack_missed(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
-pull_ack_missed(_PubKeyBin, NetID) ->
-    prometheus_counter:inc(?METRICS_GWMP_COUNT, [gwmp_metrics:clean_net_id(NetID), pull_ack, miss]).
 
 -spec dcs(Balance :: non_neg_integer()) -> ok.
 dcs(Balance) ->
