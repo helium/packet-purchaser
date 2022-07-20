@@ -33,8 +33,6 @@
 -define(PUSH_DATA_TICK, push_data_tick).
 -define(PUSH_DATA_TIMER, timer:seconds(2)).
 
--define(PULL_DATA_TICK, pull_data_tick).
--define(PULL_DATA_TIMEOUT_TICK, pull_data_timeout_tick).
 -define(PULL_DATA_TIMER, timer:seconds(10)).
 
 -define(SHUTDOWN_TICK, shutdown_tick).
@@ -112,7 +110,7 @@ init(Args) ->
             %% Pull data immediately so we can establish a connection for the first
             %% pull_response.
             self() ! ?PULL_DATA_TICK,
-            schedule_pull_data(PullDataTimer)
+            udp_worker_utils:schedule_pull_data(PullDataTimer)
     end,
 
     ok = pp_config:insert_udp_worker(NetID, self()),
@@ -208,17 +206,19 @@ handle_info(
     end;
 handle_info(
     ?PULL_DATA_TICK,
-    State
+    #state{pubkeybin = PubKeyBin, socket = Socket, pull_data_timer = PullDataTimer} = State
 ) ->
-    {ok, RefAndToken} = send_pull_data(State),
+    {ok, RefAndToken} = udp_worker_utils:send_pull_data(#{
+        pubkeybin => PubKeyBin,
+        socket => Socket,
+        pull_data_timer => PullDataTimer
+    }),
     {noreply, State#state{pull_data = RefAndToken}};
 handle_info(
     ?PULL_DATA_TIMEOUT_TICK,
     #state{pull_data_timer = PullDataTimer, net_id = NetID} = State
 ) ->
-    lager:debug("got a pull data timeout, ignoring missed pull_ack [retry: ~p]", [PullDataTimer]),
-    ok = gwmp_metrics:pull_ack_missed(?METRICS_PREFIX, NetID),
-    _ = schedule_pull_data(PullDataTimer),
+    udp_worker_utils:handle_pull_data_timeout(PullDataTimer, NetID, ?METRICS_PREFIX),
     {noreply, State};
 handle_info(?SHUTDOWN_TICK, #state{shutdown_timer = {ShutdownTimeout, _}} = State) ->
     lager:info("shutting down, haven't sent data in ~p", [ShutdownTimeout]),
@@ -248,7 +248,6 @@ terminate(_Reason, #state{socket = Socket}) ->
 handle_sc_packet_data(SCPacket, PacketTime, Location) ->
     PushDataMap = values_for_push_from(SCPacket),
     udp_worker_utils:handle_push_data(PushDataMap, Location, PacketTime).
-
 
 values_for_push_from(SCPacket) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
@@ -293,25 +292,13 @@ handle_push_ack(
         net_id = NetID
     } = State
 ) ->
-    Token = semtech_udp:token(Data),
-    case maps:get(Token, PushData, undefined) of
-        undefined ->
-            lager:debug("got unkown push ack ~p", [Token]),
-            {noreply, State};
-        {_, TimerRef} ->
-            lager:debug("got push ack ~p", [Token]),
-            _ = erlang:cancel_timer(TimerRef),
-            ok = gwmp_metrics:push_ack(?METRICS_PREFIX, NetID),
-            {noreply, State#state{push_data = maps:remove(Token, PushData)}}
-    end.
+    NewPushData = udp_worker_utils:handle_push_ack(Data, PushData, NetID, ?METRICS_PREFIX),
+    {noreply, State#state{push_data = NewPushData}}.
 
 -spec handle_pull_ack(binary(), #state{}) -> {noreply, #state{}}.
 handle_pull_ack(
     _Data,
-    #state{
-        pull_data = undefined
-    } = State
-) ->
+    #state{pull_data = undefined} = State) ->
     lager:warning("got unknown pull ack for ~p", [_Data]),
     {noreply, State};
 handle_pull_ack(
@@ -322,15 +309,11 @@ handle_pull_ack(
         net_id = NetID
     } = State
 ) ->
-    case semtech_udp:token(Data) of
-        PullDataToken ->
-            erlang:cancel_timer(PullDataRef),
-            lager:debug("got pull ack for ~p", [PullDataToken]),
-            _ = schedule_pull_data(PullDataTimer),
-            ok = gwmp_metrics:pull_ack(?METRICS_PREFIX, NetID),
+    NewPullData = udp_worker_utils:handle_pull_ack(Data, PullDataToken, PullDataRef, PullDataTimer, NetID, ?METRICS_PREFIX),
+    case NewPullData of
+        undefined ->
             {noreply, State#state{pull_data = undefined}};
-        _UnknownToken ->
-            lager:warning("got unknown pull ack for ~p", [_UnknownToken]),
+        _ ->
             {noreply, State}
     end.
 
@@ -343,8 +326,7 @@ handle_pull_resp(
         socket = Socket} = State
 ) when is_pid(SCPid) ->
     _ = state_channel_send_response(Data, SCPid),
-    Token = semtech_udp:token(Data),
-    _ = udp_worker_utils:send_tx_ack(Token, #{pubkeybin => PubKeyBin, socket => Socket}),
+    udp_worker_utils:handle_pull_response(Data, PubKeyBin, Socket),
     {noreply, State}.
 
 state_channel_send_response(Data, SCPid) ->
@@ -370,33 +352,12 @@ state_channel_send_response(Data, SCPid) ->
         blockchain_state_channel_response_v1:new(true, DownlinkPacket)
     ).
 
--spec schedule_pull_data(non_neg_integer()) -> reference().
-schedule_pull_data(PullDataTimer) ->
-    _ = erlang:send_after(PullDataTimer, self(), ?PULL_DATA_TICK).
 
 -spec schedule_shutdown(non_neg_integer()) -> reference().
 schedule_shutdown(ShutdownTimer) ->
     _ = erlang:send_after(ShutdownTimer, self(), ?SHUTDOWN_TICK).
 
--spec send_pull_data(#state{}) -> {ok, {reference(), binary()}} | {error, any()}.
-send_pull_data(
-    #state{
-        pubkeybin = PubKeyBin,
-        socket = Socket,
-        pull_data_timer = PullDataTimer
-    }
-) ->
-    Token = semtech_udp:token(),
-    Data = semtech_udp:pull_data(Token, pp_utils:pubkeybin_to_mac(PubKeyBin)),
-    case pp_udp_socket:send(Socket, Data) of
-        ok ->
-            lager:debug("sent pull data keepalive ~p", [Token]),
-            TimerRef = erlang:send_after(PullDataTimer, self(), ?PULL_DATA_TIMEOUT_TICK),
-            {ok, {TimerRef, Token}};
-        Error ->
-            lager:warning("failed to send pull data keepalive ~p: ~p", [Token, Error]),
-            Error
-    end.
+
 
 -spec send_push_data(binary(), binary(), #state{}) -> {ok | {error, any()}, reference()}.
 send_push_data(
