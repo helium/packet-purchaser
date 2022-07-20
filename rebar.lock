@@ -156,7 +156,7 @@
   3},
  {<<"router_utils">>,
   {git,"https://github.com/helium/router-utils.git",
-       {ref,"3bedf25c0dd9808b7c2114c27984df33bfe8620c"}},
+       {ref,"826bd8b77874935b9ec53c665f9cbaf2b58778cc"}},
   0},
  {<<"sidejob">>,{pkg,<<"sidejob">>,<<"2.1.0">>},2},
  {<<"small_ints">>,{pkg,<<"small_ints">>,<<"0.1.0">>},3},

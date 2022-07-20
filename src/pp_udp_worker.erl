@@ -338,10 +338,17 @@ handle_pull_ack(
 -spec handle_pull_resp(binary(), #state{}) -> {noreply, #state{}}.
 handle_pull_resp(
     Data,
-    #state{sc_pid = SCPid} = State
+    #state{sc_pid = SCPid,
+        pubkeybin = PubKeyBin,
+        socket = Socket} = State
 ) when is_pid(SCPid) ->
-    Map = maps:get(<<"txpk">>, semtech_udp:json_data(Data)),
+    _ = state_channel_send_response(Data, SCPid),
+    Token = semtech_udp:token(Data),
+    _ = udp_worker_utils:send_tx_ack(Token, #{pubkeybin => PubKeyBin, socket => Socket}),
+    {noreply, State}.
 
+state_channel_send_response(Data, SCPid) ->
+    Map = maps:get(<<"txpk">>, semtech_udp:json_data(Data)),
     JSONData0 = maps:get(<<"data">>, Map),
     JSONData1 =
         try
@@ -351,7 +358,6 @@ handle_pull_resp(
                 lager:warning("failed to decode pull_resp data ~p", [JSONData0]),
                 JSONData0
         end,
-
     DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
         JSONData1,
         maps:get(<<"powe">>, Map),
@@ -362,10 +368,7 @@ handle_pull_resp(
     catch blockchain_state_channel_common:send_response(
         SCPid,
         blockchain_state_channel_response_v1:new(true, DownlinkPacket)
-    ),
-    Token = semtech_udp:token(Data),
-    _ = send_tx_ack(Token, State),
-    {noreply, State}.
+    ).
 
 -spec schedule_pull_data(non_neg_integer()) -> reference().
 schedule_pull_data(PullDataTimer) ->
@@ -410,18 +413,3 @@ send_push_data(
         Reply
     ]),
     {Reply, TimerRef}.
-
--spec send_tx_ack(binary(), #state{}) -> ok | {error, any()}.
-send_tx_ack(
-    Token,
-    #state{pubkeybin = PubKeyBin, socket = Socket}
-) ->
-    Data = semtech_udp:tx_ack(Token, pp_utils:pubkeybin_to_mac(PubKeyBin)),
-    Reply = pp_udp_socket:send(Socket, Data),
-    lager:debug("sent ~p/~p to ~p replied: ~p", [
-        Token,
-        Data,
-        pp_udp_socket:get_address(Socket),
-        Reply
-    ]),
-    Reply.
