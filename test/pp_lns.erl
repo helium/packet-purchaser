@@ -39,21 +39,16 @@
 
 -export([
     handle/2,
-    handle_event/3
-    , handle_push_data/4]).
+    handle_event/3,
+    handle_push_data/4,
+    handle_pull_data/4,
+    handle_tx_ack/4]).
 
 -define(SERVER, ?MODULE).
 
 -record(custom_state, {
     delay_next_udp = 0 :: integer(),
     forward :: pid()
-}).
-
--record(state, {
-    socket :: gen_udp:socket(),
-    port :: inet:port_number(),
-    custom_state,
-    handle_push_data_fun = undefined :: function() | undefined
 }).
 
 %% ------------------------------------------------------------------
@@ -160,20 +155,23 @@ init(Args) ->
     {ok, Socket} = gen_udp:open(Port, [binary, {active, true}]),
     Pid = maps:get(forward, Args),
     CustomState = #custom_state{forward = Pid},
-    {ok, #state{
-            socket = Socket,
-            port = Port,
-            custom_state = CustomState,
-            handle_push_data_fun = fun handle_push_data/4}}.
+    {ok, #lns_udp_state{
+        socket = Socket,
+        port = Port,
+        custom_state = CustomState,
+        handle_push_data_fun = fun handle_push_data/4,
+        handle_pull_data_fun = fun handle_pull_data/4,
+        handle_tx_ack_fun = fun handle_tx_ack/4
+    }}.
 
 handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
     {reply, ok, State}.
 
-handle_cast({delay_next_udp, Delay}, #state{custom_state = CustomState} = State) ->
+handle_cast({delay_next_udp, Delay}, #lns_udp_state{custom_state = CustomState} = State) ->
     lager:info("delaying next udp by ~p", [Delay]),
-    {noreply, State#state{custom_state = CustomState#custom_state{delay_next_udp = Delay}}};
-handle_cast({pull_resp, IP, Port, Token, Map}, #state{socket = Socket} = State) ->
+    {noreply, State#lns_udp_state{custom_state = CustomState#custom_state{delay_next_udp = Delay}}};
+handle_cast({pull_resp, IP, Port, Token, Map}, #lns_udp_state{socket = Socket} = State) ->
     lager:info("pull_resp ~p", [{IP, Port, Token, Map}]),
     _ = gen_udp:send(Socket, IP, Port, semtech_udp:pull_resp(Token, Map)),
     {noreply, State};
@@ -183,13 +181,13 @@ handle_cast(_Msg, State) ->
 
 handle_info(
     {udp, Socket, IP, Port, Packet},
-    #state{socket = Socket, custom_state = CustomState} = State
+    #lns_udp_state{socket = Socket, custom_state = CustomState} = State
 ) ->
-    ok = handle_udp(IP, Port, Packet, State),
-    {noreply, State#state{custom_state = CustomState#custom_state{delay_next_udp = 0}}};
+    ok = lns_udp_utils:handle_udp(IP, Port, Packet, State),
+    {noreply, State#lns_udp_state{custom_state = CustomState#custom_state{delay_next_udp = 0}}};
 handle_info(
     {send, IP, Port, Type, Map, Data},
-    #state{socket = Socket, custom_state = {forward = Pid}} = State
+    #lns_udp_state{socket = Socket, custom_state = #custom_state{forward = Pid}} = State
 ) ->
     lager:info("sending ~p: ~p / ~p", [Type, Map, Data]),
     Pid ! {?MODULE, self(), Type, Map},
@@ -202,7 +200,7 @@ handle_info(_Msg, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-terminate(_Reason, #state{socket = Socket}) ->
+terminate(_Reason, #lns_udp_state{socket = Socket}) ->
     ok = gen_udp:close(Socket),
     ok.
 
@@ -210,54 +208,26 @@ terminate(_Reason, #state{socket = Socket}) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-handle_udp(
-    IP,
-    Port,
-    <<?PROTOCOL_2:8/integer-unsigned, Token:2/binary, ?PUSH_DATA:8/integer-unsigned, MAC:8/binary,
-        BinJSX/binary>>,
-    #state{custom_state = CustomState, handle_push_data_fun = HandlePushDataFun} = _State
-) ->
-    Map = jsx:decode(BinJSX),
-    GWMPValues = #{
-        map => Map,
-        token => Token,
-        mac => MAC
-    },
+handle_tx_ack(GWMPValues, #custom_state{forward = Pid}, _IP, _Port) ->
+    #{
+        map := Map,
+        token := Token,
+        mac := MAC
+    } = GWMPValues,
+    lager:info("got TX_ACK: ~p", [Token]),
+    Pid ! {?MODULE, self(), ?TX_ACK, {Token, MAC, Map}}.
 
-    HandlePushDataFun(GWMPValues, CustomState, IP, Port),
-    ok;
-handle_udp(
-    IP,
-    Port,
-    <<?PROTOCOL_2:8/integer-unsigned, Token:2/binary, ?PULL_DATA:8/integer-unsigned, MAC:8/binary>>,
-    #state{custom_state = {delay_next_udp = Delay}} = _State
-) ->
+handle_pull_data(GWMPValues, #custom_state{delay_next_udp = Delay}, IP, Port) ->
+    #{
+        token := Token,
+        mac := MAC
+    } = GWMPValues,
     lager:info("got PULL_DATA: ~p, delaying: ~p", [Token, Delay]),
     erlang:send_after(
         Delay,
         self(),
         {send, IP, Port, ?PULL_DATA, {Token, MAC}, semtech_udp:pull_ack(Token)}
-    ),
-    ok;
-handle_udp(
-    _IP,
-    _Port,
-    <<?PROTOCOL_2:8/integer-unsigned, Token:2/binary, ?TX_ACK:8/integer-unsigned, MAC:8/binary,
-        BinJSX/binary>>,
-    #state{custom_state = {forward = Pid}} = _State
-) ->
-    Map = jsx:decode(BinJSX),
-    lager:info("got TX_ACK: ~p", [Token]),
-    Pid ! {?MODULE, self(), ?TX_ACK, {Token, MAC, Map}},
-    ok;
-handle_udp(
-    _IP,
-    _Port,
-    _UnknownUDPPacket,
-    _State
-) ->
-    lager:warning("got an unkown udp packet: ~p  from ~p", [_UnknownUDPPacket, {_IP, _Port}]),
-    ok.
+    ).
 
 handle_push_data(GWMPValues, CustomState, IP, Port) ->
     #{
