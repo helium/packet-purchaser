@@ -181,7 +181,7 @@ handle_info(get_hotspot_location, #state{pubkeybin = PubKeyBin} = State) ->
 handle_info(
     {udp, Socket, _Address, Port, Data},
     #state{
-        socket = {socket, Socket, _, _}
+        socket = {socket, Socket, _}
     } = State
 ) ->
     lager:debug("got udp packet ~p from ~p:~p", [Data, _Address, Port]),
