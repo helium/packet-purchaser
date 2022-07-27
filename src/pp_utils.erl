@@ -5,7 +5,6 @@
 -define(ETS, pp_utils_ets).
 
 -define(LOCATION_NONE, no_location).
--define(LOCATION_UNKNOWN, unknown).
 
 -type location() :: ?LOCATION_NONE | {Index :: pos_integer(), Lat :: float(), Long :: float()}.
 -export_type([location/0]).
@@ -35,28 +34,21 @@ init_ets() ->
     ?ETS = ets:new(?ETS, [public, named_table, set]),
     ok.
 
--spec get_chain() -> fetching | blockchain:blockchain().
+-spec get_chain() -> blockchain:blockchain().
 get_chain() ->
-    Key = blockchain_chain,
-    case ets:lookup(?ETS, Key) of
-        [] ->
+    Key = pp_blockchain,
+    case persistent_term:get(Key, undefined) of
+        undefined ->
             Chain = blockchain_worker:blockchain(),
-            true = ets:insert(?ETS, {Key, Chain}),
+            ok = persistent_term:put(Key, Chain),
             Chain;
-        %% true = ets:insert(?ETS, {Key, fetching}),
-        %% fetching;
-        [{Key, fetching}] ->
-            fetching;
-        [{Key, Chain}] ->
+        Chain ->
             Chain
     end.
 
--spec get_ledger() -> fetching | blockchain_ledger_v1:ledger().
+-spec get_ledger() -> blockchain_ledger_v1:ledger().
 get_ledger() ->
-    case get_chain() of
-        fetching -> fetching;
-        Chain -> blockchain:ledger(Chain)
-    end.
+    blockchain:ledger(get_chain()).
 
 format_time(Time) ->
     iso8601:format(calendar:system_time_to_universal_time(Time, millisecond)).
@@ -158,26 +150,20 @@ get_env_int(Key, Default) ->
     end.
 
 -spec get_hotspot_location(PubKeyBin :: binary()) ->
-    ?LOCATION_UNKNOWN
-    | ?LOCATION_NONE
+    ?LOCATION_NONE
     | {Index :: pos_integer(), Lat :: float(), Long :: float()}.
 get_hotspot_location(PubKeyBin) ->
-    case ?MODULE:get_chain() of
-        fetching ->
-            ?LOCATION_UNKNOWN;
-        Chain ->
-            Ledger = blockchain:ledger(Chain),
-            case blockchain_ledger_v1:find_gateway_info(PubKeyBin, Ledger) of
-                {error, _} ->
+    Ledger = ?MODULE:get_ledger(),
+    case blockchain_ledger_v1:find_gateway_info(PubKeyBin, Ledger) of
+        {error, _} ->
+            ?LOCATION_NONE;
+        {ok, Hotspot} ->
+            case blockchain_ledger_gateway_v2:location(Hotspot) of
+                undefined ->
                     ?LOCATION_NONE;
-                {ok, Hotspot} ->
-                    case blockchain_ledger_gateway_v2:location(Hotspot) of
-                        undefined ->
-                            ?LOCATION_NONE;
-                        Index ->
-                            {Lat, Long} = h3:to_geo(Index),
-                            {Index, Lat, Long}
-                    end
+                Index ->
+                    {Lat, Long} = h3:to_geo(Index),
+                    {Index, Lat, Long}
             end
     end.
 

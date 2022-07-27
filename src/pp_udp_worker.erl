@@ -124,15 +124,9 @@ init(Args) ->
         pull_data_timer = PullDataTimer,
         shutdown_timer = {ShutdownTimeout, ShutdownRef}
     },
-    case pp_utils:get_hotspot_location(PubKeyBin) of
-        unknown ->
-            lager:warning("failed to get location"),
-            erlang:send_after(500, self(), get_hotspot_location),
-            {ok, State};
-        Location ->
-            lager:info("got location ~p for hotspot", [Location]),
-            {ok, State#state{location = Location}}
-    end.
+    Location = pp_utils:get_hotspot_location(PubKeyBin),
+    lager:info("got location ~p for hotspot", [Location]),
+    {ok, State#state{location = Location}}.
 
 handle_call(
     {update_address, Address, Port},
@@ -168,15 +162,9 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info(get_hotspot_location, #state{pubkeybin = PubKeyBin} = State) ->
-    case pp_utils:get_hotspot_location(PubKeyBin) of
-        unknown ->
-            lager:warning("failed to get location"),
-            erlang:send_after(500, self(), get_hotspot_location),
-            {noreply, State};
-        Location ->
-            lager:info("got location ~p for hotspot", [Location]),
-            {noreply, State#state{location = Location}}
-    end;
+    Location = pp_utils:get_hotspot_location(PubKeyBin),
+    lager:info("got location ~p for hotspot", [Location]),
+    {noreply, State#state{location = Location}};
 handle_info(
     {udp, Socket, _Address, Port, Data},
     #state{
