@@ -28,6 +28,7 @@
 -define(METRICS_VM_ETS_MEMORY, packet_purchaser_vm_ets_memory).
 
 -define(METRICS_GRPC_CONNECTION_COUNT, packet_purchaser_connection_count).
+-define(METRICS_FUN_DURATION, packet_purchaser_function_duration).
 
 -define(METRICS_WORKER_TICK_INTERVAL, timer:seconds(10)).
 -define(METRICS_WORKER_TICK, '__pp_metrics_tick').
@@ -52,7 +53,9 @@
     state_channel_close/1,
     %% Websocket
     ws_state/1,
-    ws_send_msg/1
+    ws_send_msg/1,
+    %% timing
+    function_observe/2
 ]).
 
 %% Helper API
@@ -172,6 +175,11 @@ ws_state(State) ->
 -spec ws_send_msg(NetID :: non_neg_integer()) -> ok.
 ws_send_msg(NetID) ->
     prometheus_counter:inc(?METRICS_WS_MSG_COUNT, [NetID]).
+
+-spec function_observe(atom(), non_neg_integer()) -> ok.
+function_observe(Fun, Time) ->
+    _ = prometheus_histogram:observe(?METRICS_FUN_DURATION, [Fun], Time),
+    ok.
 
 -spec clean_net_id(non_neg_integer()) -> unofficial_net_id | non_neg_integer().
 clean_net_id(NetID) ->
@@ -389,6 +397,13 @@ declare_metrics() ->
     prometheus_gauge:declare([
         {name, ?METRICS_GRPC_CONNECTION_COUNT},
         {help, "Number of active GRPC Connections"}
+    ]),
+
+    %% Function timing
+    prometheus_histogram:declare([
+        {name, ?METRICS_FUN_DURATION},
+        {help, "Function duration"},
+        {labels, [function]}
     ]),
 
     ok.
