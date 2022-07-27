@@ -19,5 +19,5 @@ rebar3.crashdump
 log/
 data/
 src/pb/
-src/grpc/
+src/grpc/autogen
 .env
