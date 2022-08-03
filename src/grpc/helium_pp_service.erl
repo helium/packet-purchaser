@@ -33,7 +33,7 @@ route(Ctx, #blockchain_state_channel_message_v1_pb{msg = {packet, SCPacket}} = _
                 erlang:system_time(millisecond),
                 self()
             ]),
-            router_metrics:function_observe('pp_sc_packet_handler:handle_free_packet', Time),
+            pp_metrics:function_observe('pp_sc_packet_handler:handle_free_packet', Time),
             wait_for_response(Ctx)
     end.
 
