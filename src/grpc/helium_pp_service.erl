@@ -7,7 +7,8 @@
 -ifdef(TEST).
 -define(TIMEOUT, 5000).
 -else.
--define(TIMEOUT, 8000).
+%% Longest RXDelay is 15s
+-define(TIMEOUT, 15000).
 -endif.
 
 -export([
@@ -52,6 +53,10 @@ wait_for_response(Ctx) ->
             lager:debug("received error msg ~p", [Reason]),
             {grpc_error, {grpcbox_stream:code_to_status(2), erlang:atom_to_binary(Reason)}}
     after ?TIMEOUT ->
+        %% The packet hasn't been rejected, but nobody has responded with a
+        %% downlink. It was used, but requires nothing more than an
+        %% acknowledgement.
         lager:debug("failed to receive response msg after ~p seconds", [?TIMEOUT]),
-        {grpc_error, {grpcbox_stream:code_to_status(2), <<"timeout no response">>}}
+        Resp = blockchain_state_channel_response_v1:new(true),
+        {ok, #blockchain_state_channel_message_v1_pb{msg = {response, Resp}}, Ctx}
     end.

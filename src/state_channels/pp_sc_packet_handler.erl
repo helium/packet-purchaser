@@ -34,6 +34,7 @@ handle_free_packet(SCPacket, PacketTime, Pid) ->
 
     case ?MODULE:handle_offer(Offer, Pid) of
         {error, _} = Err ->
+            Pid ! Err,
             Err;
         ok ->
             Ledger = pp_utils:get_ledger(),
