@@ -45,7 +45,7 @@
     SCResp :: any()
 }.
 
--type pubkeybin() :: libp2p_crypto:pubkey_bin().
+-type transaction_id() :: integer().
 -type region() :: atom().
 -type token() :: binary().
 -type dest_url() :: binary().
@@ -110,13 +110,14 @@ make_uplink_payload(
     Destination,
     FlowType
 ) ->
-    #packet{sc_packet = SCPacket, gateway_time = GatewayTime, handler_pid = HandlerPid} = select_best(
-        Uplinks
-    ),
+    #packet{
+        sc_packet = SCPacket,
+        gateway_time = GatewayTime,
+        handler_pid = HandlerPid
+    } = select_best(Uplinks),
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
 
-    PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
     RoutingInfo = blockchain_helium_packet_v1:routing_info(Packet),
 
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
@@ -130,7 +131,7 @@ make_uplink_payload(
             {eui, DevEUI, _AppEUI} -> {'DevEUI', encode_deveui(DevEUI)}
         end,
 
-    Token = make_uplink_token(PubKeyBin, Region, PacketTime, Destination, FlowType),
+    Token = make_uplink_token(TransactionID, Region, PacketTime, Destination, FlowType),
     ok = pp_roaming_downlink:insert_handler(TransactionID, HandlerPid),
 
     VersionBase =
@@ -429,10 +430,10 @@ rx2_from_dlmetadata(_, _, _, _) ->
 %% Tokens
 %% ------------------------------------------------------------------
 
--spec make_uplink_token(pubkeybin(), region(), non_neg_integer(), binary(), atom()) -> token().
-make_uplink_token(PubKeyBin, Region, PacketTime, DestURL, FlowType) ->
+-spec make_uplink_token(transaction_id(), region(), non_neg_integer(), binary(), atom()) -> token().
+make_uplink_token(TransactionID, Region, PacketTime, DestURL, FlowType) ->
     Parts = [
-        libp2p_crypto:bin_to_b58(PubKeyBin),
+        erlang:integer_to_binary(TransactionID),
         erlang:atom_to_binary(Region),
         erlang:integer_to_binary(PacketTime),
         DestURL,
@@ -443,18 +444,18 @@ make_uplink_token(PubKeyBin, Region, PacketTime, DestURL, FlowType) ->
     pp_utils:binary_to_hexstring(Token1).
 
 -spec parse_uplink_token(token()) ->
-    {ok, pubkeybin(), region(), non_neg_integer(), dest_url(), flow_type()} | {error, any()}.
+    {ok, transaction_id(), region(), non_neg_integer(), dest_url(), flow_type()} | {error, any()}.
 parse_uplink_token(<<"0x", Token/binary>>) ->
     parse_uplink_token(Token);
 parse_uplink_token(Token) ->
     Bin = pp_utils:hex_to_binary(Token),
     case binary:split(Bin, ?TOKEN_SEP, [global]) of
-        [B58, RegionBin, PacketTimeBin, DestURLBin, FlowTypeBin] ->
-            PubKeyBin = libp2p_crypto:b58_to_bin(erlang:binary_to_list(B58)),
+        [TransactionIDBin, RegionBin, PacketTimeBin, DestURLBin, FlowTypeBin] ->
+            TransactionID = erlang:binary_to_integer(TransactionIDBin),
             Region = erlang:binary_to_atom(RegionBin),
             PacketTime = erlang:binary_to_integer(PacketTimeBin),
             FlowType = erlang:binary_to_existing_atom(FlowTypeBin),
-            {ok, PubKeyBin, Region, PacketTime, DestURLBin, FlowType};
+            {ok, TransactionID, Region, PacketTime, DestURLBin, FlowType};
         _ ->
             {error, malformed_token}
     end.

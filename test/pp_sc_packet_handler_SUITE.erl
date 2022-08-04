@@ -345,17 +345,18 @@ http_protocol_version_test(_Config) ->
     ?assertEqual(maps:get(<<"ProtocolVersion">>, Uplink3), <<"1.1">>),
 
     %% Responses are whatever version was sent to us.
+
+    %% NOTE: We need to insert the transaction and handler here because we're
+    %% only simulating downlinks. In a normal flow, these details would be
+    %% filled during the uplink process.
+    TransactionID = 2177,
     Token = pp_roaming_protocol:make_uplink_token(
-        PubKeyBin,
+        TransactionID,
         'US915',
         1234,
         <<"www.example.com">>,
         sync
     ),
-    %% NOTE: We need to insert the transaction and handler here because we're
-    %% only simulating downlinks. In a normal flow, these details would be
-    %% filled during the uplink process.
-    TransactionID = 2177,
     ok = pp_config:insert_transaction_id(TransactionID, <<"http://127.0.0.1:3002">>, sync),
     ok = pp_roaming_downlink:insert_handler(TransactionID, self()),
     SendDownlinkWithVersion = fun(ProtocolVersion) ->
@@ -592,16 +593,14 @@ http_sync_uplink_join_test(_Config) ->
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
 
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
-    Token = pp_roaming_protocol:make_uplink_token(
-        PubKeyBin,
-        'US915',
-        PacketTime,
-        <<"http://127.0.0.1:3002/uplink">>,
-        sync
-    ),
 
     %% 2. Expect a PRStartReq to the lns
-    {ok, #{<<"TransactionID">> := TransactionID}, _, {200, RespBody}} = pp_lns:http_rcv(
+    {
+        ok,
+        #{<<"TransactionID">> := TransactionID, <<"ULMetaData">> := #{<<"FNSULToken">> := Token}},
+        _Request,
+        {200, RespBody}
+    } = pp_lns:http_rcv(
         #{
             <<"ProtocolVersion">> => <<"1.1">>,
             <<"SenderNSID">> => fun erlang:is_binary/1,
@@ -623,7 +622,7 @@ http_sync_uplink_join_test(_Config) ->
                 <<"RFRegion">> => erlang:atom_to_binary(Region),
                 <<"RecvTime">> => pp_utils:format_time(GatewayTime),
 
-                <<"FNSULToken">> => Token,
+                <<"FNSULToken">> => fun erlang:is_binary/1,
                 <<"GWCnt">> => 1,
                 <<"GWInfo">> => [
                     #{
@@ -640,6 +639,11 @@ http_sync_uplink_join_test(_Config) ->
                 ]
             }
         }
+    ),
+
+    ?assertMatch(
+        {ok, TransactionID, 'US915', PacketTime, <<"http://127.0.0.1:3002/uplink">>, sync},
+        pp_roaming_protocol:parse_uplink_token(Token)
     ),
 
     %% 3. Expect a PRStartAns from the lns
@@ -736,51 +740,54 @@ http_async_uplink_join_test(_Config) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
-    Token = pp_roaming_protocol:make_uplink_token(
-        PubKeyBin,
-        'US915',
-        PacketTime,
-        <<"http://127.0.0.1:3002/uplink">>,
-        async
-    ),
 
     %% 4. Roamer receive http uplink
-    {ok, #{<<"TransactionID">> := TransactionID}} = roamer_expect_uplink_data(#{
-        <<"ProtocolVersion">> => <<"1.1">>,
-        <<"SenderNSID">> => fun erlang:is_binary/1,
-        <<"DedupWindowSize">> => fun erlang:is_integer/1,
-        <<"TransactionID">> => fun erlang:is_number/1,
-        <<"SenderID">> => <<"0xC00053">>,
-        <<"ReceiverID">> => ?NET_ID_ACTILITY_BIN,
-        <<"MessageType">> => <<"PRStartReq">>,
-        <<"PHYPayload">> => pp_utils:binary_to_hexstring(
-            blockchain_helium_packet_v1:payload(Packet)
-        ),
-        <<"ULMetaData">> => #{
-            <<"DevEUI">> => <<"0x", DevEUI/binary>>,
-            <<"DataRate">> => pp_lorawan:datarate_to_index(
-                Region,
-                blockchain_helium_packet_v1:datarate(Packet)
+    {ok, #{<<"TransactionID">> := TransactionID, <<"ULMetaData">> := #{<<"FNSULToken">> := Token}}} = roamer_expect_uplink_data(
+        #{
+            <<"ProtocolVersion">> => <<"1.1">>,
+            <<"SenderNSID">> => fun erlang:is_binary/1,
+            <<"DedupWindowSize">> => fun erlang:is_integer/1,
+            <<"TransactionID">> => fun erlang:is_number/1,
+            <<"SenderID">> => <<"0xC00053">>,
+            <<"ReceiverID">> => ?NET_ID_ACTILITY_BIN,
+            <<"MessageType">> => <<"PRStartReq">>,
+            <<"PHYPayload">> => pp_utils:binary_to_hexstring(
+                blockchain_helium_packet_v1:payload(Packet)
             ),
-            <<"ULFreq">> => blockchain_helium_packet_v1:frequency(Packet),
-            <<"RFRegion">> => erlang:atom_to_binary(Region),
-            <<"RecvTime">> => pp_utils:format_time(GatewayTime),
+            <<"ULMetaData">> => #{
+                <<"DevEUI">> => <<"0x", DevEUI/binary>>,
+                <<"DataRate">> => pp_lorawan:datarate_to_index(
+                    Region,
+                    blockchain_helium_packet_v1:datarate(Packet)
+                ),
+                <<"ULFreq">> => blockchain_helium_packet_v1:frequency(Packet),
+                <<"RFRegion">> => erlang:atom_to_binary(Region),
+                <<"RecvTime">> => pp_utils:format_time(GatewayTime),
 
-            <<"FNSULToken">> => Token,
-            <<"GWCnt">> => 1,
-            <<"GWInfo">> => [
-                #{
-                    <<"RFRegion">> => erlang:atom_to_binary(Region),
-                    <<"RSSI">> => erlang:trunc(blockchain_helium_packet_v1:signal_strength(Packet)),
-                    <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
-                    <<"DLAllowed">> => true,
-                    <<"ID">> => pp_utils:binary_to_hexstring(
-                        pp_utils:pubkeybin_to_mac(PubKeyBin)
-                    )
-                }
-            ]
+                <<"FNSULToken">> => fun erlang:is_binary/1,
+                <<"GWCnt">> => 1,
+                <<"GWInfo">> => [
+                    #{
+                        <<"RFRegion">> => erlang:atom_to_binary(Region),
+                        <<"RSSI">> => erlang:trunc(
+                            blockchain_helium_packet_v1:signal_strength(Packet)
+                        ),
+                        <<"SNR">> => blockchain_helium_packet_v1:snr(Packet),
+                        <<"DLAllowed">> => true,
+                        <<"ID">> => pp_utils:binary_to_hexstring(
+                            pp_utils:pubkeybin_to_mac(PubKeyBin)
+                        )
+                    }
+                ]
+            }
         }
-    }),
+    ),
+
+    ?assertMatch(
+        {ok, TransactionID, 'US915', PacketTime, <<"http://127.0.0.1:3002/uplink">>, async},
+        pp_roaming_protocol:parse_uplink_token(Token)
+    ),
+
     %% 5. Forwarder receive 200 response
     ok = forwarder_expect_response(200),
 
@@ -825,9 +832,10 @@ http_sync_downlink_test(_Config) ->
     DownlinkTimestamp = erlang:system_time(millisecond),
     DownlinkFreq = 915.0,
     DownlinkDatr = "SF10BW125",
+    TransactionID = 23,
 
     Token = pp_roaming_protocol:make_uplink_token(
-        PubKeyBin,
+        TransactionID,
         'US915',
         DownlinkTimestamp,
         <<"http://127.0.0.1:3002/uplink">>,
@@ -839,7 +847,7 @@ http_sync_downlink_test(_Config) ->
         'ProtocolVersion' => <<"1.1">>,
         'SenderID' => pp_utils:binary_to_hexstring(?NET_ID_ACTILITY),
         'ReceiverID' => <<"0xC00053">>,
-        'TransactionID' => 23,
+        'TransactionID' => TransactionID,
         'MessageType' => <<"XmitDataReq">>,
         'PHYPayload' => pp_utils:binary_to_hexstring(DownlinkPayload),
         'DLMetaData' => #{
@@ -859,7 +867,6 @@ http_sync_downlink_test(_Config) ->
     %% NOTE: We need to insert the transaction and handler here because we're
     %% only simulating downlinks. In a normal flow, these details would be
     %% filled during the uplink process.
-    TransactionID = 23,
     ok = pp_config:insert_transaction_id(TransactionID, <<"http://127.0.0.1:3002/uplink">>, sync),
     ok = pp_roaming_downlink:insert_handler(TransactionID, self()),
     ok = pp_config:load_config([
@@ -946,7 +953,7 @@ http_async_downlink_test(_Config) ->
     DownlinkDatr = "SF10BW125",
 
     Token = pp_roaming_protocol:make_uplink_token(
-        PubKeyBin,
+        TransactionID,
         'US915',
         DownlinkTimestamp,
         <<"http://127.0.0.1:3002/uplink">>,
@@ -1046,8 +1053,6 @@ http_class_c_downlink_test(_Config) ->
     ok = start_roamer_listener(),
 
     %% 1. Get a gateway to send from
-    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
-    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
     %% 2. insert sc handler and config
     TransactionID = 2176,
@@ -1070,7 +1075,7 @@ http_class_c_downlink_test(_Config) ->
     DownlinkDatr = "SF10BW125",
 
     Token = pp_roaming_protocol:make_uplink_token(
-        PubKeyBin,
+        TransactionID,
         'US915',
         DownlinkTimestamp,
         <<"http://127.0.0.1:3002/uplink">>,
@@ -1205,7 +1210,12 @@ http_uplink_packet_no_roaming_agreement_test(_Config) ->
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
 
     %% First packet is purchased and sent to Roamer
-    {ok, _Data, _, {200, _RespBody}} = pp_lns:http_rcv(
+    {
+        ok,
+        #{<<"TransactionID">> := TransactionID, <<"ULMetaData">> := #{<<"FNSULToken">> := Token}},
+        _Request,
+        {200, _RespBody}
+    } = pp_lns:http_rcv(
         #{
             <<"ProtocolVersion">> => <<"1.1">>,
             <<"SenderNSID">> => fun erlang:is_binary/1,
@@ -1227,13 +1237,7 @@ http_uplink_packet_no_roaming_agreement_test(_Config) ->
                 <<"RFRegion">> => erlang:atom_to_binary(Region),
                 <<"RecvTime">> => pp_utils:format_time(GatewayTime),
 
-                <<"FNSULToken">> => pp_roaming_protocol:make_uplink_token(
-                    PubKeyBin,
-                    'US915',
-                    PacketTime,
-                    <<"http://127.0.0.1:3002/uplink">>,
-                    sync
-                ),
+                <<"FNSULToken">> => fun erlang:is_binary/1,
                 <<"GWCnt">> => 1,
                 <<"GWInfo">> => [
                     #{
@@ -1250,6 +1254,11 @@ http_uplink_packet_no_roaming_agreement_test(_Config) ->
                 ]
             }
         }
+    ),
+
+    ?assertMatch(
+        {ok, TransactionID, 'US915', PacketTime, <<"http://127.0.0.1:3002/uplink">>, sync},
+        pp_roaming_protocol:parse_uplink_token(Token)
     ),
 
     timer:sleep(500),
@@ -1293,7 +1302,12 @@ http_uplink_packet_test(_Config) ->
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
 
-    {ok, _Data, _, {200, _RespBody}} = pp_lns:http_rcv(
+    {
+        ok,
+        #{<<"TransactionID">> := TransactionID, <<"ULMetaData">> := #{<<"FNSULToken">> := Token}},
+        _Request,
+        {200, _RespBody}
+    } = pp_lns:http_rcv(
         #{
             <<"ProtocolVersion">> => <<"1.1">>,
             <<"SenderNSID">> => fun erlang:is_binary/1,
@@ -1315,13 +1329,7 @@ http_uplink_packet_test(_Config) ->
                 <<"RFRegion">> => erlang:atom_to_binary(Region),
                 <<"RecvTime">> => pp_utils:format_time(GatewayTime),
 
-                <<"FNSULToken">> => pp_roaming_protocol:make_uplink_token(
-                    PubKeyBin,
-                    'US915',
-                    PacketTime,
-                    <<"http://127.0.0.1:3002/uplink">>,
-                    sync
-                ),
+                <<"FNSULToken">> => fun erlang:is_binary/1,
                 <<"GWCnt">> => 1,
                 <<"GWInfo">> => [
                     #{
@@ -1338,6 +1346,11 @@ http_uplink_packet_test(_Config) ->
                 ]
             }
         }
+    ),
+
+    ?assertMatch(
+        {ok, TransactionID, 'US915', PacketTime, <<"http://127.0.0.1:3002/uplink">>, sync},
+        pp_roaming_protocol:parse_uplink_token(Token)
     ),
 
     ok.
@@ -1388,7 +1401,12 @@ http_uplink_packet_late_test(_Config) ->
     ok = timer:sleep(100),
     {ok, _, _} = SendPacketFun(PubKeyBin2, ?DEVADDR_ACTILITY),
 
-    {ok, _Data, _, {200, _RespBody}} = pp_lns:http_rcv(
+    {
+        ok,
+        #{<<"TransactionID">> := TransactionID, <<"ULMetaData">> := #{<<"FNSULToken">> := Token}},
+        _Request,
+        {200, _RespBody}
+    } = pp_lns:http_rcv(
         #{
             <<"ProtocolVersion">> => <<"1.1">>,
             <<"SenderNSID">> => fun erlang:is_binary/1,
@@ -1410,13 +1428,7 @@ http_uplink_packet_late_test(_Config) ->
                 <<"RFRegion">> => erlang:atom_to_binary(Region),
                 <<"RecvTime">> => pp_utils:format_time(GatewayTime),
 
-                <<"FNSULToken">> => pp_roaming_protocol:make_uplink_token(
-                    PubKeyBin1,
-                    'US915',
-                    PacketTime,
-                    <<"http://127.0.0.1:3002/uplink">>,
-                    sync
-                ),
+                <<"FNSULToken">> => fun erlang:is_binary/1,
                 <<"GWCnt">> => 1,
                 <<"GWInfo">> => [
                     #{
@@ -1433,6 +1445,11 @@ http_uplink_packet_late_test(_Config) ->
                 ]
             }
         }
+    ),
+
+    ?assertMatch(
+        {ok, TransactionID, 'US915', PacketTime, <<"http://127.0.0.1:3002/uplink">>, sync},
+        pp_roaming_protocol:parse_uplink_token(Token)
     ),
 
     %% We should not get anotehr http request for the second packet that missed the window.
@@ -1473,13 +1490,20 @@ http_multiple_gateways_test(_Config) ->
     ]),
 
     {ok, SCPacket1, GatewayTime1} = SendPacketFun(PubKeyBin1, ?DEVADDR_ACTILITY, -25.0),
-    {ok, SCPacket2, _PacketTime2} = SendPacketFun(PubKeyBin2, ?DEVADDR_ACTILITY, -30.0),
+    %% Sleep to ensure packets have different timing information
+    timer:sleep(10),
+    {ok, SCPacket2, _GatewayTime2} = SendPacketFun(PubKeyBin2, ?DEVADDR_ACTILITY, -30.0),
     Packet1 = blockchain_state_channel_packet_v1:packet(SCPacket1),
     PacketTime1 = blockchain_helium_packet_v1:timestamp(Packet1),
     Packet2 = blockchain_state_channel_packet_v1:packet(SCPacket2),
     Region = blockchain_state_channel_packet_v1:region(SCPacket1),
 
-    {ok, _Data, _, {200, _RespBody}} = pp_lns:http_rcv(#{
+    {
+        ok,
+        #{<<"TransactionID">> := TransactionID, <<"ULMetaData">> := #{<<"FNSULToken">> := Token}},
+        _Request,
+        {200, _RespBody}
+    } = pp_lns:http_rcv(#{
         <<"ProtocolVersion">> => <<"1.1">>,
         <<"SenderNSID">> => fun erlang:is_binary/1,
         <<"DedupWindowSize">> => fun erlang:is_integer/1,
@@ -1499,15 +1523,7 @@ http_multiple_gateways_test(_Config) ->
             <<"ULFreq">> => blockchain_helium_packet_v1:frequency(Packet1),
             <<"RFRegion">> => erlang:atom_to_binary(Region),
             <<"RecvTime">> => pp_utils:format_time(GatewayTime1),
-
-            %% Gateway with better RSSI should be chosen
-            <<"FNSULToken">> => pp_roaming_protocol:make_uplink_token(
-                PubKeyBin1,
-                'US915',
-                PacketTime1,
-                <<"http://127.0.0.1:3002/uplink">>,
-                sync
-            ),
+            <<"FNSULToken">> => fun erlang:is_binary/1,
             <<"GWCnt">> => 2,
             <<"GWInfo">> => [
                 #{
@@ -1531,6 +1547,12 @@ http_multiple_gateways_test(_Config) ->
             ]
         }
     }),
+
+    %% Gateway with better RSSI should be chosen
+    ?assertMatch(
+        {ok, TransactionID, 'US915', PacketTime1, <<"http://127.0.0.1:3002/uplink">>, sync},
+        pp_roaming_protocol:parse_uplink_token(Token)
+    ),
 
     ok.
 
@@ -1568,13 +1590,12 @@ http_multiple_gateways_single_shot_test(_Config) ->
     ]),
 
     {ok, SCPacket1, GatewayTime1} = SendPacketFun(PubKeyBin1, ?DEVADDR_ACTILITY, -25.0),
-    {ok, SCPacket2, _PacketTime2} = SendPacketFun(PubKeyBin2, ?DEVADDR_ACTILITY, -30.0),
+    {ok, SCPacket2, _GatewayTime2} = SendPacketFun(PubKeyBin2, ?DEVADDR_ACTILITY, -30.0),
     Packet1 = blockchain_state_channel_packet_v1:packet(SCPacket1),
-    PacketTime1 = blockchain_helium_packet_v1:timestamp(Packet1),
     Packet2 = blockchain_state_channel_packet_v1:packet(SCPacket2),
     Region = blockchain_state_channel_packet_v1:region(SCPacket1),
 
-    MakeBaseExpect = fun(PubKeyBin, GatewayInfo) ->
+    MakeBaseExpect = fun(GatewayInfo) ->
         #{
             <<"ProtocolVersion">> => <<"1.1">>,
             <<"SenderNSID">> => fun erlang:is_binary/1,
@@ -1596,14 +1617,7 @@ http_multiple_gateways_single_shot_test(_Config) ->
                 <<"RFRegion">> => erlang:atom_to_binary(Region),
                 <<"RecvTime">> => pp_utils:format_time(GatewayTime1),
 
-                %% Gateway with better RSSI should be chosen
-                <<"FNSULToken">> => pp_roaming_protocol:make_uplink_token(
-                    PubKeyBin,
-                    'US915',
-                    PacketTime1,
-                    <<"http://127.0.0.1:3002/uplink">>,
-                    sync
-                ),
+                <<"FNSULToken">> => fun erlang:is_binary/1,
                 <<"GWCnt">> => 1,
                 <<"GWInfo">> => [GatewayInfo]
             }
@@ -1611,7 +1625,7 @@ http_multiple_gateways_single_shot_test(_Config) ->
     end,
 
     {ok, _Data1, _, {200, _RespBody1}} = pp_lns:http_rcv(
-        MakeBaseExpect(PubKeyBin1, #{
+        MakeBaseExpect(#{
             <<"ID">> => pp_utils:binary_to_hexstring(pp_utils:pubkeybin_to_mac(PubKeyBin1)),
             <<"RFRegion">> => erlang:atom_to_binary(Region),
             <<"RSSI">> => erlang:trunc(
@@ -1623,7 +1637,7 @@ http_multiple_gateways_single_shot_test(_Config) ->
     ),
 
     {ok, _Data2, _, {200, _RespBody2}} = pp_lns:http_rcv(
-        MakeBaseExpect(PubKeyBin2, #{
+        MakeBaseExpect(#{
             <<"ID">> => pp_utils:binary_to_hexstring(pp_utils:pubkeybin_to_mac(PubKeyBin2)),
             <<"RFRegion">> => erlang:atom_to_binary(Region),
             <<"RSSI">> => erlang:trunc(
