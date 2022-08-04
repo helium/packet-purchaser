@@ -97,19 +97,19 @@ init_ets() ->
     ]),
     ok.
 
--spec insert_handler(PubKeyBin :: binary(), SCPid :: pid()) -> ok.
-insert_handler(PubKeyBin, SCPid) ->
-    true = ets:insert(?SC_HANDLER_ETS, {PubKeyBin, SCPid}),
+-spec insert_handler(TransactionID :: integer(), SCPid :: pid()) -> ok.
+insert_handler(TransactionID, SCPid) ->
+    true = ets:insert(?SC_HANDLER_ETS, {TransactionID, SCPid}),
     ok.
 
--spec delete_handler(PubKeyBin :: binary()) -> ok.
-delete_handler(PubKeyBin) ->
-    true = ets:delete(?SC_HANDLER_ETS, PubKeyBin),
+-spec delete_handler(TransactionID :: integer()) -> ok.
+delete_handler(TransactionID) ->
+    true = ets:delete(?SC_HANDLER_ETS, TransactionID),
     ok.
 
--spec lookup_handler(PubKeyBin :: binary()) -> {ok, SCPid :: pid()} | {error, any()}.
-lookup_handler(PubKeyBin) ->
-    case ets:lookup(?SC_HANDLER_ETS, PubKeyBin) of
+-spec lookup_handler(TransactionID :: integer()) -> {ok, SCPid :: pid()} | {error, any()}.
+lookup_handler(TransactionID) ->
+    case ets:lookup(?SC_HANDLER_ETS, TransactionID) of
         [{_, SCPid}] -> {ok, SCPid};
-        [] -> {error, {not_found, PubKeyBin}}
+        [] -> {error, {not_found, TransactionID}}
     end.

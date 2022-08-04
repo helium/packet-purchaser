@@ -62,8 +62,6 @@ handle_packet(SCPacket, PacketTime, Pid) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
 
-    ok = pp_roaming_downlink:insert_handler(PubKeyBin, Pid),
-
     {PacketType, RoutingInfo} =
         case blockchain_helium_packet_v1:routing_info(Packet) of
             {devaddr, _} = RI -> {packet, RI};
@@ -186,7 +184,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                                         PacketTime,
                                         PacketType
                                     ),
-                                    pp_http_worker:handle_packet(WorkerPid, SCPacket, PacketTime)
+                                    pp_http_worker:handle_packet(WorkerPid, SCPacket, PacketTime, Pid)
                             end
                     end
                 end,

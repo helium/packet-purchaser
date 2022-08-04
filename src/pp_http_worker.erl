@@ -9,7 +9,7 @@
 %% ------------------------------------------------------------------
 -export([
     start_link/1,
-    handle_packet/3
+    handle_packet/4
 ]).
 
 %% ------------------------------------------------------------------
@@ -57,10 +57,11 @@ start_link(Args) ->
 -spec handle_packet(
     WorkerPid :: pid(),
     SCPacket :: blockchain_state_channel_packet_v1:packet(),
-    GatewayTime :: pp_roaming_protocol:gateway_time()
+    GatewayTime :: pp_roaming_protocol:gateway_time(),
+    HandlerPid :: pid()
 ) -> ok | {error, any()}.
-handle_packet(Pid, SCPacket, GatewayTime) ->
-    gen_server:cast(Pid, {handle_packet, SCPacket, GatewayTime}).
+handle_packet(Pid, SCPacket, GatewayTime, HandlerPid) ->
+    gen_server:cast(Pid, {handle_packet, SCPacket, GatewayTime, HandlerPid}).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -92,26 +93,26 @@ handle_call(_Msg, _From, State) ->
     {reply, ok, State}.
 
 handle_cast(
-    {handle_packet, SCPacket, GatewayTime},
+    {handle_packet, SCPacket, GatewayTime, HandlerPid},
     #state{send_data_timer = 0, shutdown_timer_ref = ShutdownTimerRef0} = State
 ) ->
-    {ok, StateWithPacket} = do_handle_packet(SCPacket, GatewayTime, State),
+    {ok, StateWithPacket} = do_handle_packet(SCPacket, GatewayTime, HandlerPid, State),
     ok = send_data(StateWithPacket),
     {ok, ShutdownTimerRef1} = maybe_schedule_shutdown(ShutdownTimerRef0),
     {noreply, State#state{shutdown_timer_ref = ShutdownTimerRef1}};
 handle_cast(
-    {handle_packet, SCPacket, GatewayTime},
+    {handle_packet, SCPacket, GatewayTime, HandlerPid},
     #state{
         should_shutdown = false,
         send_data_timer = Timeout,
         send_data_timer_ref = TimerRef0
     } = State0
 ) ->
-    {ok, State1} = do_handle_packet(SCPacket, GatewayTime, State0),
+    {ok, State1} = do_handle_packet(SCPacket, GatewayTime, HandlerPid, State0),
     {ok, TimerRef1} = maybe_schedule_send_data(Timeout, TimerRef0),
     {noreply, State1#state{send_data_timer_ref = TimerRef1}};
 handle_cast(
-    {handle_packet, _SCPacket, _PacketTime},
+    {handle_packet, _SCPacket, _PacketTime, _HandlerPid},
     #state{
         should_shutdown = true,
         shutdown_timer_ref = ShutdownTimerRef0,
@@ -166,11 +167,12 @@ next_transaction_id() ->
 -spec do_handle_packet(
     SCPacket :: pp_roaming_protocol:sc_packet(),
     GatewayTime :: pp_roaming_protocol:gateway_time(),
+    HandlerPid :: pid(),
     State :: #state{}
 ) -> {ok, #state{}}.
-do_handle_packet(SCPacket, GatewayTime, #state{packets = Packets} = State) ->
+do_handle_packet(SCPacket, GatewayTime, HandlerPid, #state{packets = Packets} = State) ->
     State1 = State#state{
-        packets = [pp_roaming_protocol:new_packet(SCPacket, GatewayTime) | Packets]
+        packets = [pp_roaming_protocol:new_packet(SCPacket, GatewayTime, HandlerPid) | Packets]
     },
     {ok, State1}.
 

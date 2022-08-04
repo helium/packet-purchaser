@@ -300,7 +300,6 @@ http_protocol_version_test(_Config) ->
 
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
-    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
 
     Routing = blockchain_helium_packet_v1:make_routing_info({eui, DevEUI1, AppEUI1}),
     MakePacket = fun(Fcnt) ->
@@ -353,7 +352,12 @@ http_protocol_version_test(_Config) ->
         <<"www.example.com">>,
         sync
     ),
-    ok = pp_config:insert_transaction_id(2177, <<"http://127.0.0.1:3002">>, sync),
+    %% NOTE: We need to insert the transaction and handler here because we're
+    %% only simulating downlinks. In a normal flow, these details would be
+    %% filled during the uplink process.
+    TransactionID = 2177,
+    ok = pp_config:insert_transaction_id(TransactionID, <<"http://127.0.0.1:3002">>, sync),
+    ok = pp_roaming_downlink:insert_handler(TransactionID, self()),
     SendDownlinkWithVersion = fun(ProtocolVersion) ->
         DownlinkBody = #{
             <<"ProtocolVersion">> => ProtocolVersion,
@@ -370,7 +374,7 @@ http_protocol_version_test(_Config) ->
                 <<"RXDelay1">> => 0
             },
             <<"PHYPayload">> => <<"0x1234">>,
-            <<"TransactionID">> => 2177
+            <<"TransactionID">> => TransactionID
         },
 
         {ok, 200, _Headers, Resp} = hackney:post(
@@ -533,7 +537,6 @@ http_sync_uplink_join_test(_Config) ->
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
-    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
     ok = start_uplink_listener(),
 
     %% NOTE: Leading 00 are important in this test.
@@ -853,7 +856,12 @@ http_sync_downlink_test(_Config) ->
         }
     },
 
-    ok = pp_config:insert_transaction_id(23, <<"http://127.0.0.1:3002/uplink">>, sync),
+    %% NOTE: We need to insert the transaction and handler here because we're
+    %% only simulating downlinks. In a normal flow, these details would be
+    %% filled during the uplink process.
+    TransactionID = 23,
+    ok = pp_config:insert_transaction_id(TransactionID, <<"http://127.0.0.1:3002/uplink">>, sync),
+    ok = pp_roaming_downlink:insert_handler(TransactionID, self()),
     ok = pp_config:load_config([
         #{
             <<"name">> => <<"test">>,
@@ -863,7 +871,7 @@ http_sync_downlink_test(_Config) ->
             <<"http_flow_type">> => <<"sync">>
         }
     ]),
-    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+
     {ok, 200, _Headers, Resp} = hackney:post(
         <<"http://127.0.0.1:3003/downlink">>,
         [{<<"Host">>, <<"localhost">>}],
@@ -875,7 +883,7 @@ http_sync_downlink_test(_Config) ->
         test_utils:match_map(
             #{
                 <<"ProtocolVersion">> => <<"1.1">>,
-                <<"TransactionID">> => 23,
+                <<"TransactionID">> => TransactionID,
                 <<"SenderID">> => <<"0xC00053">>,
                 <<"ReceiverID">> => pp_utils:binary_to_hexstring(?NET_ID_ACTILITY),
                 <<"MessageType">> => <<"XmitDataAns">>,
@@ -918,8 +926,9 @@ http_async_downlink_test(_Config) ->
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
     %% 2. insert sc handler and config
-    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
-    ok = pp_config:insert_transaction_id(23, <<"http://127.0.0.1:3002/uplink">>, async),
+    TransactionID = 23,
+    ok = pp_roaming_downlink:insert_handler(TransactionID, self()),
+    ok = pp_config:insert_transaction_id(TransactionID, <<"http://127.0.0.1:3002/uplink">>, async),
     ok = pp_config:load_config([
         #{
             <<"name">> => <<"test">>,
@@ -949,7 +958,7 @@ http_async_downlink_test(_Config) ->
         'ProtocolVersion' => <<"1.1">>,
         'SenderID' => pp_utils:hexstring(?NET_ID_ACTILITY),
         'ReceiverID' => <<"0xC00053">>,
-        'TransactionID' => 23,
+        'TransactionID' => TransactionID,
         'MessageType' => <<"XmitDataReq">>,
         'PHYPayload' => pp_utils:binary_to_hexstring(DownlinkPayload),
         'DLMetaData' => #{
@@ -978,7 +987,7 @@ http_async_downlink_test(_Config) ->
         <<"ProtocolVersion">> => <<"1.1">>,
         <<"SenderID">> => pp_utils:hexstring(?NET_ID_ACTILITY),
         <<"ReceiverID">> => <<"0xC00053">>,
-        <<"TransactionID">> => 23,
+        <<"TransactionID">> => TransactionID,
         <<"MessageType">> => <<"XmitDataReq">>,
         <<"PHYPayload">> => pp_utils:binary_to_hexstring(DownlinkPayload),
         <<"DLMetaData">> => #{
@@ -1041,8 +1050,9 @@ http_class_c_downlink_test(_Config) ->
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
     %% 2. insert sc handler and config
-    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
-    ok = pp_config:insert_transaction_id(2176, <<"http://127.0.0.1:3002/uplink">>, async),
+    TransactionID = 2176,
+    ok = pp_roaming_downlink:insert_handler(TransactionID, self()),
+    ok = pp_config:insert_transaction_id(TransactionID, <<"http://127.0.0.1:3002/uplink">>, async),
     ok = pp_config:load_config([
         #{
             <<"name">> => <<"test">>,
@@ -1059,7 +1069,13 @@ http_class_c_downlink_test(_Config) ->
     DownlinkFreq = 915.0,
     DownlinkDatr = "SF10BW125",
 
-    Token = pp_roaming_protocol:make_uplink_token(PubKeyBin, 'US915', DownlinkTimestamp, <<"http://127.0.0.1:3002/uplink">>, async),
+    Token = pp_roaming_protocol:make_uplink_token(
+        PubKeyBin,
+        'US915',
+        DownlinkTimestamp,
+        <<"http://127.0.0.1:3002/uplink">>,
+        async
+    ),
     RXDelay = 0,
 
     DownlinkBody = #{
@@ -1077,7 +1093,7 @@ http_class_c_downlink_test(_Config) ->
             <<"RXDelay1">> => 0
         },
         <<"PHYPayload">> => pp_utils:binary_to_hexstring(DownlinkPayload),
-        <<"TransactionID">> => 2176
+        <<"TransactionID">> => TransactionID
     },
 
     _ = hackney:post(

@@ -58,7 +58,7 @@ class_c_downlink_test(_Config) ->
     PubKeyBin =
         <<0, 97, 6, 18, 79, 240, 99, 255, 196, 76, 155, 129, 218, 223, 22, 235, 57, 180, 244, 232,
             142, 120, 120, 58, 206, 246, 188, 125, 38, 161, 39, 35, 133>>,
-    pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+    pp_roaming_downlink:insert_handler(2176, self()),
 
     Token = pp_roaming_protocol:make_uplink_token(
         PubKeyBin,
@@ -95,7 +95,7 @@ chirpstack_join_accept_test(_Config) ->
     PubKeyBin =
         <<0, 145, 110, 53, 166, 115, 179, 88, 16, 245, 204, 205, 12, 28, 192, 140, 95, 240, 148,
             120, 101, 37, 142, 25, 41, 159, 165, 128, 221, 94, 89, 242, 128>>,
-    pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+    pp_roaming_downlink:insert_handler(473719436, self()),
     Token = pp_roaming_protocol:make_uplink_token(
         PubKeyBin,
         'US915',
@@ -143,7 +143,7 @@ rx1_timestamp_test(_Config) ->
     PubKeyBin =
         <<0, 97, 6, 18, 79, 240, 99, 255, 196, 76, 155, 129, 218, 223, 22, 235, 57, 180, 244, 232,
             142, 120, 120, 58, 206, 246, 188, 125, 38, 161, 39, 35, 133>>,
-    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+    ok = pp_roaming_downlink:insert_handler(17, self()),
 
     PacketTime = 0,
     Token = pp_roaming_protocol:make_uplink_token(
@@ -200,7 +200,7 @@ rx1_downlink_test(_Config) ->
     PubKeyBin =
         <<0, 97, 6, 18, 79, 240, 99, 255, 196, 76, 155, 129, 218, 223, 22, 235, 57, 180, 244, 232,
             142, 120, 120, 58, 206, 246, 188, 125, 38, 161, 39, 35, 133>>,
-    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+    ok = pp_roaming_downlink:insert_handler(17, self()),
 
     Payload = <<"0x60c04e26e020000000a754ba934840c3bc120989b532ee4613e06e3dd5d95d9d1ceb9e20b1f2">>,
     RXDelay = 2,
@@ -257,7 +257,7 @@ rx2_downlink_test(_Config) ->
     PubKeyBin =
         <<0, 97, 6, 18, 79, 240, 99, 255, 196, 76, 155, 129, 218, 223, 22, 235, 57, 180, 244, 232,
             142, 120, 120, 58, 206, 246, 188, 125, 38, 161, 39, 35, 133>>,
-    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+    ok = pp_roaming_downlink:insert_handler(17, self()),
 
     Token = pp_roaming_protocol:make_uplink_token(
         PubKeyBin,
