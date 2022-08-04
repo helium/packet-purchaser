@@ -31,7 +31,7 @@
     net_id :: non_neg_integer(),
     socket :: pp_udp_socket:socket(),
     push_data = #{} :: #{binary() => {binary(), reference()}},
-    sc_pid :: undefined | pid(),
+    handler_pids :: list(pid()),
     pull_data :: {reference(), binary()} | undefined,
     pull_data_timer :: non_neg_integer(),
     shutdown_timer :: {Timeout :: non_neg_integer(), Timer :: reference()}
@@ -137,7 +137,7 @@ push_data(Config) ->
     %% Chekcing that the push data cache is empty as we should have gotten the push ack
     ok = test_utils:wait_until(fun() ->
         State = sys:get_state(WorkerPid),
-        State#state.push_data == #{} andalso self() == State#state.sc_pid
+        State#state.push_data == #{} andalso lists:member(self(), State#state.handler_pids)
     end),
 
     ok.
@@ -238,7 +238,7 @@ delay_push_data(Config) ->
     %% Checking that the push data cache is empty as we should have gotten the push ack
     ok = test_utils:wait_until(fun() ->
         State = sys:get_state(WorkerPid),
-        State#state.push_data == #{} andalso self() == State#state.sc_pid
+        State#state.push_data == #{} andalso lists:member(self(), State#state.handler_pids)
     end),
 
     ok.
@@ -283,7 +283,7 @@ missing_push_data_ack(Config) ->
     %% Checking that the push data cache is full as we should have _not_ gotten the push ack
     ok = test_utils:wait_until(fun() ->
         State = sys:get_state(WorkerPid),
-        State#state.push_data == #{} andalso self() == State#state.sc_pid
+        State#state.push_data == #{} andalso lists:member(self(), State#state.handler_pids)
     end),
 
     ok.
@@ -487,12 +487,12 @@ multi_hotspots(Config) ->
 
     ok = test_utils:wait_until(fun() ->
         State1 = sys:get_state(WorkerPid1),
-        State1#state.push_data == #{} andalso self() == State1#state.sc_pid
+        State1#state.push_data == #{} andalso lists:member(self(), State1#state.handler_pids)
     end),
 
     ok = test_utils:wait_until(fun() ->
         State2 = sys:get_state(WorkerPid2),
-        State2#state.push_data == #{} andalso self() == State2#state.sc_pid
+        State2#state.push_data == #{} andalso lists:member(self(), State2#state.handler_pids)
     end),
 
     _ = gen_server:stop(WorkerPid2),
