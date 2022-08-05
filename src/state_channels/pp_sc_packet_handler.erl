@@ -10,7 +10,8 @@
 
 -export([
     handle_offer/2,
-    handle_packet/3
+    handle_packet/3,
+    handle_free_packet/3
 ]).
 
 -export([
@@ -23,7 +24,25 @@
 %% Packet Handler Functions
 %% ------------------------------------------------------------------
 
--spec handle_offer(blockchain_state_channel_offer_v1:offer(), pid()) -> ok.
+-spec handle_free_packet(blockchain_state_channel_packet_v1:packet(), pos_integer(), pid()) ->
+    ok | {error, any()}.
+handle_free_packet(SCPacket, PacketTime, Pid) ->
+    PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
+    Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
+    Region = blockchain_state_channel_packet_v1:region(SCPacket),
+    Offer = blockchain_state_channel_offer_v1:from_packet(Packet, PubKeyBin, Region),
+
+    case ?MODULE:handle_offer(Offer, Pid) of
+        {error, _} = Err ->
+            Err;
+        ok ->
+            Ledger = pp_utils:get_ledger(),
+            erlang:spawn(blockchain_state_channels_server, track_offer, [Offer, Ledger, self()]),
+            ?MODULE:handle_packet(SCPacket, PacketTime, Pid),
+            ok
+    end.
+
+-spec handle_offer(blockchain_state_channel_offer_v1:offer(), pid()) -> ok | {error, any()}.
 handle_offer(Offer, _HandlerPid) ->
     #routing_information_pb{data = Routing} = blockchain_state_channel_offer_v1:routing(Offer),
     Resp =

@@ -28,6 +28,7 @@
 -define(METRICS_VM_ETS_MEMORY, packet_purchaser_vm_ets_memory).
 
 -define(METRICS_GRPC_CONNECTION_COUNT, packet_purchaser_connection_count).
+-define(METRICS_FUN_DURATION, packet_purchaser_function_duration).
 
 -define(METRICS_WORKER_TICK_INTERVAL, timer:seconds(10)).
 -define(METRICS_WORKER_TICK, '__pp_metrics_tick').
@@ -37,7 +38,7 @@
 
 %% Prometheus API
 -export([
-    handle_unique_offer/2,
+    handle_unique_offer/3,
     handle_offer/4,
     handle_packet/4,
     %% Stats
@@ -47,7 +48,9 @@
     state_channel_close/1,
     %% Websocket
     ws_state/1,
-    ws_send_msg/1
+    ws_send_msg/1,
+    %% timing
+    function_observe/2
 ]).
 
 %% Helper API
@@ -87,9 +90,13 @@ start_link(Args) ->
 %% Prometheus API Functions
 %% -------------------------------------------------------------------
 
--spec handle_unique_offer(NetID :: non_neg_integer(), Type :: join | packet) -> ok.
-handle_unique_offer(NetID, Type) ->
-    prometheus_counter:inc(?METRICS_UNIQUE_OFFER_COUNT, [gwmp_metrics:clean_net_id(NetID), Type]).
+-spec handle_unique_offer(
+    NetID :: non_neg_integer(),
+    Type :: join | packet,
+    Inc :: non_neg_integer()
+) -> ok.
+handle_unique_offer(NetID, Type, Inc) ->
+    prometheus_counter:inc(?METRICS_UNIQUE_OFFER_COUNT, [gwmp_metrics:clean_net_id(NetID), Type], Inc).
 
 -spec handle_offer(
     NetID :: non_neg_integer(),
@@ -143,6 +150,11 @@ ws_state(State) ->
 -spec ws_send_msg(NetID :: non_neg_integer()) -> ok.
 ws_send_msg(NetID) ->
     prometheus_counter:inc(?METRICS_WS_MSG_COUNT, [NetID]).
+
+-spec function_observe(atom(), non_neg_integer()) -> ok.
+function_observe(Fun, Time) ->
+    _ = prometheus_histogram:observe(?METRICS_FUN_DURATION, [Fun], Time),
+    ok.
 
 %% -------------------------------------------------------------------
 %% gen_server Callbacks
@@ -355,6 +367,13 @@ declare_metrics() ->
         {help, "Number of active GRPC Connections"}
     ]),
 
+    %% Function timing
+    prometheus_histogram:declare([
+        {name, ?METRICS_FUN_DURATION},
+        {help, "Function duration"},
+        {labels, [function]}
+    ]),
+
     ok.
 
 -spec schedule_next_tick() -> reference().
@@ -362,71 +381,61 @@ schedule_next_tick() ->
     erlang:send_after(?METRICS_WORKER_TICK_INTERVAL, self(), ?METRICS_WORKER_TICK).
 
 record_dc_balance(PubKeyBin) ->
-    case pp_utils:get_ledger() of
-        fetching ->
+    Ledger = pp_utils:get_ledger(),
+    case blockchain_ledger_v1:find_dc_entry(PubKeyBin, Ledger) of
+        {error, _} ->
             ok;
-        Ledger ->
-            case blockchain_ledger_v1:find_dc_entry(PubKeyBin, Ledger) of
-                {error, _} ->
-                    ok;
-                {ok, Entry} ->
-                    Balance = blockchain_ledger_data_credits_entry_v1:balance(Entry),
-                    ok = ?MODULE:dcs(Balance)
-            end
+        {ok, Entry} ->
+            Balance = blockchain_ledger_data_credits_entry_v1:balance(Entry),
+            ok = ?MODULE:dcs(Balance)
     end,
     ok.
 
 record_chain_blocks() ->
-    case pp_utils:get_chain() of
-        fetching ->
+    Chain = pp_utils:get_chain(),
+    case blockchain:head_block(Chain) of
+        {error, _} ->
             ok;
-        Chain ->
-            case blockchain:head_block(Chain) of
-                {error, _} ->
-                    ok;
-                {ok, Block} ->
-                    Now = erlang:system_time(seconds),
-                    Time = blockchain_block:time(Block),
-                    ok = ?MODULE:blocks(Now - Time)
-            end
+        {ok, Block} ->
+            Now = erlang:system_time(seconds),
+            Time = blockchain_block:time(Block),
+            ok = ?MODULE:blocks(Now - Time)
     end.
 
 record_state_channels() ->
-    case pp_utils:get_chain() of
-        fetching ->
-            ok;
-        Chain ->
-            {ok, Height} = blockchain:height(Chain),
-            {OpenedCount, OverspentCount, _GettingCloseCount} = pp_sc_worker:counts(Height),
+    Chain = pp_utils:get_chain(),
 
-            ActiveSCs = maps:values(blockchain_state_channels_server:get_actives()),
-            ActiveCount = erlang:length(ActiveSCs),
+    {ok, Height} = blockchain:height(Chain),
+    {OpenedCount, OverspentCount, _GettingCloseCount} = pp_sc_worker:counts(Height),
 
-            {TotalDCLeft, TotalActors} = lists:foldl(
-                fun({ActiveSC, _, _}, {DCs, Actors}) ->
-                    Summaries = blockchain_state_channel_v1:summaries(ActiveSC),
-                    TotalDC = blockchain_state_channel_v1:total_dcs(ActiveSC),
-                    DCLeft = blockchain_state_channel_v1:amount(ActiveSC) - TotalDC,
-                    %% If SC ran out of DC we should not be counted towards active metrics
-                    case DCLeft of
-                        0 ->
-                            {DCs, Actors};
-                        _ ->
-                            {DCs + DCLeft, Actors + erlang:length(Summaries)}
-                    end
-                end,
-                {0, 0},
-                ActiveSCs
-            ),
+    ActiveSCs = maps:values(blockchain_state_channels_server:get_actives()),
+    ActiveCount = erlang:length(ActiveSCs),
 
-            ok = ?MODULE:state_channels(
-                OpenedCount,
-                OverspentCount,
-                ActiveCount,
-                TotalDCLeft,
-                TotalActors
-            )
-    end,
+    {TotalDCLeft, TotalActors} = lists:foldl(
+        fun({ActiveSC, _, _}, {DCs, Actors}) ->
+            Summaries = blockchain_state_channel_v1:summaries(ActiveSC),
+            TotalDC = blockchain_state_channel_v1:total_dcs(ActiveSC),
+            DCLeft = blockchain_state_channel_v1:amount(ActiveSC) - TotalDC,
+            %% If SC ran out of DC we should not be counted towards active metrics
+            case DCLeft of
+                0 ->
+                    {DCs, Actors};
+                _ ->
+                    {DCs + DCLeft, Actors + erlang:length(Summaries)}
+            end
+        end,
+        {0, 0},
+        ActiveSCs
+    ),
+
+    ok = ?MODULE:state_channels(
+        OpenedCount,
+        OverspentCount,
+        ActiveCount,
+        TotalDCLeft,
+        TotalActors
+    ),
+
     ok.
 
 -spec record_vm_stats() -> ok.
@@ -580,13 +589,25 @@ crawl_offers(Window) ->
     %% MS = ets:fun2ms(fun({Key, Time}) when Time < Now -> Key end),
     MS = [{{'$1', '$2'}, [{'<', '$2', {const, Now}}], ['$1']}],
     Expired = ets:select(?UNIQUE_OFFER_ETS, MS),
-    lists:foreach(
-        fun({NetID, _PHash, OfferType} = Key) ->
-            true = ets:delete(?UNIQUE_OFFER_ETS, Key),
-            ?MODULE:handle_unique_offer(NetID, OfferType)
+
+    %% Directly increment by the number we're about to delete by each key
+    Counts = lists:foldl(
+        fun({NetID, _Phash, OfferType}, Acc) ->
+            Key = {NetID, OfferType},
+            Acc#{Key => maps:get(Key, Acc, 0) + 1}
         end,
+        #{},
         Expired
     ),
+    maps:foreach(
+        fun({NetID, OfferType}, Count) ->
+            ?MODULE:handle_unique_offer(NetID, OfferType, Count)
+        end,
+        Counts
+    ),
+
+    %% Remove all accounted for
+    lists:foreach(fun(Key) -> true = ets:delete(?UNIQUE_OFFER_ETS, Key) end, Expired),
     ok.
 
 -spec spawn_crawl_offers(Timer :: non_neg_integer(), Window :: non_neg_integer()) -> ok.

@@ -34,6 +34,7 @@ jobs:
           rm -rf /tmp/packet_purchaser
       - name: build
         run: |
+          make grpc
           ./rebar3 compile
         working-directory: /opt/packet_purchaser
       - name: build test
