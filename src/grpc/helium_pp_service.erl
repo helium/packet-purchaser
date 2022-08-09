@@ -7,7 +7,8 @@
 -ifdef(TEST).
 -define(TIMEOUT, 5000).
 -else.
--define(TIMEOUT, 8000).
+%% Longest RXDelay is 15s
+-define(TIMEOUT, 15000).
 -endif.
 
 -export([
@@ -15,14 +16,27 @@
 ]).
 
 route(Ctx, #blockchain_state_channel_message_v1_pb{msg = {packet, SCPacket}} = _Message) ->
-    lager:info("executing RPC route with msg ~p", [_Message]),
-    %% handle the packet and then await a response
-    %% if no response within given time, then give up and return error
-    {Time, _} = timer:tc(pp_sc_packet_handler, handle_free_packet, [
-        SCPacket, erlang:system_time(millisecond), self()
-    ]),
-    pp_metrics:function_observe('pp_sc_packet_handler:handle_free_packet', Time),
-    wait_for_response(Ctx).
+    lager:debug("executing RPC route with msg ~p", [_Message]),
+
+    BasePacket = SCPacket#blockchain_state_channel_packet_v1_pb{signature = <<>>},
+    EncodedPacket = blockchain_state_channel_packet_v1:encode(BasePacket),
+    Signature = blockchain_state_channel_packet_v1:signature(SCPacket),
+    PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
+    PubKey = libp2p_crypto:bin_to_pubkey(PubKeyBin),
+    case libp2p_crypto:verify(EncodedPacket, Signature, PubKey) of
+        false ->
+            {grpc_error, {grpcbox_stream:code_to_status(2), <<"bad signature">>}};
+        true ->
+            %% handle the packet and then await a response
+            %% if no response within given time, then give up and return error
+            {Time, _} = timer:tc(pp_sc_packet_handler, handle_free_packet, [
+                SCPacket,
+                erlang:system_time(millisecond),
+                self()
+            ]),
+            pp_metrics:function_observe('pp_sc_packet_handler:handle_free_packet', Time),
+            wait_for_response(Ctx)
+    end.
 
 %% ------------------------------------------------------------------
 %% Internal functions
@@ -35,10 +49,14 @@ wait_for_response(Ctx) ->
         {packet, Packet} ->
             lager:debug("received packet ~p", [Packet]),
             {ok, #blockchain_state_channel_message_v1_pb{msg = {packet, Packet}}, Ctx};
-        {error, _Reason} ->
-            lager:debug("received error msg ~p", [_Reason]),
-            {grpc_error, {grpcbox_stream:code_to_status(2), <<"no response">>}}
+        {error, Reason} ->
+            lager:debug("received error msg ~p", [Reason]),
+            {grpc_error, {grpcbox_stream:code_to_status(2), erlang:atom_to_binary(Reason)}}
     after ?TIMEOUT ->
+        %% The packet hasn't been rejected, but nobody has responded with a
+        %% downlink. It was used, but requires nothing more than an
+        %% acknowledgement.
         lager:debug("failed to receive response msg after ~p seconds", [?TIMEOUT]),
-        {grpc_error, {grpcbox_stream:code_to_status(2), <<"no response">>}}
+        Resp = blockchain_state_channel_response_v1:new(true),
+        {ok, #blockchain_state_channel_message_v1_pb{msg = {response, Resp}}, Ctx}
     end.

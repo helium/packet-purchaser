@@ -397,10 +397,12 @@ init_ets() ->
     ]),
     ok.
 
+-spec insert_transaction_id(integer(), binary(), atom()) -> ok.
 insert_transaction_id(TransactionID, Endpoint, FlowType) ->
     true = ets:insert(?TRANSACTION_ETS, {TransactionID, Endpoint, FlowType}),
     ok.
 
+-spec lookup_transaction_id(integer()) -> {ok, binary(), atom()} | {error, routing_not_found}.
 lookup_transaction_id(TransactionID) ->
     case ets:lookup(?TRANSACTION_ETS, TransactionID) of
         [] -> {error, routing_not_found};

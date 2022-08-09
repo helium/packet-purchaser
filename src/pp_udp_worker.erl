@@ -45,7 +45,11 @@
     net_id :: non_neg_integer(),
     socket :: pp_udp_socket:socket(),
     push_data = #{} :: #{binary() => {binary(), reference()}},
-    sc_pid :: undefined | pid(),
+    %% NOTE: We treat handler_pids like a FILO stack. Every PID will
+    %% get a message to the same gateway, always using the freshest
+    %% first will give us the best opportunity for our message to
+    %% make it down.
+    handler_pids :: list(pid()),
     pull_data :: {reference(), binary()} | undefined,
     pull_data_timer :: non_neg_integer(),
     shutdown_timer :: {Timeout :: non_neg_integer(), Timer :: reference()}
@@ -118,6 +122,7 @@ init(Args) ->
     ShutdownRef = schedule_shutdown(ShutdownTimeout),
 
     State = #state{
+        handler_pids = [],
         pubkeybin = PubKeyBin,
         net_id = NetID,
         socket = Socket,
@@ -142,15 +147,21 @@ handle_call(
 handle_call(
     {push_data, SCPacket, PacketTime, HandlerPid},
     _From,
-    #state{push_data = PushData, location = Loc, shutdown_timer = {ShutdownTimeout, ShutdownRef}} =
+    #state{
+        push_data = PushData,
+        location = Loc,
+        shutdown_timer = {ShutdownTimeout, ShutdownRef},
+        handler_pids = HandlerPids
+    } =
         State
 ) ->
     _ = erlang:cancel_timer(ShutdownRef),
     {Token, Data} = handle_data(SCPacket, PacketTime, Loc),
     {Reply, TimerRef} = send_push_data(Token, Data, State),
+    _ = erlang:monitor(process, HandlerPid),
     {reply, Reply, State#state{
         push_data = maps:put(Token, {Data, TimerRef}, PushData),
-        sc_pid = HandlerPid,
+        handler_pids = [HandlerPid | HandlerPids],
         shutdown_timer = {ShutdownTimeout, schedule_shutdown(ShutdownTimeout)}
     }};
 handle_call(_Msg, _From, State) ->
@@ -161,6 +172,8 @@ handle_cast(_Msg, State) ->
     lager:warning("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
 
+handle_info({'DOWN', _Ref, process, Pid, _Reason}, #state{handler_pids = HandlerPids} = State) ->
+    {noreply, State#state{handler_pids = lists:delete(Pid, HandlerPids)}};
 handle_info(get_hotspot_location, #state{pubkeybin = PubKeyBin} = State) ->
     Location = pp_utils:get_hotspot_location(PubKeyBin),
     lager:info("got location ~p for hotspot", [Location]),
@@ -342,11 +355,17 @@ handle_pull_ack(
     end.
 
 % TODO: Handle queueing downlinks
--spec handle_pull_resp(binary(), #state{}) -> {noreply, #state{}}.
-handle_pull_resp(
-    Data,
-    #state{sc_pid = SCPid} = State
-) when is_pid(SCPid) ->
+handle_pull_resp(_Data, #state{handler_pids = []} = State) ->
+    lager:warning("could not send downlink, no handler pids"),
+    {noreply, State};
+handle_pull_resp(Data, #state{handler_pids = [HandlerPid | HandlerPids]} = State) ->
+    ok = do_handle_pull_resp(Data, HandlerPid),
+    Token = semtech_udp:token(Data),
+    _ = send_tx_ack(Token, State),
+    {noreply, State#state{handler_pids = HandlerPids}}.
+
+-spec do_handle_pull_resp(binary(), pid()) -> ok.
+do_handle_pull_resp(Data, SCPid) when is_pid(SCPid) ->
     Map = maps:get(<<"txpk">>, semtech_udp:json_data(Data)),
 
     JSONData0 = maps:get(<<"data">>, Map),
@@ -366,13 +385,12 @@ handle_pull_resp(
         maps:get(<<"freq">>, Map),
         erlang:binary_to_list(maps:get(<<"datr">>, Map))
     ),
+
     catch blockchain_state_channel_common:send_response(
         SCPid,
         blockchain_state_channel_response_v1:new(true, DownlinkPacket)
     ),
-    Token = semtech_udp:token(Data),
-    _ = send_tx_ack(Token, State),
-    {noreply, State}.
+    ok.
 
 -spec schedule_pull_data(non_neg_integer()) -> reference().
 schedule_pull_data(PullDataTimer) ->

@@ -55,13 +55,11 @@ end_per_testcase(_TestCase, _Config) ->
 %%--------------------------------------------------------------------
 
 class_c_downlink_test(_Config) ->
-    PubKeyBin =
-        <<0, 97, 6, 18, 79, 240, 99, 255, 196, 76, 155, 129, 218, 223, 22, 235, 57, 180, 244, 232,
-            142, 120, 120, 58, 206, 246, 188, 125, 38, 161, 39, 35, 133>>,
-    pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+    TransactionID = 2176,
+    pp_roaming_downlink:insert_handler(TransactionID, self()),
 
     Token = pp_roaming_protocol:make_uplink_token(
-        PubKeyBin,
+        TransactionID,
         'US915',
         erlang:system_time(millisecond),
         <<"www.example.com">>,
@@ -83,7 +81,7 @@ class_c_downlink_test(_Config) ->
             <<"RXDelay1">> => 0
         },
         <<"PHYPayload">> => <<"0x60c04e26e000010001ae6cb4ddf7bc1997">>,
-        <<"TransactionID">> => 2176
+        <<"TransactionID">> => TransactionID
     },
 
     Self = self(),
@@ -92,12 +90,11 @@ class_c_downlink_test(_Config) ->
     ok.
 
 chirpstack_join_accept_test(_Config) ->
-    PubKeyBin =
-        <<0, 145, 110, 53, 166, 115, 179, 88, 16, 245, 204, 205, 12, 28, 192, 140, 95, 240, 148,
-            120, 101, 37, 142, 25, 41, 159, 165, 128, 221, 94, 89, 242, 128>>,
-    pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+    TransactionID = 473719436,
+    pp_roaming_downlink:insert_handler(TransactionID, self()),
+
     Token = pp_roaming_protocol:make_uplink_token(
-        PubKeyBin,
+        TransactionID,
         'US915',
         erlang:system_time(millisecond),
         <<"www.example.com">>,
@@ -131,7 +128,7 @@ chirpstack_join_accept_test(_Config) ->
         <<"PHYPayload">> =>
             <<"203851b55db2b1669f2c83a52b4b586d8ecca19880f22f6adda429dd719021160c">>,
         <<"Result">> => #{<<"Description">> => <<>>, <<"ResultCode">> => <<"Success">>},
-        <<"TransactionID">> => 473719436,
+        <<"TransactionID">> => TransactionID,
         <<"VSExtension">> => #{}
     },
     Self = self(),
@@ -140,14 +137,12 @@ chirpstack_join_accept_test(_Config) ->
     ok.
 
 rx1_timestamp_test(_Config) ->
-    PubKeyBin =
-        <<0, 97, 6, 18, 79, 240, 99, 255, 196, 76, 155, 129, 218, 223, 22, 235, 57, 180, 244, 232,
-            142, 120, 120, 58, 206, 246, 188, 125, 38, 161, 39, 35, 133>>,
-    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+TransactionID = 17,
+    ok = pp_roaming_downlink:insert_handler(TransactionID, self()),
 
     PacketTime = 0,
     Token = pp_roaming_protocol:make_uplink_token(
-        PubKeyBin,
+        TransactionID,
         'US915',
         PacketTime,
         <<"www.example.com">>,
@@ -159,7 +154,7 @@ rx1_timestamp_test(_Config) ->
             <<"ProtocolVersion">> => <<"1.1">>,
             <<"SenderID">> => <<"0x600013">>,
             <<"ReceiverID">> => <<"0xc00053">>,
-            <<"TransactionID">> => 17,
+            <<"TransactionID">> => TransactionID,
             <<"MessageType">> => <<"XmitDataReq">>,
             <<"PHYPayload">> =>
                 <<"0x60c04e26e020000000a754ba934840c3bc120989b532ee4613e06e3dd5d95d9d1ceb9e20b1f2">>,
@@ -197,10 +192,8 @@ rx1_timestamp_test(_Config) ->
     ok.
 
 rx1_downlink_test(_Config) ->
-    PubKeyBin =
-        <<0, 97, 6, 18, 79, 240, 99, 255, 196, 76, 155, 129, 218, 223, 22, 235, 57, 180, 244, 232,
-            142, 120, 120, 58, 206, 246, 188, 125, 38, 161, 39, 35, 133>>,
-    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+    TransactionID = 17,
+    ok = pp_roaming_downlink:insert_handler(TransactionID, self()),
 
     Payload = <<"0x60c04e26e020000000a754ba934840c3bc120989b532ee4613e06e3dd5d95d9d1ceb9e20b1f2">>,
     RXDelay = 2,
@@ -208,7 +201,7 @@ rx1_downlink_test(_Config) ->
     DataRate = 10,
 
     Token = pp_roaming_protocol:make_uplink_token(
-        PubKeyBin,
+        TransactionID,
         'US915',
         erlang:system_time(millisecond),
         <<"www.example.com">>,
@@ -219,7 +212,7 @@ rx1_downlink_test(_Config) ->
         <<"ProtocolVersion">> => <<"1.1">>,
         <<"SenderID">> => <<"0x600013">>,
         <<"ReceiverID">> => <<"0xc00053">>,
-        <<"TransactionID">> => 17,
+        <<"TransactionID">> => TransactionID,
         <<"MessageType">> => <<"XmitDataReq">>,
         <<"PHYPayload">> => Payload,
         <<"DLMetaData">> => #{
@@ -254,13 +247,11 @@ rx1_downlink_test(_Config) ->
     ok.
 
 rx2_downlink_test(_Config) ->
-    PubKeyBin =
-        <<0, 97, 6, 18, 79, 240, 99, 255, 196, 76, 155, 129, 218, 223, 22, 235, 57, 180, 244, 232,
-            142, 120, 120, 58, 206, 246, 188, 125, 38, 161, 39, 35, 133>>,
-    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+    TransactionID = 17,
+    ok = pp_roaming_downlink:insert_handler(TransactionID, self()),
 
     Token = pp_roaming_protocol:make_uplink_token(
-        PubKeyBin,
+        TransactionID,
         'US915',
         erlang:system_time(millisecond),
         <<"www.example.com">>,
@@ -271,7 +262,7 @@ rx2_downlink_test(_Config) ->
         <<"ProtocolVersion">> => <<"1.1">>,
         <<"SenderID">> => <<"0x600013">>,
         <<"ReceiverID">> => <<"0xc00053">>,
-        <<"TransactionID">> => 17,
+        <<"TransactionID">> => TransactionID,
         <<"MessageType">> => <<"XmitDataReq">>,
         <<"PHYPayload">> =>
             <<"0x60c04e26e020000000a754ba934840c3bc120989b532ee4613e06e3dd5d95d9d1ceb9e20b1f2">>,
