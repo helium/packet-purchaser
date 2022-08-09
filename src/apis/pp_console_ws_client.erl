@@ -101,7 +101,7 @@ onconnect(_WSReq, State) ->
 ondisconnect(_Error, State) ->
     lager:warning("discconnected ~p ", [_Error]),
     pp_metrics:ws_state(false),
-    {reconnect, timer:seconds(60), State}.
+    {reconnect, timer:seconds(10), State}.
 
 websocket_handle({text, Msg}, _Req, State) ->
     case ?MODULE:decode_msg(Msg) of
@@ -123,9 +123,8 @@ websocket_info(heartbeat, _Req, #state{heartbeat = Heartbeat} = State) ->
     pp_metrics:ws_state(true),
     {reply, {text, Payload}, State#state{heartbeat = Heartbeat + 1, heartbeat_timeout = TimerRef}};
 websocket_info({heartbeat_timeout, Ref}, _Req, State) ->
-    lager:warning("we missed heartbeat ~p, disconnecting", [Ref]),
-    pp_metrics:ws_state(false),
-    {close, <<"failed heartbeat">>, State#state{heartbeat = 0, heartbeat_timeout = undefined}};
+    lager:warning("we missed heartbeat ~p", [Ref]),
+    {ok, State#state{heartbeat = 0, heartbeat_timeout = undefined}};
 websocket_info(auto_join, _Req, #state{auto_join = AutoJoin} = State) ->
     lists:foreach(
         fun(Topic) ->
@@ -167,7 +166,7 @@ handle_message(
     },
     #state{heartbeat_timeout = TimerRef} = State
 ) ->
-    _ = erlang:cancel_timer(TimerRef),
+    _ = catch erlang:cancel_timer(TimerRef),
     case maps:get(<<"status">>, Payload, undefined) of
         <<"ok">> -> lager:debug("hearbeat ~p ok", [Heartbeat]);
         _Other -> lager:warning("hearbeat ~p failed: ~p", [Heartbeat, _Other])
