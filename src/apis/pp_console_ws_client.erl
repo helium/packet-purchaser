@@ -101,7 +101,7 @@ onconnect(_WSReq, State) ->
 ondisconnect(_Error, State) ->
     lager:warning("discconnected ~p ", [_Error]),
     pp_metrics:ws_state(false),
-    {reconnect, timer:seconds(60), State}.
+    {reconnect, timer:seconds(10), State}.
 
 websocket_handle({text, Msg}, _Req, State) ->
     case ?MODULE:decode_msg(Msg) of
