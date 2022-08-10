@@ -12,8 +12,7 @@
 -export([
     start_link/1,
     push_data/4,
-    push_data/5,
-    update_address/2
+    push_data/5
 ]).
 
 %% ------------------------------------------------------------------
@@ -30,12 +29,8 @@
 
 -define(SERVER, ?MODULE).
 
--define(PUSH_DATA_TICK, push_data_tick).
--define(PUSH_DATA_TIMER, timer:seconds(2)).
-
 -define(PULL_DATA_TIMER, timer:seconds(10)).
 
--define(SHUTDOWN_TICK, shutdown_tick).
 -define(SHUTDOWN_TIMER, timer:minutes(5)).
 
 -define(METRICS_PREFIX, "packet_purchaser_").
@@ -76,16 +71,9 @@ push_data(WorkerPid, SCPacket, PacketTime, HandlerPid) ->
     Protocol :: {udp, string(), integer()}
 ) -> ok | {error, any()}.
 push_data(WorkerPid, SCPacket, PacketTime, HandlerPid, Protocol) ->
-    ok = update_address(WorkerPid, Protocol),
+    ok = udp_worker_utils:update_address(WorkerPid, Protocol),
     gen_server:call(WorkerPid, {push_data, SCPacket, PacketTime, HandlerPid}).
 
--spec update_address(
-    WorkerPid :: pid(),
-    Protocol ::
-        {udp, Address :: pp_udp_socket:socket_address(), Port :: pp_udp_socket:socket_port()}
-) -> ok.
-update_address(WorkerPid, {udp, Address, Port}) ->
-    gen_server:call(WorkerPid, {update_address, Address, Port}).
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
@@ -116,7 +104,7 @@ init(Args) ->
     ok = pp_config:insert_udp_worker(NetID, self()),
 
     ShutdownTimeout = maps:get(shutdown_timer, Args, ?SHUTDOWN_TIMER),
-    ShutdownRef = schedule_shutdown(ShutdownTimeout),
+    ShutdownRef = udp_worker_utils:schedule_shutdown(ShutdownTimeout),
 
     State = #state{
         pubkeybin = PubKeyBin,
@@ -134,25 +122,25 @@ handle_call(
     _From,
     #state{socket = Socket0} = State
 ) ->
-    lager:debug("Updating address and port [old: ~p] [new: ~p]", [
-        pp_udp_socket:get_address(Socket0),
-        {Address, Port}
-    ]),
-    {ok, Socket1} = pp_udp_socket:update_address(Socket0, {Address, Port}),
+    Socket1 = udp_worker_utils:update_address(Socket0, Address, Port),
     {reply, ok, State#state{socket = Socket1}};
 handle_call(
     {push_data, SCPacket, PacketTime, HandlerPid},
     _From,
-    #state{push_data = PushData, location = Loc, shutdown_timer = {ShutdownTimeout, ShutdownRef}} =
+    #state{push_data = PushData, location = Loc, shutdown_timer = {ShutdownTimeout, ShutdownRef},
+        socket = Socket} =
         State
 ) ->
     _ = erlang:cancel_timer(ShutdownRef),
     {Token, Data} = handle_sc_packet_data(SCPacket, PacketTime, Loc),
-    {Reply, TimerRef} = send_push_data(Token, Data, State),
+
+    {Reply, TimerRef} = udp_worker_utils:send_push_data(Token, Data, Socket),
+    {NewPushData, NewShutdownTimer} = udp_worker_utils:new_push_and_shutdown(Token, Data, TimerRef, PushData, ShutdownTimeout),
+
     {reply, Reply, State#state{
-        push_data = maps:put(Token, {Data, TimerRef}, PushData),
+        push_data = NewPushData,
         sc_pid = HandlerPid,
-        shutdown_timer = {ShutdownTimeout, schedule_shutdown(ShutdownTimeout)}
+        shutdown_timer = NewShutdownTimer
     }};
 handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
@@ -339,26 +327,3 @@ state_channel_send_response(Data, SCPid) ->
         SCPid,
         blockchain_state_channel_response_v1:new(true, DownlinkPacket)
     ).
-
-
--spec schedule_shutdown(non_neg_integer()) -> reference().
-schedule_shutdown(ShutdownTimer) ->
-    _ = erlang:send_after(ShutdownTimer, self(), ?SHUTDOWN_TICK).
-
-
-
--spec send_push_data(binary(), binary(), #state{}) -> {ok | {error, any()}, reference()}.
-send_push_data(
-    Token,
-    Data,
-    #state{socket = Socket}
-) ->
-    Reply = pp_udp_socket:send(Socket, Data),
-    TimerRef = erlang:send_after(?PUSH_DATA_TIMER, self(), {?PUSH_DATA_TICK, Token}),
-    lager:debug("sent ~p/~p to ~p replied: ~p", [
-        Token,
-        Data,
-        pp_udp_socket:get_address(Socket),
-        Reply
-    ]),
-    {Reply, TimerRef}.
