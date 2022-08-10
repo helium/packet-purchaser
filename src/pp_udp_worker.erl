@@ -91,7 +91,7 @@ init(Args) ->
         true ->
             ok;
         false ->
-            %% Pull data immediately so we can establish a connection for the first
+            %% Pull data immediately so we can establish a connection for the first,
             %% pull_response.
             self() ! ?PULL_DATA_TICK,
             udp_worker_utils:schedule_pull_data(PullDataTimer)
@@ -231,7 +231,9 @@ values_for_push_from(SCPacket) ->
     Datarate = blockchain_helium_packet_v1:datarate(Packet),
     SignalStrength = blockchain_helium_packet_v1:signal_strength(Packet),
     Snr = blockchain_helium_packet_v1:snr(Packet),
-    #{pub_key_bin => PubKeyBin,
+    #{
+        pub_key_bin => PubKeyBin,
+        mac => udp_worker_utils:pubkeybin_to_mac(PubKeyBin),
         region => Region,
         tmst => Tmst,
         payload => Payload,
