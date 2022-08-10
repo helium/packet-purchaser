@@ -29,10 +29,6 @@
 
 -define(SERVER, ?MODULE).
 
--define(PULL_DATA_TIMER, timer:seconds(10)).
-
--define(SHUTDOWN_TIMER, timer:minutes(5)).
-
 -define(METRICS_PREFIX, "packet_purchaser_").
 
 -record(state, {
