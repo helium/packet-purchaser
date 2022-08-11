@@ -24,17 +24,17 @@
     shutdown_test/1
 ]).
 
--record(state, {
-    location :: {pos_integer(), float(), float()} | undefined,
-    pubkeybin :: libp2p_crypto:pubkey_bin(),
-    net_id :: non_neg_integer(),
-    socket :: pp_udp_socket:socket(),
-    push_data = #{} :: #{binary() => {binary(), reference()}},
-    sc_pid :: undefined | pid(),
-    pull_data :: {reference(), binary()} | undefined,
-    pull_data_timer :: non_neg_integer(),
-    shutdown_timer :: {Timeout :: non_neg_integer(), Timer :: reference()}
-}).
+%%-record(pp_udp_worker_state, {
+%%    location :: {pos_integer(), float(), float()} | undefined,
+%%    pubkeybin :: libp2p_crypto:pubkey_bin(),
+%%    net_id :: non_neg_integer(),
+%%    socket :: pp_udp_socket:socket(),
+%%    push_data = #{} :: #{binary() => {binary(), reference()}},
+%%    sc_pid :: undefined | pid(),
+%%    pull_data :: {reference(), binary()} | undefined,
+%%    pull_data_timer :: non_neg_integer(),
+%%    shutdown_timer :: {Timeout :: non_neg_integer(), Timer :: reference()}
+%%}).
 
 %%--------------------------------------------------------------------
 %% COMMON TEST CALLBACK FUNCTIONS
@@ -132,10 +132,10 @@ push_data(Config) ->
         )
     ),
 
-    %% Chekcing that the push data cache is empty as we should have gotten the push ack
+    %% Checking that the push data cache is empty as we should have gotten the push ack
     ok = test_utils:wait_until(fun() ->
         State = sys:get_state(WorkerPid),
-        State#state.push_data == #{} andalso self() == State#state.sc_pid
+        State#pp_udp_worker_state.push_data == #{} andalso self() == State#pp_udp_worker_state.sc_pid
     end),
 
     ok.
@@ -236,7 +236,7 @@ delay_push_data(Config) ->
     %% Checking that the push data cache is empty as we should have gotten the push ack
     ok = test_utils:wait_until(fun() ->
         State = sys:get_state(WorkerPid),
-        State#state.push_data == #{} andalso self() == State#state.sc_pid
+        State#pp_udp_worker_state.push_data == #{} andalso self() == State#pp_udp_worker_state.sc_pid
     end),
 
     ok.
@@ -281,7 +281,7 @@ missing_push_data_ack(Config) ->
     %% Checking that the push data cache is full as we should have _not_ gotten the push ack
     ok = test_utils:wait_until(fun() ->
         State = sys:get_state(WorkerPid),
-        State#state.push_data == #{} andalso self() == State#state.sc_pid
+        State#pp_udp_worker_state.push_data == #{} andalso self() == State#pp_udp_worker_state.sc_pid
     end),
 
     ok.
@@ -312,7 +312,7 @@ failed_pull_data(Config) ->
     {_PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
 
     %% Speed up the rate we check for pull_acks
-    sys:replace_state(WorkerPid, fun(State) -> State#state{pull_data_timer = 20} end),
+    sys:replace_state(WorkerPid, fun(State) -> State#pp_udp_worker_state{pull_data_timer = 20} end),
 
     ok = pp_lns:delay_next_udp(FakeLNSPid, timer:seconds(5)),
     timer:sleep(timer:seconds(1)),
@@ -327,7 +327,7 @@ pull_resp(Config) ->
     {PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
 
     _Opts = pp_lns:send_packet(PubKeyBin, #{}),
-    #state{socket = {socket, Socket, _}} = sys:get_state(WorkerPid),
+    #pp_udp_worker_state{socket = {socket, Socket, _}} = sys:get_state(WorkerPid),
     {ok, Port} = inet:port(Socket),
 
     Token = semtech_udp:token(),
@@ -434,12 +434,12 @@ multi_hotspots(Config) ->
 
     ok = test_utils:wait_until(fun() ->
         State1 = sys:get_state(WorkerPid1),
-        State1#state.push_data == #{} andalso self() == State1#state.sc_pid
+        State1#pp_udp_worker_state.push_data == #{} andalso self() == State1#pp_udp_worker_state.sc_pid
     end),
 
     ok = test_utils:wait_until(fun() ->
         State2 = sys:get_state(WorkerPid2),
-        State2#state.push_data == #{} andalso self() == State2#state.sc_pid
+        State2#pp_udp_worker_state.push_data == #{} andalso self() == State2#pp_udp_worker_state.sc_pid
     end),
 
     _ = gen_server:stop(WorkerPid2),

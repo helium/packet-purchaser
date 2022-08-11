@@ -31,17 +31,6 @@
 
 -define(METRICS_PREFIX, "packet_purchaser_").
 
--record(state, {
-    location :: no_location | {pos_integer(), float(), float()} | undefined,
-    pubkeybin :: libp2p_crypto:pubkey_bin(),
-    net_id :: non_neg_integer(),
-    socket :: pp_udp_socket:socket(),
-    push_data = #{} :: #{binary() => {binary(), reference()}},
-    sc_pid :: undefined | pid(),
-    pull_data :: {reference(), binary()} | undefined,
-    pull_data_timer :: non_neg_integer(),
-    shutdown_timer :: {Timeout :: non_neg_integer(), Timer :: reference()}
-}).
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
@@ -102,7 +91,7 @@ init(Args) ->
     ShutdownTimeout = maps:get(shutdown_timer, Args, ?SHUTDOWN_TIMER),
     ShutdownRef = udp_worker_utils:schedule_shutdown(ShutdownTimeout),
 
-    State = #state{
+    State = #pp_udp_worker_state{
         pubkeybin = PubKeyBin,
         net_id = NetID,
         socket = Socket,
@@ -111,19 +100,19 @@ init(Args) ->
     },
     Location = pp_utils:get_hotspot_location(PubKeyBin),
     lager:info("got location ~p for hotspot", [Location]),
-    {ok, State#state{location = Location}}.
+    {ok, State#pp_udp_worker_state{location = Location}}.
 
 handle_call(
     {update_address, Address, Port},
     _From,
-    #state{socket = Socket0} = State
+    #pp_udp_worker_state{socket = Socket0} = State
 ) ->
     Socket1 = udp_worker_utils:update_address(Socket0, Address, Port),
-    {reply, ok, State#state{socket = Socket1}};
+    {reply, ok, State#pp_udp_worker_state{socket = Socket1}};
 handle_call(
     {push_data, SCPacket, PacketTime, HandlerPid},
     _From,
-    #state{push_data = PushData, location = Loc, shutdown_timer = {ShutdownTimeout, ShutdownRef},
+    #pp_udp_worker_state{push_data = PushData, location = Loc, shutdown_timer = {ShutdownTimeout, ShutdownRef},
         socket = Socket} =
         State
 ) ->
@@ -133,9 +122,10 @@ handle_call(
     {Reply, TimerRef} = udp_worker_utils:send_push_data(Token, Data, Socket),
     {NewPushData, NewShutdownTimer} = udp_worker_utils:new_push_and_shutdown(Token, Data, TimerRef, PushData, ShutdownTimeout),
 
-    {reply, Reply, State#state{
+    {reply, Reply, State#pp_udp_worker_state{
         push_data = NewPushData,
         sc_pid = HandlerPid,
+        pull_resp_fun = state_channel_send_response_function(HandlerPid),
         shutdown_timer = NewShutdownTimer
     }};
 handle_call(_Msg, _From, State) ->
@@ -146,13 +136,13 @@ handle_cast(_Msg, State) ->
     lager:warning("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
 
-handle_info(get_hotspot_location, #state{pubkeybin = PubKeyBin} = State) ->
+handle_info(get_hotspot_location, #pp_udp_worker_state{pubkeybin = PubKeyBin} = State) ->
     Location = pp_utils:get_hotspot_location(PubKeyBin),
     lager:info("got location ~p for hotspot", [Location]),
-    {noreply, State#state{location = Location}};
+    {noreply, State#pp_udp_worker_state{location = Location}};
 handle_info(
     {udp, Socket, _Address, Port, Data},
-    #state{
+    #pp_udp_worker_state{
         socket = {socket, Socket, _}
     } = State
 ) ->
@@ -166,7 +156,7 @@ handle_info(
     end;
 handle_info(
     {?PUSH_DATA_TICK, Token},
-    #state{push_data = PushData, net_id = NetID} = State
+    #pp_udp_worker_state{push_data = PushData, net_id = NetID} = State
 ) ->
     case maps:get(Token, PushData, undefined) of
         undefined ->
@@ -174,25 +164,25 @@ handle_info(
         {_Data, _} ->
             lager:debug("got push data timeout ~p, ignoring lack of ack", [Token]),
             ok = gwmp_metrics:push_ack_missed(?METRICS_PREFIX, NetID),
-            {noreply, State#state{push_data = maps:remove(Token, PushData)}}
+            {noreply, State#pp_udp_worker_state{push_data = maps:remove(Token, PushData)}}
     end;
 handle_info(
     ?PULL_DATA_TICK,
-    #state{pubkeybin = PubKeyBin, socket = Socket, pull_data_timer = PullDataTimer} = State
+    #pp_udp_worker_state{pubkeybin = PubKeyBin, socket = Socket, pull_data_timer = PullDataTimer} = State
 ) ->
     {ok, RefAndToken} = udp_worker_utils:send_pull_data(#{
         pubkeybin => PubKeyBin,
         socket => Socket,
         pull_data_timer => PullDataTimer
     }),
-    {noreply, State#state{pull_data = RefAndToken}};
+    {noreply, State#pp_udp_worker_state{pull_data = RefAndToken}};
 handle_info(
     ?PULL_DATA_TIMEOUT_TICK,
-    #state{pull_data_timer = PullDataTimer, net_id = NetID} = State
+    #pp_udp_worker_state{pull_data_timer = PullDataTimer, net_id = NetID} = State
 ) ->
     udp_worker_utils:handle_pull_data_timeout(PullDataTimer, NetID, ?METRICS_PREFIX),
     {noreply, State};
-handle_info(?SHUTDOWN_TICK, #state{shutdown_timer = {ShutdownTimeout, _}} = State) ->
+handle_info(?SHUTDOWN_TICK, #pp_udp_worker_state{shutdown_timer = {ShutdownTimeout, _}} = State) ->
     lager:info("shutting down, haven't sent data in ~p", [ShutdownTimeout]),
     {stop, normal, State};
 handle_info(_Msg, State) ->
@@ -202,7 +192,7 @@ handle_info(_Msg, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-terminate(_Reason, #state{socket = Socket}) ->
+terminate(_Reason, #pp_udp_worker_state{socket = Socket}) ->
     lager:info("going down ~p", [_Reason]),
     ok = pp_config:delete_udp_worker(self()),
     ok = pp_udp_socket:close(Socket),
@@ -242,66 +232,28 @@ values_for_push_from(SCPacket) ->
         signal_strength =>SignalStrength,
         snr => Snr}.
 
--spec handle_udp(binary(), #state{}) -> {noreply, #state{}}.
-handle_udp(Data, State) ->
-    Identifier = semtech_udp:identifier(Data),
-    lager:debug("got udp ~p / ~p", [semtech_udp:identifier_to_atom(Identifier), Data]),
-    case semtech_udp:identifier(Data) of
-        ?PUSH_ACK ->
-            handle_push_ack(Data, State);
-        ?PULL_ACK ->
-            handle_pull_ack(Data, State);
-        ?PULL_RESP ->
-            handle_pull_resp(Data, State);
-        _Id ->
-            lager:warning("got unknown identifier ~p for ~p", [_Id, Data]),
-            {noreply, State}
-    end.
+-spec handle_udp(binary(), #pp_udp_worker_state{}) -> {noreply, #pp_udp_worker_state{}}.
+handle_udp(Data, #pp_udp_worker_state{
+    push_data = PushData,
+    net_id = NetID,
+    pull_data_timer = PullDataTimer,
+    pull_data = PullData,
+    socket = Socket,
+    pull_resp_fun = PullRespFunction,
+    pubkeybin = PubKeyBin} = State) ->
+    StateUpdates =
+        udp_worker_utils:handle_udp(Data, PushData, NetID, PullData, PullDataTimer, PubKeyBin, Socket, PullRespFunction, ?METRICS_PREFIX),
+    {noreply, update_state(StateUpdates, State)}.
 
--spec handle_push_ack(binary(), #state{}) -> {noreply, #state{}}.
-handle_push_ack(
-    Data,
-    #state{
-        push_data = PushData,
-        net_id = NetID
-    } = State
-) ->
-    NewPushData = udp_worker_utils:handle_push_ack(Data, PushData, NetID, ?METRICS_PREFIX),
-    {noreply, State#state{push_data = NewPushData}}.
-
--spec handle_pull_ack(binary(), #state{}) -> {noreply, #state{}}.
-handle_pull_ack(
-    _Data,
-    #state{pull_data = undefined} = State) ->
-    lager:warning("got unknown pull ack for ~p", [_Data]),
-    {noreply, State};
-handle_pull_ack(
-    Data,
-    #state{
-        pull_data = {PullDataRef, PullDataToken},
-        pull_data_timer = PullDataTimer,
-        net_id = NetID
-    } = State
-) ->
-    NewPullData = udp_worker_utils:handle_pull_ack(Data, PullDataToken, PullDataRef, PullDataTimer, NetID, ?METRICS_PREFIX),
-    case NewPullData of
-        undefined ->
-            {noreply, State#state{pull_data = undefined}};
-        _ ->
-            {noreply, State}
-    end.
-
-% TODO: Handle queueing downlinks
--spec handle_pull_resp(binary(), #state{}) -> {noreply, #state{}}.
-handle_pull_resp(
-    Data,
-    #state{sc_pid = SCPid,
-        pubkeybin = PubKeyBin,
-        socket = Socket} = State
-) when is_pid(SCPid) ->
-    _ = state_channel_send_response(Data, SCPid),
-    udp_worker_utils:handle_pull_response(Data, PubKeyBin, Socket),
-    {noreply, State}.
+update_state(StateUpdates, InitialState) ->
+    Fun = fun(Key, Value, State) ->
+        case Key of
+            push_data -> State#pp_udp_worker_state{push_data = Value};
+            pull_data -> State#pp_udp_worker_state{pull_data = Value};
+            _ -> State
+        end
+          end,
+    maps:fold(Fun, InitialState, StateUpdates).
 
 state_channel_send_response(Data, SCPid) ->
     Map = maps:get(<<"txpk">>, semtech_udp:json_data(Data)),
@@ -325,3 +277,8 @@ state_channel_send_response(Data, SCPid) ->
         SCPid,
         blockchain_state_channel_response_v1:new(true, DownlinkPacket)
     ).
+
+-spec state_channel_send_response_function(SCPid :: pid()) -> any().
+
+state_channel_send_response_function(SCPid) ->
+    fun(Data) -> state_channel_send_response(Data, SCPid) end.

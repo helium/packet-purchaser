@@ -51,6 +51,8 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-include("packet_purchaser.hrl").
+
 -include("lorawan_vars.hrl").
 
 %% NetIDs
@@ -2804,17 +2806,8 @@ send_same_offer_with_actors([A | Rest], MakeOfferFun, DeadPid) ->
     send_same_offer_with_actors(Rest, MakeOfferFun, DeadPid).
 
 get_udp_worker_address_port(Pid) ->
-    {
-        state,
-        _Loc,
-        _PubKeyBin1,
-        _NetID,
-        Socket,
-        _PushData,
-        _ScPid,
-        _PullData,
-        _PullDataTimer,
-        _ShutdownTimer
+    #pp_udp_worker_state{
+        socket = Socket
     } = sys:get_state(Pid),
     pp_udp_socket:get_address(Socket).
 
