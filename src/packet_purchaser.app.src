@@ -26,7 +26,8 @@
         hackney,
         clique,
         grpcbox,
-        erlang_lorawan
+        erlang_lorawan,
+        e2qc
     ]},
     {included_applications, [blockchain]},
     {env, []},
