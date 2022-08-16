@@ -187,7 +187,6 @@ handle_message(#{<<"MessageType">> := MT} = M) ->
 handle_prstart_ans(#{
     <<"Result">> := #{<<"ResultCode">> := <<"Success">>},
     <<"MessageType">> := <<"PRStartAns">>,
-    <<"TransactionID">> := TransactionID,
 
     <<"PHYPayload">> := Payload,
     <<"DevEUI">> := _DevEUI,
@@ -198,7 +197,7 @@ handle_prstart_ans(#{
         <<"FNSULToken">> := Token
     } = DLMeta
 }) ->
-    {ok, _PubKeyBin, Region, PacketTime, _, _} = parse_uplink_token(Token),
+    {ok, TransactionID, Region, PacketTime, _, _} = parse_uplink_token(Token),
 
     DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
         pp_utils:hexstring_to_binary(Payload),
@@ -218,7 +217,6 @@ handle_prstart_ans(#{
 handle_prstart_ans(#{
     <<"Result">> := #{<<"ResultCode">> := <<"Success">>},
     <<"MessageType">> := <<"PRStartAns">>,
-    <<"TransactionID">> := TransactionID,
 
     <<"PHYPayload">> := Payload,
     <<"DevEUI">> := _DevEUI,
@@ -232,7 +230,7 @@ handle_prstart_ans(#{
     case parse_uplink_token(Token) of
         {error, _} = Err ->
             Err;
-        {ok, _PubKeyBin, Region, PacketTime, _, _} ->
+        {ok, TransactionID, Region, PacketTime, _, _} ->
             DataRate = pp_lorawan:index_to_datarate(Region, DR),
 
             DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
@@ -285,7 +283,7 @@ handle_prstart_ans(Res) ->
 handle_xmitdata_req(#{
     <<"MessageType">> := <<"XmitDataReq">>,
     <<"ProtocolVersion">> := ProtocolVersion,
-    <<"TransactionID">> := TransactionID,
+    <<"TransactionID">> := IncomingTransactionID,
     <<"SenderID">> := SenderID,
     <<"PHYPayload">> := Payload,
     <<"DLMetaData">> := #{
@@ -302,7 +300,7 @@ handle_xmitdata_req(#{
         'ReceiverID' => SenderID,
         'SenderID' => <<"0xC00053">>,
         'Result' => #{'ResultCode' => <<"Success">>},
-        'TransactionID' => TransactionID,
+        'TransactionID' => IncomingTransactionID,
         'DLFreq1' => Frequency1
     },
 
@@ -310,7 +308,7 @@ handle_xmitdata_req(#{
     case parse_uplink_token(Token) of
         {error, _} = Err ->
             Err;
-        {ok, _PubKeyBin, Region, PacketTime, DestURL, FlowType} ->
+        {ok, TransactionID, Region, PacketTime, DestURL, FlowType} ->
             DataRate1 = pp_lorawan:index_to_datarate(Region, DR1),
 
             Delay1 =
@@ -339,7 +337,7 @@ handle_xmitdata_req(#{
 handle_xmitdata_req(#{
     <<"MessageType">> := <<"XmitDataReq">>,
     <<"ProtocolVersion">> := ProtocolVersion,
-    <<"TransactionID">> := TransactionID,
+    <<"TransactionID">> := IncomingTransactionID,
     <<"SenderID">> := SenderID,
     <<"PHYPayload">> := Payload,
     <<"DLMetaData">> := #{
@@ -356,14 +354,14 @@ handle_xmitdata_req(#{
         'ReceiverID' => SenderID,
         'SenderID' => <<"0xC00053">>,
         'Result' => #{'ResultCode' => <<"Success">>},
-        'TransactionID' => TransactionID,
+        'TransactionID' => IncomingTransactionID,
         'DLFreq2' => Frequency
     },
 
     case parse_uplink_token(Token) of
         {error, _} = Err ->
             Err;
-        {ok, _PubKeyBin, Region, PacketTime, DestURL, FlowType} ->
+        {ok, TransactionID, Region, PacketTime, DestURL, FlowType} ->
             DataRate = pp_lorawan:index_to_datarate(Region, DR),
 
             Delay1 =

@@ -54,6 +54,7 @@ end_per_testcase(_TestCase, _Config) ->
 %% TEST CASES
 %%--------------------------------------------------------------------
 
+
 class_c_downlink_test(_Config) ->
     TransactionID = 2176,
     pp_roaming_downlink:insert_handler(TransactionID, self()),
@@ -81,7 +82,7 @@ class_c_downlink_test(_Config) ->
             <<"RXDelay1">> => 0
         },
         <<"PHYPayload">> => <<"0x60c04e26e000010001ae6cb4ddf7bc1997">>,
-        <<"TransactionID">> => TransactionID
+        <<"TransactionID">> => rand:uniform(16#FFFF_FFFF)
     },
 
     Self = self(),
@@ -137,7 +138,7 @@ chirpstack_join_accept_test(_Config) ->
     ok.
 
 rx1_timestamp_test(_Config) ->
-TransactionID = 17,
+    TransactionID = 17,
     ok = pp_roaming_downlink:insert_handler(TransactionID, self()),
 
     PacketTime = 0,
@@ -154,7 +155,7 @@ TransactionID = 17,
             <<"ProtocolVersion">> => <<"1.1">>,
             <<"SenderID">> => <<"0x600013">>,
             <<"ReceiverID">> => <<"0xc00053">>,
-            <<"TransactionID">> => TransactionID,
+            <<"TransactionID">> => rand:uniform(16#FFFF_FFFF),
             <<"MessageType">> => <<"XmitDataReq">>,
             <<"PHYPayload">> =>
                 <<"0x60c04e26e020000000a754ba934840c3bc120989b532ee4613e06e3dd5d95d9d1ceb9e20b1f2">>,
@@ -212,7 +213,7 @@ rx1_downlink_test(_Config) ->
         <<"ProtocolVersion">> => <<"1.1">>,
         <<"SenderID">> => <<"0x600013">>,
         <<"ReceiverID">> => <<"0xc00053">>,
-        <<"TransactionID">> => TransactionID,
+        <<"TransactionID">> => rand:uniform(16#FFFF_FFFF),
         <<"MessageType">> => <<"XmitDataReq">>,
         <<"PHYPayload">> => Payload,
         <<"DLMetaData">> => #{
@@ -262,7 +263,7 @@ rx2_downlink_test(_Config) ->
         <<"ProtocolVersion">> => <<"1.1">>,
         <<"SenderID">> => <<"0x600013">>,
         <<"ReceiverID">> => <<"0xc00053">>,
-        <<"TransactionID">> => TransactionID,
+        <<"TransactionID">> => rand:uniform(16#FFFF_FFFF),
         <<"MessageType">> => <<"XmitDataReq">>,
         <<"PHYPayload">> =>
             <<"0x60c04e26e020000000a754ba934840c3bc120989b532ee4613e06e3dd5d95d9d1ceb9e20b1f2">>,
