@@ -46,6 +46,7 @@
         {sc_hook_close_submit, pp_sc_worker}
     ]},
     {libp2p, [
+        {random_peer_pred, fun pp_utils:random_non_miner_predicate/1},
         {network, mainnet},
         {use_dns_for_seeds, true},
         {seed_dns_cname, "seed.helium.io"},
