@@ -26,7 +26,8 @@
     format_time/1,
     get_env_int/2,
     get_hotspot_location/1,
-    uint32/1
+    uint32/1,
+    random_non_miner_predicate/1
 ]).
 
 -spec init_ets() -> ok.
@@ -170,3 +171,7 @@ get_hotspot_location(PubKeyBin) ->
 -spec uint32(number()) -> 0..4294967295.
 uint32(Num) ->
     Num band 16#FFFF_FFFF.
+
+random_non_miner_predicate(Peer) ->
+    not libp2p_peer:is_stale(Peer, timer:minutes(360)) andalso
+        maps:get(<<"node_type">>, libp2p_peer:signed_metadata(Peer), undefined) /= <<"gateway">>.
