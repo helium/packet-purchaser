@@ -125,8 +125,10 @@ make_uplink_payload(
     Payload = blockchain_helium_packet_v1:payload(Packet),
     Frequency = blockchain_helium_packet_v1:frequency(Packet),
 
-    Plan = lora_plan:region_to_plan(Region),
-    DataRateIdx = lora_plan:datarate_to_index(Plan, DataRate),
+    %% FixMe
+    %% Plan = lora_plan:region_to_plan(Region),
+    %% DataRateIdx = lora_plan:datarate_to_index(Plan, DataRate),
+    %% Dialyzer states: breaks the contract (#channel_plan{}, data_rate()) -> integer()
     DataRateIdx = pp_lorawan:datarate_to_index(Region, DataRate),
 
     {RoutingKey, RoutingValue} =
@@ -158,7 +160,7 @@ make_uplink_payload(
         'PHYPayload' => pp_utils:binary_to_hexstring(Payload),
         'ULMetaData' => #{
             RoutingKey => RoutingValue,
-            'DataRate' => pp_lorawan:datarate_to_index(Region, DataRate),
+            'DataRate' => DataRateIdx,
             'ULFreq' => Frequency,
             'RecvTime' => pp_utils:format_time(GatewayTime),
             'RFRegion' => Region,
