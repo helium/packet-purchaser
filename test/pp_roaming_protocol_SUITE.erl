@@ -240,8 +240,9 @@ rx1_downlink_test(_Config) ->
     ),
     ?assertEqual(Frequency, blockchain_helium_packet_v1:frequency(Downlink)),
     ?assertEqual(27, blockchain_helium_packet_v1:signal_strength(Downlink)),
+    Plan = lora_plan:region_to_plan('US915'),
     ?assertEqual(
-        pp_lorawan:index_to_datarate('US915', DataRate),
+        lora_plan:datarate_to_string(Plan, DataRate),
         blockchain_helium_packet_v1:datarate(Downlink)
     ),
 
@@ -288,8 +289,9 @@ rx2_downlink_test(_Config) ->
 
     Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
     RX2 = blockchain_helium_packet_v1:rx2_window(Downlink),
+    Plan = lora_plan:region_to_plan('US915'),
     ?assertEqual(
-        pp_lorawan:index_to_datarate('US915', 8),
+        lora_plan:datarate_to_string(Plan, 8),
         blockchain_helium_packet_v1:datarate(RX2)
     ),
     ?assertEqual(923.3, blockchain_helium_packet_v1:frequency(RX2)),

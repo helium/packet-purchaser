@@ -593,6 +593,8 @@ http_sync_uplink_join_test(_Config) ->
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
 
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
+    Plan = lora_plan:region_to_plan(Plan),
+    DataRate = lora_plan:datarate_to_index(Plan, blockchain_helium_packet_v1:datarate(Packet1)),
 
     %% 2. Expect a PRStartReq to the lns
     {
@@ -614,10 +616,7 @@ http_sync_uplink_join_test(_Config) ->
             ),
             <<"ULMetaData">> => #{
                 <<"DevEUI">> => <<"0x", DevEUI/binary>>,
-                <<"DataRate">> => pp_lorawan:datarate_to_index(
-                    Region,
-                    blockchain_helium_packet_v1:datarate(Packet)
-                ),
+                <<"DataRate">> => DataRate,
                 <<"ULFreq">> => blockchain_helium_packet_v1:frequency(Packet),
                 <<"RFRegion">> => erlang:atom_to_binary(Region),
                 <<"RecvTime">> => pp_utils:format_time(GatewayTime),
@@ -740,6 +739,8 @@ http_async_uplink_join_test(_Config) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
+    Plan = lora_plan:region_to_plan(Plan),
+    DataRate = lora_plan:datarate_to_index(Plan, blockchain_helium_packet_v1:datarate(Packet1)),
 
     %% 4. Roamer receive http uplink
     {ok, #{<<"TransactionID">> := TransactionID, <<"ULMetaData">> := #{<<"FNSULToken">> := Token}}} = roamer_expect_uplink_data(
@@ -756,10 +757,7 @@ http_async_uplink_join_test(_Config) ->
             ),
             <<"ULMetaData">> => #{
                 <<"DevEUI">> => <<"0x", DevEUI/binary>>,
-                <<"DataRate">> => pp_lorawan:datarate_to_index(
-                    Region,
-                    blockchain_helium_packet_v1:datarate(Packet)
-                ),
+                <<"DataRate">> => DataRate,
                 <<"ULFreq">> => blockchain_helium_packet_v1:frequency(Packet),
                 <<"RFRegion">> => erlang:atom_to_binary(Region),
                 <<"RecvTime">> => pp_utils:format_time(GatewayTime),
@@ -1208,6 +1206,8 @@ http_uplink_packet_no_roaming_agreement_test(_Config) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
+    Plan = lora_plan:region_to_plan(Plan),
+    DataRate = lora_plan:datarate_to_index(Plan, blockchain_helium_packet_v1:datarate(Packet1)),
 
     %% First packet is purchased and sent to Roamer
     {
@@ -1229,10 +1229,7 @@ http_uplink_packet_no_roaming_agreement_test(_Config) ->
             ),
             <<"ULMetaData">> => #{
                 <<"DevAddr">> => ?DEVADDR_ACTILITY_BIN,
-                <<"DataRate">> => pp_lorawan:datarate_to_index(
-                    Region,
-                    blockchain_helium_packet_v1:datarate(Packet)
-                ),
+                <<"DataRate">> => DataRate,
                 <<"ULFreq">> => blockchain_helium_packet_v1:frequency(Packet),
                 <<"RFRegion">> => erlang:atom_to_binary(Region),
                 <<"RecvTime">> => pp_utils:format_time(GatewayTime),
@@ -1301,6 +1298,8 @@ http_uplink_packet_test(_Config) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
+    Plan = lora_plan:region_to_plan(Plan),
+    DataRate = lora_plan:datarate_to_index(Plan, blockchain_helium_packet_v1:datarate(Packet1)),
 
     {
         ok,
@@ -1321,10 +1320,7 @@ http_uplink_packet_test(_Config) ->
             ),
             <<"ULMetaData">> => #{
                 <<"DevAddr">> => ?DEVADDR_ACTILITY_BIN,
-                <<"DataRate">> => pp_lorawan:datarate_to_index(
-                    Region,
-                    blockchain_helium_packet_v1:datarate(Packet)
-                ),
+                <<"DataRate">> => DataRate,
                 <<"ULFreq">> => blockchain_helium_packet_v1:frequency(Packet),
                 <<"RFRegion">> => erlang:atom_to_binary(Region),
                 <<"RecvTime">> => pp_utils:format_time(GatewayTime),
@@ -1396,6 +1392,8 @@ http_uplink_packet_late_test(_Config) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
+    Plan = lora_plan:region_to_plan(Plan),
+    DataRate = lora_plan:datarate_to_index(Plan, blockchain_helium_packet_v1:datarate(Packet1)),
 
     %% Wait past the timeout before sending another packet
     ok = timer:sleep(100),
@@ -1420,10 +1418,7 @@ http_uplink_packet_late_test(_Config) ->
             ),
             <<"ULMetaData">> => #{
                 <<"DevAddr">> => ?DEVADDR_ACTILITY_BIN,
-                <<"DataRate">> => pp_lorawan:datarate_to_index(
-                    Region,
-                    blockchain_helium_packet_v1:datarate(Packet)
-                ),
+                <<"DataRate">> => DataRate,
                 <<"ULFreq">> => blockchain_helium_packet_v1:frequency(Packet),
                 <<"RFRegion">> => erlang:atom_to_binary(Region),
                 <<"RecvTime">> => pp_utils:format_time(GatewayTime),
@@ -1497,6 +1492,8 @@ http_multiple_gateways_test(_Config) ->
     PacketTime1 = blockchain_helium_packet_v1:timestamp(Packet1),
     Packet2 = blockchain_state_channel_packet_v1:packet(SCPacket2),
     Region = blockchain_state_channel_packet_v1:region(SCPacket1),
+    Plan = lora_plan:region_to_plan(Plan),
+    DataRate = lora_plan:datarate_to_index(Plan, blockchain_helium_packet_v1:datarate(Packet1)),
 
     {
         ok,
@@ -1516,10 +1513,7 @@ http_multiple_gateways_test(_Config) ->
         ),
         <<"ULMetaData">> => #{
             <<"DevAddr">> => ?DEVADDR_ACTILITY_BIN,
-            <<"DataRate">> => pp_lorawan:datarate_to_index(
-                Region,
-                blockchain_helium_packet_v1:datarate(Packet1)
-            ),
+            <<"DataRate">> => DataRate,
             <<"ULFreq">> => blockchain_helium_packet_v1:frequency(Packet1),
             <<"RFRegion">> => erlang:atom_to_binary(Region),
             <<"RecvTime">> => pp_utils:format_time(GatewayTime1),
@@ -1594,6 +1588,8 @@ http_multiple_gateways_single_shot_test(_Config) ->
     Packet1 = blockchain_state_channel_packet_v1:packet(SCPacket1),
     Packet2 = blockchain_state_channel_packet_v1:packet(SCPacket2),
     Region = blockchain_state_channel_packet_v1:region(SCPacket1),
+    Plan = lora_plan:region_to_plan(Plan),
+    DataRate = lora_plan:datarate_to_index(Plan, blockchain_helium_packet_v1:datarate(Packet1)),
 
     MakeBaseExpect = fun(GatewayInfo) ->
         #{
@@ -1609,10 +1605,7 @@ http_multiple_gateways_single_shot_test(_Config) ->
             ),
             <<"ULMetaData">> => #{
                 <<"DevAddr">> => ?DEVADDR_ACTILITY_BIN,
-                <<"DataRate">> => pp_lorawan:datarate_to_index(
-                    Region,
-                    blockchain_helium_packet_v1:datarate(Packet1)
-                ),
+                <<"DataRate">> => DataRate,
                 <<"ULFreq">> => blockchain_helium_packet_v1:frequency(Packet1),
                 <<"RFRegion">> => erlang:atom_to_binary(Region),
                 <<"RecvTime">> => pp_utils:format_time(GatewayTime1),

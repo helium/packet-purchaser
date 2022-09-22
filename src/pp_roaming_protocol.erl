@@ -146,6 +146,9 @@ make_uplink_payload(
                 }
         end,
 
+    Plan = lora_plan:region_to_plan(Plan),
+    DataRateIdx = lora_plan:datarate_to_index(Plan, blockchain_helium_packet_v1:datarate(Packet1)),
+
     VersionBase#{
         'SenderID' => <<"0xC00053">>,
         'ReceiverID' => pp_utils:hexstring(NetID),
@@ -154,7 +157,7 @@ make_uplink_payload(
         'PHYPayload' => pp_utils:binary_to_hexstring(Payload),
         'ULMetaData' => #{
             RoutingKey => RoutingValue,
-            'DataRate' => pp_lorawan:datarate_to_index(Region, DataRate),
+            'DataRate' => DataRateIdx,
             'ULFreq' => Frequency,
             'RecvTime' => pp_utils:format_time(GatewayTime),
             'RFRegion' => Region,
@@ -198,13 +201,14 @@ handle_prstart_ans(#{
     } = DLMeta
 }) ->
     {ok, TransactionID, Region, PacketTime, _, _} = parse_uplink_token(Token),
-
+    Plan = lora_plan:region_to_plan(Region),
+    DataRate = lora_plan:datarate_to_string(Plan, DR),
     DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
         pp_utils:hexstring_to_binary(Payload),
         _SignalStrength = 27,
         pp_utils:uint32(PacketTime + ?JOIN1_DELAY),
         Frequency,
-        pp_lorawan:index_to_datarate(Region, DR),
+        DataRate,
         rx2_from_dlmetadata(DLMeta, PacketTime, Region, ?JOIN2_DELAY)
     ),
 
@@ -231,7 +235,8 @@ handle_prstart_ans(#{
         {error, _} = Err ->
             Err;
         {ok, TransactionID, Region, PacketTime, _, _} ->
-            DataRate = pp_lorawan:index_to_datarate(Region, DR),
+            Plan = lora_plan:region_to_plan(Region),
+            DataRate = lora_plan:datarate_to_string(Plan, DR),
 
             DownlinkPacket = blockchain_helium_packet_v1:new_downlink(
                 pp_utils:hexstring_to_binary(Payload),
@@ -309,7 +314,8 @@ handle_xmitdata_req(#{
         {error, _} = Err ->
             Err;
         {ok, TransactionID, Region, PacketTime, DestURL, FlowType} ->
-            DataRate1 = pp_lorawan:index_to_datarate(Region, DR1),
+            Plan = lora_plan:region_to_plan(Region),
+            DataRate1 = lora_plan:datarate_to_string(Plan, DR1),
 
             Delay1 =
                 case Delay0 of
@@ -362,7 +368,8 @@ handle_xmitdata_req(#{
         {error, _} = Err ->
             Err;
         {ok, TransactionID, Region, PacketTime, DestURL, FlowType} ->
-            DataRate = pp_lorawan:index_to_datarate(Region, DR),
+            Plan = lora_plan:region_to_plan(Region),
+            DataRate = lora_plan:datarate_to_string(Plan, DR),
 
             Delay1 =
                 case Delay0 of
@@ -408,7 +415,8 @@ rx2_from_dlmetadata(
     Region,
     Timeout
 ) ->
-    try pp_lorawan:index_to_datarate(Region, DR) of
+    Plan = lora_plan:region_to_plan(Region),
+    try lora_plan:datarate_to_string(Plan, DR) of
         DataRate ->
             blockchain_helium_packet_v1:window(
                 pp_utils:uint32(PacketTime + Timeout),
