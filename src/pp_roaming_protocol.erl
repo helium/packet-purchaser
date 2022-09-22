@@ -125,8 +125,8 @@ make_uplink_payload(
     Payload = blockchain_helium_packet_v1:payload(Packet),
     Frequency = blockchain_helium_packet_v1:frequency(Packet),
 
-    Plan = lora_plan:region_to_plan(Region),
-    DataRateIdx = lora_plan:datarate_to_index(Plan, DataRate),
+    %% Plan = lora_plan:region_to_plan(Region),
+    %% DataRateIdx = lora_plan:datarate_to_index(Plan, DataRate),
 
     {RoutingKey, RoutingValue} =
         case RoutingInfo of
@@ -157,7 +157,7 @@ make_uplink_payload(
         'PHYPayload' => pp_utils:binary_to_hexstring(Payload),
         'ULMetaData' => #{
             RoutingKey => RoutingValue,
-            'DataRate' => DataRateIdx,
+            'DataRate' => pp_lorawan:datarate_to_index(Region, DataRate),
             'ULFreq' => Frequency,
             'RecvTime' => pp_utils:format_time(GatewayTime),
             'RFRegion' => Region,
