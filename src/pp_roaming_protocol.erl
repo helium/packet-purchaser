@@ -125,6 +125,9 @@ make_uplink_payload(
     Payload = blockchain_helium_packet_v1:payload(Packet),
     Frequency = blockchain_helium_packet_v1:frequency(Packet),
 
+    Plan = lora_plan:region_to_plan(Region),
+    DataRateIdx = lora_plan:datarate_to_index(Plan, DataRate),
+
     {RoutingKey, RoutingValue} =
         case RoutingInfo of
             {devaddr, DevAddr} -> {'DevAddr', encode_devaddr(DevAddr)};
@@ -145,9 +148,6 @@ make_uplink_payload(
                     'DedupWindowSize' => DedupWindowSize
                 }
         end,
-
-    Plan = lora_plan:region_to_plan(Plan),
-    DataRateIdx = lora_plan:datarate_to_index(Plan, blockchain_helium_packet_v1:datarate(Packet1)),
 
     VersionBase#{
         'SenderID' => <<"0xC00053">>,
