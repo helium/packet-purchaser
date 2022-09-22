@@ -1298,7 +1298,7 @@ http_uplink_packet_test(_Config) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
-    Plan = lora_plan:region_to_plan(Plan),
+    Plan = lora_plan:region_to_plan(Region),
     DataRate = lora_plan:datarate_to_index(Plan, blockchain_helium_packet_v1:datarate(Packet)),
 
     {
