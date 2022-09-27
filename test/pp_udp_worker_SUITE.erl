@@ -74,7 +74,7 @@ init_per_testcase(TestCase, Config0) ->
     Config1 = [{gateway_config, GatewayConfig} | Config0],
     Config2 = test_utils:init_per_testcase(TestCase, Config1),
 
-    {ok, NetID} = pp_lorawan:parse_netid(16#deadbeef),
+    {ok, NetID} = lora_subnet:parse_netid(16#deadbeef, big),
     ok = pp_config:load_config([
         #{
             <<"name">> => <<"udp_worker_test">>,
@@ -146,7 +146,7 @@ shutdown_test(_Config) ->
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
     DevAddr = <<(16#deadbeef):32/integer-unsigned>>,
-    {ok, NetID} = pp_lorawan:parse_netid(DevAddr),
+    {ok, NetID} = lora_subnet:parse_netid(DevAddr, big),
     DevEUI1 = <<0, 0, 0, 0, 0, 0, 0, 1>>,
     AppEUI1 = <<0, 0, 0, 2, 0, 0, 0, 1>>,
 
@@ -423,7 +423,7 @@ multi_hotspots(Config) ->
     #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin2 = libp2p_crypto:pubkey_to_bin(PubKey),
     %% NetID to ensure sending packets from pp_lns get routed to this worker
-    {ok, NetID} = pp_lorawan:parse_netid(16#deadbeef),
+    {ok, NetID} = lora_subnet:parse_netid(16#deadbeef, big),
     {ok, WorkerPid2} = pp_udp_sup:maybe_start_worker({PubKeyBin2, NetID}, #{}),
 
     Opts1 = pp_lns:send_packet(PubKeyBin1, #{payload => <<"payload1">>}),

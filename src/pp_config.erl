@@ -159,7 +159,7 @@ lookup_eui({eui, DevEUI, AppEUI}) ->
     | {error, routing_not_found}
     | {error, invalid_netid_type}.
 lookup_devaddr({devaddr, DevAddr}) ->
-    case pp_lorawan:parse_netid(DevAddr) of
+    case lora_subnet:parse_netid(DevAddr, big) of
         {ok, NetID} ->
             Spec = ets:fun2ms(fun(
                 #devaddr{
