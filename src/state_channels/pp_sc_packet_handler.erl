@@ -11,7 +11,8 @@
 -export([
     handle_offer/2,
     handle_packet/3,
-    handle_free_packet/3
+    handle_free_packet/3,
+    handle_free_offer/2
 ]).
 
 -export([
@@ -32,7 +33,7 @@ handle_free_packet(SCPacket, PacketTime, Pid) ->
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
     Offer = blockchain_state_channel_offer_v1:from_packet(Packet, PubKeyBin, Region),
 
-    case ?MODULE:handle_offer(Offer, Pid) of
+    case ?MODULE:handle_free_offer(Offer, Pid) of
         {error, _} = Err ->
             Pid ! Err,
             Err;
@@ -43,8 +44,8 @@ handle_free_packet(SCPacket, PacketTime, Pid) ->
             ok
     end.
 
--spec handle_offer(blockchain_state_channel_offer_v1:offer(), pid()) -> ok | {error, any()}.
-handle_offer(Offer, _HandlerPid) ->
+-spec handle_free_offer(blockchain_state_channel_offer_v1:offer(), pid()) -> ok | {error, any()}.
+handle_free_offer(Offer, _HandlerPid) ->
     #routing_information_pb{data = Routing} = blockchain_state_channel_offer_v1:routing(Offer),
     Resp =
         case Routing of
@@ -55,6 +56,15 @@ handle_offer(Offer, _HandlerPid) ->
         ?MODULE:handle_offer_resp(Routing, Offer, Resp)
     end),
     Resp.
+
+-spec handle_offer(blockchain_state_channel_offer_v1:offer(), pid()) -> ok | {error, any()}.
+handle_offer(Offer, _HandlerPid) ->
+    case application:get_env(packet_purchaser, testing, false) of
+        false ->
+            {error, deprecated};
+        true ->
+            ?MODULE:handle_free_offer(Offer, _HandlerPid)
+    end.
 
 -spec handle_packet(blockchain_state_channel_packet_v1:packet(), pos_integer(), pid()) ->
     ok | {error, any()}.
@@ -184,7 +194,12 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                                         PacketTime,
                                         PacketType
                                     ),
-                                    pp_http_worker:handle_packet(WorkerPid, SCPacket, PacketTime, Pid)
+                                    pp_http_worker:handle_packet(
+                                        WorkerPid,
+                                        SCPacket,
+                                        PacketTime,
+                                        Pid
+                                    )
                             end
                     end
                 end,

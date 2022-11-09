@@ -61,10 +61,9 @@
         {servers, [
             #{
                 grpc_opts => #{
-                    service_protos => [router_pb, state_channel_pb],
+                    service_protos => [router_pb],
                     services => #{
-                        'helium.router' => helium_pp_service,
-                        'helium.state_channel' => blockchain_grpc_sc_server_handler
+                        'helium.router' => helium_pp_service
                     }
                 },
                 transport_opts => #{ssl => false},
