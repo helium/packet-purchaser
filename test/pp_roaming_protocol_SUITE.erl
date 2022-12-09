@@ -54,7 +54,6 @@ end_per_testcase(_TestCase, _Config) ->
 %% TEST CASES
 %%--------------------------------------------------------------------
 
-
 class_c_downlink_test(_Config) ->
     TransactionID = 2176,
     pp_roaming_downlink:insert_handler(TransactionID, self()),

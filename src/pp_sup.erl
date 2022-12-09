@@ -82,7 +82,27 @@ init([]) ->
 
     MetricsConfig = application:get_env(packet_purchaser, metrics, []),
 
+    POCDenyListArgs =
+        case
+            {
+                application:get_env(packet_purchaser, denylist_keys, undefined),
+                application:get_env(packet_purchaser, denylist_url, undefined)
+            }
+        of
+            {undefined, _} ->
+                #{};
+            {_, undefined} ->
+                #{};
+            {DenyListKeys, DenyListUrl} ->
+                #{
+                    denylist_keys => DenyListKeys,
+                    denylist_url => DenyListUrl,
+                    denylist_base_dir => BaseDir,
+                    denylist_check_timer => {immediate, timer:hours(12)}
+                }
+        end,
     ChildSpecs = [
+        ?WORKER(ru_poc_denylist, [POCDenyListArgs]),
         ?WORKER(pp_config, [ConfigFilename]),
         ?SUP(blockchain_sup, [BlockchainOpts]),
         ?WORKER(pp_sc_worker, [#{}]),

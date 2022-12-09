@@ -25,17 +25,22 @@ route(Ctx, #blockchain_state_channel_message_v1_pb{msg = {packet, SCPacket}} = _
     PubKey = libp2p_crypto:bin_to_pubkey(PubKeyBin),
     case libp2p_crypto:verify(EncodedPacket, Signature, PubKey) of
         false ->
-            {grpc_error, {grpcbox_stream:code_to_status(2), <<"bad signature">>}};
+            {grpc_error, {grpcbox_stream:code_to_status(7), <<"bad signature">>}};
         true ->
-            %% handle the packet and then await a response
-            %% if no response within given time, then give up and return error
-            {Time, _} = timer:tc(pp_sc_packet_handler, handle_free_packet, [
-                SCPacket,
-                erlang:system_time(millisecond),
-                self()
-            ]),
-            pp_metrics:function_observe('pp_sc_packet_handler:handle_free_packet', Time),
-            wait_for_response(Ctx)
+            case ru_poc_denylist:check(PubKeyBin) of
+                true ->
+                    {grpc_error, {grpcbox_stream:code_to_status(2), <<"denied">>}};
+                false ->
+                    %% handle the packet and then await a response
+                    %% if no response within given time, then give up and return error
+                    {Time, _} = timer:tc(pp_sc_packet_handler, handle_free_packet, [
+                        SCPacket,
+                        erlang:system_time(millisecond),
+                        self()
+                    ]),
+                    pp_metrics:function_observe('pp_sc_packet_handler:handle_free_packet', Time),
+                    wait_for_response(Ctx)
+            end
     end.
 
 %% ------------------------------------------------------------------
