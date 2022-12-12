@@ -27,7 +27,8 @@
         clique,
         grpcbox,
         erlang_lorawan,
-        e2qc
+        e2qc,
+        router_utils
     ]},
     {included_applications, [blockchain]},
     {env, []},
