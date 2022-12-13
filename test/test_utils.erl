@@ -5,6 +5,7 @@
 
 -include("packet_purchaser.hrl").
 -include("lorawan_vars.hrl").
+-include("../src/grpc/autogen/server/packet_router_pb.hrl").
 
 -define(CONSOLE_IP_PORT, <<"127.0.0.1:3001">>).
 -define(CONSOLE_URL, <<"http://", ?CONSOLE_IP_PORT/binary>>).
@@ -26,9 +27,13 @@
     %%
     frame_packet/5, frame_packet/6,
     join_offer/5,
+    join_payload/4,
     packet_offer/2,
     %%
-    ignore_messages/0
+    ignore_messages/0,
+    %%
+    packet_router_join_env_up/6,
+    packet_router_data_env_up/6
 ]).
 
 -spec init_per_testcase(atom(), list()) -> list().
@@ -148,6 +153,7 @@ end_per_testcase(TestCase, Config) ->
     ok = gen_server:stop(FakeLNSPid),
     ok = application:stop(?APP),
     ok = application:stop(lager),
+    %% ok = application:stop(prometheus),
     ok.
 
 -spec match_map(map(), any()) -> true | {false, term()}.
@@ -282,6 +288,48 @@ start_gateway(GatewayConfig) ->
     {ok, NetID} = pp_lorawan:parse_netid(16#deadbeef),
     {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, GatewayConfig),
     {PubKeyBin, WorkerPid}.
+
+packet_router_join_env_up(AppKey, JoinNonce, DevEUI, AppEUI, PubKeyBin, SigFun) ->
+    Packet = #packet_router_packet_up_v1_pb{
+        payload = ?MODULE:join_payload(AppKey, JoinNonce, DevEUI, AppEUI),
+        timestamp = 620124,
+        rssi = 112,
+        frequency = 903900024,
+        datarate = 'SF10BW125',
+        snr = 5.5,
+        region = 'US915',
+        hold_time = 0,
+        gateway = PubKeyBin,
+        signature = <<>>
+    },
+    Signed = Packet#packet_router_packet_up_v1_pb{
+        signature = SigFun(packet_router_pb:encode_msg(Packet))
+    },
+    #envelope_up_v1_pb{data = {packet, Signed}}.
+
+packet_router_data_env_up(DevAddr, NwkSessionKey, AppSessionKey, FCnt, PubKeyBin, SigFun) ->
+    Packet = #packet_router_packet_up_v1_pb{
+        payload = frame_payload(
+            ?UNCONFIRMED_UP,
+            DevAddr,
+            NwkSessionKey,
+            AppSessionKey,
+            FCnt
+        ),
+        timestamp = 620124,
+        rssi = 112,
+        frequency = 903900024,
+        datarate = 'SF10BW125',
+        snr = 5.5,
+        region = 'US915',
+        hold_time = 0,
+        gateway = PubKeyBin,
+        signature = <<>>
+    },
+    Signed = Packet#packet_router_packet_up_v1_pb{
+        signature = SigFun(packet_router_pb:encode_msg(Packet))
+    },
+    #envelope_up_v1_pb{data = {packet, Signed}}.
 
 frame_packet(MType, PubKeyBin, DevAddr, FCnt, Options) ->
     <<DevNum:32/integer-unsigned>> = DevAddr,
