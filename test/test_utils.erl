@@ -153,7 +153,7 @@ end_per_testcase(TestCase, Config) ->
     ok = gen_server:stop(FakeLNSPid),
     ok = application:stop(?APP),
     ok = application:stop(lager),
-    %% ok = application:stop(prometheus),
+    ok = application:stop(prometheus),
     ok.
 
 -spec match_map(map(), any()) -> true | {false, term()}.
