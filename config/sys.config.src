@@ -63,9 +63,10 @@
         {servers, [
             #{
                 grpc_opts => #{
-                    service_protos => [router_pb],
+                    service_protos => [router_pb, packet_router_pb],
                     services => #{
-                        'helium.router' => helium_pp_service
+                        'helium.router' => helium_pp_service,
+                        'helium.packet_router.packet' => helium_packet_service
                     }
                 },
                 transport_opts => #{ssl => false},
