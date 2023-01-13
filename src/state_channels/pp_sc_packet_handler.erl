@@ -39,7 +39,16 @@ handle_free_packet(SCPacket, PacketTime, Pid) ->
             Err;
         ok ->
             Ledger = pp_utils:get_ledger(),
-            erlang:spawn(blockchain_state_channels_server, track_offer, [Offer, Ledger, self()]),
+            case ru_poc_denylist:check(PubKeyBin) of
+                true ->
+                    lager:debug("do not rewards packet from denylist hotspot");
+                false ->
+                    erlang:spawn(blockchain_state_channels_server, track_offer, [
+                        Offer,
+                        Ledger,
+                        self()
+                    ])
+            end,
             ?MODULE:handle_packet(SCPacket, PacketTime, Pid),
             ok
     end.
