@@ -57,7 +57,7 @@
  {<<"erl_base58">>,{pkg,<<"erl_base58">>,<<"0.0.1">>},1},
  {<<"erlang_lorawan">>,
   {git,"https://github.com/helium/erlang-lorawan.git",
-       {ref,"248b59e827872fe3c2c2536fcaf9e1ab6803a084"}},
+       {ref,"196df145061fea25c370fc62a91e4c140df7ed9b"}},
   0},
  {<<"erlang_stats">>,
   {git,"https://github.com/helium/erlang-stats.git",
