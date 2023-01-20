@@ -121,7 +121,10 @@ init(Args) ->
     ShutdownTimeout = maps:get(shutdown_timer, Args, ?SHUTDOWN_TIMER),
     ShutdownRef = schedule_shutdown(ShutdownTimeout),
 
+    Location = pp_utils:get_hotspot_location(PubKeyBin),
+    lager:info("got location ~p for hotspot", [Location]),
     State = #state{
+        location = Location,
         handler_pids = [],
         pubkeybin = PubKeyBin,
         net_id = NetID,
@@ -129,9 +132,8 @@ init(Args) ->
         pull_data_timer = PullDataTimer,
         shutdown_timer = {ShutdownTimeout, ShutdownRef}
     },
-    Location = pp_utils:get_hotspot_location(PubKeyBin),
-    lager:info("got location ~p for hotspot", [Location]),
-    {ok, State#state{location = Location}}.
+
+    {ok, State}.
 
 handle_call(
     {update_address, Address, Port},
