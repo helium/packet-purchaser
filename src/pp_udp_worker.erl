@@ -40,7 +40,7 @@
 -define(SHUTDOWN_TIMER, timer:minutes(5)).
 
 -record(state, {
-    location :: no_location | {pos_integer(), float(), float()} | undefined,
+    location :: no_location | {pos_integer(), float(), float()},
     pubkeybin :: libp2p_crypto:pubkey_bin(),
     net_id :: non_neg_integer(),
     socket :: pp_udp_socket:socket(),
@@ -241,7 +241,7 @@ terminate(_Reason, #state{socket = Socket}) ->
 -spec handle_data(
     SCPacket :: blockchain_state_channel_packet_v1:packet(),
     PacketTime :: pos_integer(),
-    Location :: {pos_integer(), float(), float()} | no_location | undefined
+    Location :: {pos_integer(), float(), float()} | no_location
 ) -> {binary(), binary()}.
 handle_data(SCPacket, PacketTime, Location) ->
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
@@ -251,11 +251,10 @@ handle_data(SCPacket, PacketTime, Location) ->
     MAC = pp_utils:pubkeybin_to_mac(PubKeyBin),
     Tmst = blockchain_helium_packet_v1:timestamp(Packet),
     Payload = blockchain_helium_packet_v1:payload(Packet),
-    {Index, Lat, Long} =
+    LocationMap =
         case Location of
-            undefined -> {undefined, undefined, undefined};
-            no_location -> {undefined, undefined, undefined};
-            {_, _, _} = L -> L
+            no_location -> #{};
+            {Index, Lat, Long} -> #{inde => Index, lati => Lat, long => Long}
         end,
     Data = semtech_udp:push_data(
         Token,
@@ -277,13 +276,13 @@ handle_data(SCPacket, PacketTime, Location) ->
             size => erlang:byte_size(Payload),
             data => base64:encode(Payload)
         },
-        #{
-            regi => Region,
-            inde => Index,
-            lati => Lat,
-            long => Long,
-            pubk => libp2p_crypto:bin_to_b58(PubKeyBin)
-        }
+        maps:merge(
+            #{
+                regi => Region,
+                pubk => libp2p_crypto:bin_to_b58(PubKeyBin)
+            },
+            LocationMap
+        )
     ),
     {Token, Data}.
 

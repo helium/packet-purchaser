@@ -13,7 +13,8 @@
 ]).
 
 -export([
-    push_data/1,
+    push_data_no_location/1,
+    push_data_with_location/1,
     delay_push_data/1,
     missing_push_data_ack/1,
     pull_data_active/1,
@@ -49,7 +50,8 @@
 %%--------------------------------------------------------------------
 all() ->
     [
-        push_data,
+        push_data_no_location,
+        push_data_with_location,
         delay_push_data,
         missing_push_data_ack,
         pull_data_active,
@@ -96,7 +98,7 @@ end_per_testcase(TestCase, Config) ->
 %% TEST CASES
 %%--------------------------------------------------------------------
 
-push_data(Config) ->
+push_data_no_location(Config) ->
     FakeLNSPid = proplists:get_value(lns, Config),
     {PubKeyBin, WorkerPid} = proplists:get_value(gateway, Config),
 
@@ -124,9 +126,11 @@ push_data(Config) ->
                 ],
                 <<"stat">> => #{
                     <<"regi">> => <<"US915">>,
-                    <<"inde">> => <<"undefined">>,
-                    <<"lati">> => <<"undefined">>,
-                    <<"long">> => <<"undefined">>,
+                    %% Not all UDP workers can handle mixed type fields in the STAT object.
+                    %% If a gateway does not have a location, do not include the fields.
+                    %% <<"inde">> => <<"undefined">>,
+                    %% <<"lati">> => <<"undefined">>,
+                    %% <<"long">> => <<"undefined">>,
                     <<"pubk">> => libp2p_crypto:bin_to_b58(PubKeyBin)
                 }
             },
@@ -139,6 +143,64 @@ push_data(Config) ->
         State = sys:get_state(WorkerPid),
         State#state.push_data == #{} andalso lists:member(self(), State#state.handler_pids)
     end),
+
+    ok.
+
+push_data_with_location(Config) ->
+    meck:new(pp_utils, [passthrough]),
+    meck:expect(pp_utils, get_hotspot_location, fun(_) -> {42, 1.23, 2.34} end),
+
+    FakeLNSPid = proplists:get_value(lns, Config),
+
+    %% Start a new worker so we can intercept getting the locatio from the chain.
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+    %% NetID to ensure sending packets from pp_lns get routed to this worker
+    {ok, NetID} = pp_lorawan:parse_netid(16#deadbeef),
+    {ok, WorkerPid} = pp_udp_sup:maybe_start_worker({PubKeyBin, NetID}, #{}),
+
+    Opts = pp_lns:send_packet(PubKeyBin, #{}),
+    {ok, Map0} = pp_lns:rcv(FakeLNSPid, ?PUSH_DATA),
+    ?assert(
+        test_utils:match_map(
+            #{
+                <<"rxpk">> => [
+                    #{
+                        <<"data">> => base64:encode(maps:get(payload, Opts)),
+                        <<"datr">> => erlang:list_to_binary(maps:get(dr, Opts)),
+                        <<"freq">> => maps:get(freq, Opts),
+                        <<"rfch">> => 0,
+                        <<"lsnr">> => maps:get(snr, Opts),
+                        <<"modu">> => <<"LORA">>,
+                        <<"rssi">> => erlang:trunc(maps:get(rssi, Opts)),
+                        <<"size">> => erlang:byte_size(maps:get(payload, Opts)),
+                        <<"time">> => fun erlang:is_binary/1,
+                        <<"tmst">> => maps:get(timestamp, Opts) band 16#FFFFFFFF,
+                        <<"codr">> => <<"4/5">>,
+                        <<"stat">> => 1,
+                        <<"chan">> => 0
+                    }
+                ],
+                <<"stat">> => #{
+                    <<"regi">> => <<"US915">>,
+                    <<"inde">> => 42,
+                    <<"lati">> => 1.23,
+                    <<"long">> => 2.34,
+                    <<"pubk">> => libp2p_crypto:bin_to_b58(PubKeyBin)
+                }
+            },
+            Map0
+        )
+    ),
+
+    %% Chekcing that the push data cache is empty as we should have gotten the push ack
+    ok = test_utils:wait_until(fun() ->
+        State = sys:get_state(WorkerPid),
+        State#state.push_data == #{} andalso lists:member(self(), State#state.handler_pids)
+    end),
+
+    gen_server:stop(WorkerPid),
+    meck:unload(),
 
     ok.
 
