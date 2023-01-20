@@ -59,7 +59,7 @@
 start_link(Args) ->
     gen_server:start_link({local, ?SERVER}, ?SERVER, Args, []).
 
--spec get_token() -> {ok, Token :: binary()} | {error, any()}.
+-spec get_token() -> ok.
 get_token() ->
     gen_server:call(?MODULE, ?GET_TOKEN).
 
