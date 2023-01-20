@@ -8,6 +8,7 @@
 
 -export([
     ws_init_test/1,
+    ws_close_test/1,
     ws_receive_packet_test/1,
     ws_console_update_config_test/1,
     ws_console_update_config_redirect_udp_worker_test/1,
@@ -37,6 +38,7 @@
 all() ->
     [
         ws_init_test,
+        ws_close_test,
         ws_receive_packet_test,
         ws_console_update_config_test,
         ws_console_update_config_redirect_udp_worker_test,
@@ -62,6 +64,26 @@ end_per_testcase(TestCase, Config) ->
 
 ws_init_test(_Config) ->
     {ok, _} = test_utils:ws_init(),
+    ok.
+
+ws_close_test(_Config) ->
+    %% The websocket conection should already be started by now We
+    %% want to kill that connection and make sure a whole new
+    %% ws_client is started. That means we've fetched a new token from
+    %% Console.
+    meck:new(pp_console_ws_client, [passthrough]),
+
+    {ok, WSPid} = test_utils:ws_init(),
+
+    ?assertNot(meck:called(pp_console_ws_client, start_link, '_')),
+    exit(WSPid, kill),
+
+    {ok, _WSPid} = test_utils:ws_init(),
+    ?assert(meck:called(pp_console_ws_client, start_link, '_')),
+
+    ?assert(meck:validate(pp_console_ws_client)),
+    meck:unload(),
+
     ok.
 
 ws_receive_packet_test(_Config) ->
