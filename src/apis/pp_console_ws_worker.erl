@@ -171,7 +171,11 @@ handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
     {reply, ok, State}.
 
+handle_cast({update_ws_pid, NewPid}, #state{ws = undefined} = State) ->
+    lager:info("ws connection pid updated [old: undefined] [new: ~p]", [NewPid]),
+    {noreply, State#state{ws = NewPid}};
 handle_cast({update_ws_pid, NewPid}, #state{ws = OldPid} = State) ->
+    erlang:exit(OldPid, kill),
     lager:info("ws connection pid updated [old: ~p] [new: ~p]", [OldPid, NewPid]),
     {noreply, State#state{ws = NewPid}};
 handle_cast({send, Payload}, #state{ws = WSPid} = State) ->

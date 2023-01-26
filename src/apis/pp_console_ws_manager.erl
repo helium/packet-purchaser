@@ -17,7 +17,8 @@
 -export([
     start_link/1,
     get_token/0,
-    start_ws/0
+    start_ws/0,
+    restart_ws/0
 ]).
 
 %% ------------------------------------------------------------------
@@ -59,13 +60,17 @@
 start_link(Args) ->
     gen_server:start_link({local, ?SERVER}, ?SERVER, Args, []).
 
--spec get_token() -> {ok, Token :: binary()} | {error, any()}.
+-spec get_token() -> ok.
 get_token() ->
     gen_server:call(?MODULE, ?GET_TOKEN).
 
 -spec start_ws() -> {ok, pid()} | {error, any()}.
 start_ws() ->
     gen_server:call(?MODULE, ?START_WS_CONNECTION).
+
+-spec restart_ws() -> ok.
+restart_ws() ->
+    gen_server:cast(?MODULE, ?START_WS_CONNECTION).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -117,6 +122,9 @@ handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
     {reply, ok, State}.
 
+handle_cast(?START_WS_CONNECTION, State0) ->
+    State1 = start_ws(State0),
+    {noreply, State1};
 handle_cast(_Msg, State) ->
     lager:debug("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.

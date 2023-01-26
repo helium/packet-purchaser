@@ -98,10 +98,10 @@ onconnect(_WSReq, State) ->
     pp_metrics:ws_state(true),
     {ok, State}.
 
-ondisconnect(_Error, State) ->
-    lager:warning("discconnected ~p ", [_Error]),
+ondisconnect(Error, State) ->
+    lager:warning("discconnected ~p", [Error]),
     pp_metrics:ws_state(false),
-    {reconnect, timer:seconds(10), State}.
+    {close, Error, State}.
 
 websocket_handle({text, Msg}, _Req, State) ->
     case ?MODULE:decode_msg(Msg) of
