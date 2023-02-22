@@ -136,7 +136,7 @@ grpc_join_net_id_packet_test(_Config) ->
     timer:sleep(1000),
     {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin1, NetID}),
 
-    AddressPort = get_udp_worker_address_port(Pid),
+    AddressPort = pp_udp_worker:get_address_and_port(Pid),
     ?assertEqual({"3.3.3.3", 3333}, AddressPort),
 
     %% ------------------------------------------------------------
@@ -179,7 +179,7 @@ grpc_net_ids_map_packet_test(_Config) ->
         ok = grpcbox_client:send(Stream, EnvUp),
         timer:sleep(100),
         {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        get_udp_worker_address_port(Pid)
+        pp_udp_worker:get_address_and_port(Pid)
     end,
     ok = pp_config:load_config([
         #{
@@ -262,7 +262,7 @@ grpc_single_hotspot_multi_net_id_test(_Config) ->
         timer:sleep(100),
 
         {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        get_udp_worker_address_port(Pid)
+        pp_udp_worker:get_address_and_port(Pid)
     end,
     ok = pp_config:load_config([
         #{
@@ -495,21 +495,6 @@ grpc_multi_buy_packet_test(_Config) ->
 %%--------------------------------------------------------------------
 %% Helpers
 %%--------------------------------------------------------------------
-
-get_udp_worker_address_port(Pid) ->
-    {
-        state,
-        _Loc,
-        _PubKeyBin1,
-        _NetID,
-        Socket,
-        _PushData,
-        _ScPid,
-        _PullData,
-        _PullDataTimer,
-        _ShutdownTimer
-    } = sys:get_state(Pid),
-    pp_udp_socket:get_address(Socket).
 
 bin_to_int(Bin) ->
     pp_utils:hexstring_to_int(pp_utils:binary_to_hex(Bin)).

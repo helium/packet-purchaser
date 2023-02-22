@@ -31,7 +31,7 @@
 %% Test Function Exports
 %% ------------------------------------------------------------------
 -ifdef(TEST).
--export([get_port/1]).
+-export([get_port/1, get_address_and_port/1]).
 -endif.
 
 -define(SERVER, ?MODULE).
@@ -52,11 +52,7 @@
     net_id :: non_neg_integer(),
     socket :: pp_udp_socket:socket(),
     push_data = #{} :: #{binary() => {binary(), reference()}},
-    %% NOTE: We treat handler_pids like a FILO stack. Every PID will
-    %% get a message to the same gateway, always using the freshest
-    %% first will give us the best opportunity for our message to
-    %% make it down.
-    handler_pids :: list(pid()),
+
     pull_data :: {reference(), binary()} | undefined,
     pull_data_timer :: non_neg_integer(),
     shutdown_timer :: {Timeout :: non_neg_integer(), Timer :: reference()}
@@ -98,11 +94,20 @@ update_address(WorkerPid, {udp, Address, Port}) ->
     gen_server:call(WorkerPid, {update_address, Address, Port}).
 
 -ifdef(TEST).
+
+%% Get the port to communicate with the gateway.
 -spec get_port(WorkerPid :: pid()) -> inet:port_number().
 get_port(WorkerPid) ->
     #state{socket = {socket, Socket, _, _}} = sys:get_state(WorkerPid),
     {ok, Port} = inet:port(Socket),
     Port.
+
+%% Get the address and port the gateway most recently communicated with.
+-spec get_address_and_port(WorkerPid :: pid()) -> pp_udp_socket:socket_info().
+get_address_and_port(WorkerPid) ->
+    #state{socket = Socket} = sys:get_state(WorkerPid),
+    pp_udp_socket:get_address(Socket).
+
 -endif.
 
 %% ------------------------------------------------------------------
@@ -141,7 +146,6 @@ init(Args) ->
     lager:info("got location ~p for hotspot", [Location]),
     State = #state{
         location = Location,
-        handler_pids = [],
         pubkeybin = PubKeyBin,
         net_id = NetID,
         socket = Socket,
@@ -163,26 +167,21 @@ handle_call(
     {ok, Socket1} = pp_udp_socket:update_address(Socket0, {Address, Port}),
     {reply, ok, State#state{socket = Socket1}};
 handle_call(
-    {push_data, SCPacket, PacketTime, HandlerPid},
+    {push_data, SCPacket, PacketTime, _HandlerPid},
     _From,
     #state{
-        pubkeybin = PubKeyBin,
+        pubkeybin = _PubKeyBin,
         push_data = PushData,
         location = Loc,
-        shutdown_timer = {ShutdownTimeout, ShutdownRef},
-        handler_pids = HandlerPids
+        shutdown_timer = {ShutdownTimeout, ShutdownRef}
     } =
         State
 ) ->
-    ct:print("UDP sending packet"),
     _ = erlang:cancel_timer(ShutdownRef),
     {Token, Data} = handle_data(SCPacket, PacketTime, Loc),
     {Reply, TimerRef} = send_push_data(Token, Data, State),
-    _ = erlang:monitor(process, HandlerPid),
-    pg:join(PubKeyBin, HandlerPid),
     {reply, Reply, State#state{
         push_data = maps:put(Token, {Data, TimerRef}, PushData),
-        handler_pids = [HandlerPid | HandlerPids],
         shutdown_timer = {ShutdownTimeout, schedule_shutdown(ShutdownTimeout)}
     }};
 handle_call(_Msg, _From, State) ->
@@ -193,8 +192,6 @@ handle_cast(_Msg, State) ->
     lager:warning("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
 
-handle_info({'DOWN', _Ref, process, Pid, _Reason}, #state{handler_pids = HandlerPids} = State) ->
-    {noreply, State#state{handler_pids = lists:delete(Pid, HandlerPids)}};
 handle_info(get_hotspot_location, #state{pubkeybin = PubKeyBin} = State) ->
     Location = pp_utils:get_hotspot_location(PubKeyBin),
     lager:info("got location ~p for hotspot", [Location]),
@@ -374,16 +371,16 @@ handle_pull_ack(
             {noreply, State}
     end.
 
-% TODO: Handle queueing downlinks
-handle_pull_resp(_Data, #state{handler_pids = []} = State) ->
-    lager:warning("could not send downlink, no handler pids"),
-    {noreply, State};
-handle_pull_resp(Data, #state{pubkeybin = PubKeyBin, handler_pids = [_HandlerPid | _HandlerPids]} = State) ->
-    [HandlerPid| _] = pg:get_members(PubKeyBin),
-    ok = do_handle_pull_resp(Data, HandlerPid),
-    Token = semtech_udp:token(Data),
-    _ = send_tx_ack(Token, State),
-    {noreply, State#state{}}.
+handle_pull_resp(Data, #state{pubkeybin = PubKeyBin} = State) ->
+    case pp_roaming_downlink:lookup_handler(PubKeyBin) of
+        {error, _} ->
+            lager:warning("could not send downlink, no handler pids");
+        {ok, HandlerPid} ->
+            ok = do_handle_pull_resp(Data, HandlerPid),
+            Token = semtech_udp:token(Data),
+            _ = send_tx_ack(Token, State)
+    end,
+    {noreply, State}.
 
 -spec do_handle_pull_resp(binary(), pid()) -> ok.
 do_handle_pull_resp(Data, SCPid) when is_pid(SCPid) ->

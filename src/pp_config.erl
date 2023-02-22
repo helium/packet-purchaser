@@ -56,19 +56,12 @@
     protocol/1
 ]).
 
-%% downlink response ets
--export([
-    insert_transaction_id/3,
-    lookup_transaction_id/1
-]).
-
 %% Websocket API
 -export([ws_update_config/1]).
 
 -define(EUI_ETS, pp_config_join_ets).
 -define(DEVADDR_ETS, pp_config_routing_ets).
 -define(UDP_WORKER_ETS, pp_config_udp_worker_ets).
--define(TRANSACTION_ETS, pp_config_transaction_ets).
 
 -record(state, {
     filename :: testing | string()
@@ -388,26 +381,7 @@ init_ets() ->
         {write_concurrency, true},
         {read_concurrency, true}
     ]),
-    ?TRANSACTION_ETS = ets:new(?TRANSACTION_ETS, [
-        public,
-        named_table,
-        set,
-        {read_concurrency, true},
-        {write_concurrency, true}
-    ]),
     ok.
-
--spec insert_transaction_id(integer(), binary(), atom()) -> ok.
-insert_transaction_id(TransactionID, Endpoint, FlowType) ->
-    true = ets:insert(?TRANSACTION_ETS, {TransactionID, Endpoint, FlowType}),
-    ok.
-
--spec lookup_transaction_id(integer()) -> {ok, binary(), atom()} | {error, routing_not_found}.
-lookup_transaction_id(TransactionID) ->
-    case ets:lookup(?TRANSACTION_ETS, TransactionID) of
-        [] -> {error, routing_not_found};
-        [{_, Endpoint, FlowType}] -> {ok, Endpoint, FlowType}
-    end.
 
 -spec update_buying_devaddr(NetID :: integer(), BuyingActive :: boolean()) -> ok.
 update_buying_devaddr(NetID, BuyingActive) ->
