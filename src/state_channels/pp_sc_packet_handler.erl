@@ -124,6 +124,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
             ),
             Err;
         {ok, Matches} ->
+            ct:print("sendingp packet to ~p", [Matches]),
             lists:foreach(
                 fun(Match) ->
                     case Match of

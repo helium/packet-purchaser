@@ -117,6 +117,8 @@ make_uplink_payload(
     } = select_best(Uplinks),
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
+    PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
+    pg:join(PubKeyBin, HandlerPid),
 
     RoutingInfo = blockchain_helium_packet_v1:routing_info(Packet),
 

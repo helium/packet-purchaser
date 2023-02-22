@@ -46,7 +46,9 @@
     udp_multiple_joins_same_dest_test/1,
     http_multiple_joins_test/1,
     http_multiple_joins_same_dest_test/1,
-    http_overlapping_devaddr_test/1
+    http_overlapping_devaddr_test/1,
+    %%
+    multiple_protocol_single_gateway_downlink_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -117,7 +119,9 @@ all() ->
         %%
         {group, http},
         %%
-        {group, multiple_buyers}
+        {group, multiple_buyers},
+        %%
+        multiple_protocol_single_gateway_downlink_test
     ].
 
 groups() ->
@@ -2693,6 +2697,162 @@ single_hotspot_multi_net_id_test(_Config) ->
     ?assertMatch({"3.3.3.3", 3333}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
     ok.
 
+multiple_protocol_single_gateway_downlink_test(_Config) ->
+    %% If a packet get's sent to a UDP _and_ HTTP roamer from the same gateway,
+    %% then a UDP response is sent through that gateway, regardless of if it was
+    %% meant for the latest packet, the downlink will use one of the PIDs the
+    %% future HTTP packet is trying to use.
+    %%
+    %% This test ensures that HTTP downlinks are not tied to a specific PID, and
+    %% can get any available PID from the gateway.
+    %%
+    %% Could happen with any packets that go through a UDP gateway.
+    %% Device-1 uplinks udp.
+    %% Device-2 uplinks through same gateway, udp and http.
+    %% Device-1 downlinks.
+    %% Device-2 http downlink fails.
+
+    %%
+    %% Forwarder : packet-purchaser
+    %% Roamer    : partner-lns
+    %%
+    ok = start_forwarder_listener(),
+    %% Add a small delay for http downlink so we can ensure the udp downlink goes first.
+    ok = start_roamer_listener(#{callback_args => #{wait_ms => 500}}),
+    {ok, UDPPid} = pp_lns:start_link(#{port => 1111, forward => self()}),
+
+    DevEUI1 = <<0, 0, 0, 0, 0, 0, 0, 1>>,
+    AppEUI1 = <<0, 0, 0, 2, 0, 0, 0, 1>>,
+
+    %% 1) Get a gateway to send from
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    %% RSSI and FCnt don't matter here, they're made different to help with debugging
+    Routing = blockchain_helium_packet_v1:make_routing_info({eui, DevEUI1, AppEUI1}),
+    JoinPacket = test_utils:frame_packet(
+        ?UNCONFIRMED_UP,
+        PubKeyBin,
+        ?DEVADDR_ACTILITY,
+        0,
+        Routing,
+        #{dont_encode => true, rssi => -120}
+    ),
+    DataPacket = test_utils:frame_packet(
+        ?UNCONFIRMED_UP,
+        PubKeyBin,
+        ?DEVADDR_ACTILITY,
+        42,
+        #{dont_encode => true, rssi => -42}
+    ),
+
+    %% 2) Load config
+    %%  - UDP that accepts joins and devaddrs
+    %%  - HTTP that accepts joins
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => <<"udp_test">>,
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"protocol">> => <<"udp">>,
+            <<"address">> => <<"127.0.0.1">>,
+            <<"port">> => 1111,
+            <<"joins">> => [#{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1}],
+            <<"devaddrs">> => [
+                #{<<"lower">> => ?DEVADDR_ACTILITY_BIN, <<"upper">> => ?DEVADDR_ACTILITY_BIN}
+            ]
+        },
+        #{
+            <<"name">> => <<"test">>,
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"protocol">> => <<"http">>,
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+            <<"http_flow_type">> => <<"async">>,
+            <<"joins">> => [#{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1}]
+        }
+    ]),
+    %% Spin up 2 procs to act as gateways that whose connections will go down
+    %% when they receive a downlink. Otherwise the test will never fail, as the
+    %% test Pid lives throughout the test.
+    TestPid = self(),
+    JoinPacketReceiver = spawn(fun() ->
+        receive
+            Msg ->
+                %% ct:print("ONE (join_packet) received: ~p", [Msg]),
+                TestPid ! Msg
+        after timer:seconds(2) -> TestPid ! nothing_received
+        end
+    end),
+    DataPacketReceiver = spawn(fun() ->
+        receive
+            Msg ->
+                %% ct:print("TWO (data_packet) received: ~p", [Msg]),
+                TestPid ! Msg
+        after timer:seconds(2) -> TestPid ! nothing_received
+        end
+    end),
+
+    %% 3) Send join and data packet
+    ok = pp_sc_packet_handler:handle_packet(
+        DataPacket,
+        erlang:system_time(millisecond),
+        DataPacketReceiver
+    ),
+    timer:sleep(50),
+    ok = pp_sc_packet_handler:handle_packet(
+        JoinPacket,
+        erlang:system_time(millisecond),
+        JoinPacketReceiver
+    ),
+
+    %% Collect the UDP packets
+    PushData = 0,
+    {ok, _UDPJoinRequest} = pp_lns:rcv(UDPPid, PushData),
+    {ok, _UDPDataRequest} = pp_lns:rcv(UDPPid, PushData),
+
+    %% 4) UDP downlink to devaddr
+    {ok, GatewayPid} = pp_udp_sup:lookup_worker({PubKeyBin, ?NET_ID_ACTILITY}),
+    Port = pp_udp_worker:get_port(GatewayPid),
+
+    Token = semtech_udp:token(),
+    ok = pp_lns:pull_resp(UDPPid, "127.0.0.1", Port, Token, #{
+        data => <<"downlink_payload">>,
+        tmst => erlang:system_time(millisecond),
+        freq => 915.0,
+        datr => <<"SF11BW125">>,
+        powe => 27
+    }),
+    TxAck = 5,
+    ?assertMatch({ok, {Token, _, _}}, pp_lns:rcv(UDPPid, TxAck)),
+    % Downlink received by hotspot
+    ok = gateway_expect_downlink(fun(SCResp) ->
+        Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
+        ?assertEqual(<<"downlink_payload">>, blockchain_helium_packet_v1:payload(Downlink)),
+        ?assertEqual(27, blockchain_helium_packet_v1:signal_strength(Downlink)),
+        ok
+    end),
+
+    %% 5) HTTP join_request
+    {ok, _HttpJoinRequest} = roamer_expect_uplink_data(),
+    %% Expect join_accept
+    {ok, _Data} = forwarder_expect_downlink_data(),
+
+    %% 5.1) device should join_accept
+    ok = gateway_expect_downlink(fun(SCResp) ->
+        Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
+        ?assertEqual(<<"join_accept_payload">>, blockchain_helium_packet_v1:payload(Downlink)),
+        ?assertEqual(27, blockchain_helium_packet_v1:signal_strength(Downlink)),
+        ok
+    end),
+
+    %% Ensure both Pids were used for downlinking
+    ok =
+        receive
+            nothing_received -> ct:fail("Both gateway stand-in pids should have been used and gone")
+        after 250 -> ok
+        end,
+
+    ok.
+
 multi_buy_worst_case_stress_test(_Config) ->
     <<DevNum:32/integer-unsigned>> = ?DEVADDR_COMCAST,
 
@@ -2874,6 +3034,9 @@ start_downlink_listener() ->
 start_forwarder_listener() ->
     start_downlink_listener().
 
+start_roamer_listener(Opts) ->
+    start_uplink_listener(Opts).
+
 start_roamer_listener() ->
     start_uplink_listener().
 
@@ -2933,6 +3096,7 @@ roamer_expect_response(Code) ->
 gateway_expect_downlink(ExpectFn) ->
     receive
         {send_response, SCResp} ->
+            ct:print("gateway got response: ~p", [SCResp]),
             ExpectFn(SCResp)
     after 1000 -> ct:fail(gateway_expect_downlink_timeout)
     end.

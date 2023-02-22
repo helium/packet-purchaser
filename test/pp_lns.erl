@@ -309,6 +309,7 @@ handle('POST', [<<"downlink">>], Req, Args) ->
             Response
     end;
 handle('POST', [<<"uplink">>], Req, Args) ->
+    WaitTimeMs = maps:get(wait_ms, Args, 250),
     Forward = maps:get(forward, Args),
     Body = elli_request:body(Req),
     #{<<"TransactionID">> := TransactionID} = jsx:decode(Body),
@@ -331,8 +332,10 @@ handle('POST', [<<"uplink">>], Req, Args) ->
             Response = {200, [], <<>>},
             Forward ! {http_uplink_data, Body},
             Forward ! {http_uplink_data_response, 200},
+            ct:print("received uplink -------"),
             spawn(fun() ->
-                timer:sleep(250),
+                timer:sleep(WaitTimeMs),
+                ct:print("sending downlink --------"),
                 Res = hackney:post(
                     <<"http://127.0.0.1:3003/downlink">>,
                     [{<<"Host">>, <<"localhost">>}],
@@ -352,7 +355,7 @@ handle('POST', [<<"uplink">>], Req, Args) ->
 
 handle_event(_Event, _Data, _Args) ->
     %% uncomment for Elli errors.
-    ct:print("Elli Event (~p):~nData~n~p~nArgs~n~p", [_Event, _Data, _Args]),
+    %% ct:print("Elli Event (~p):~nData~n~p~nArgs~n~p", [_Event, _Data, _Args]),
     ok.
 
 make_response_body(#{

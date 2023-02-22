@@ -27,6 +27,13 @@
     code_change/3
 ]).
 
+%% ------------------------------------------------------------------
+%% Test Function Exports
+%% ------------------------------------------------------------------
+-ifdef(TEST).
+-export([get_port/1]).
+-endif.
+
 -define(SERVER, ?MODULE).
 
 -define(PUSH_DATA_TICK, push_data_tick).
@@ -89,6 +96,15 @@ push_data(WorkerPid, SCPacket, PacketTime, HandlerPid, Protocol) ->
 ) -> ok.
 update_address(WorkerPid, {udp, Address, Port}) ->
     gen_server:call(WorkerPid, {update_address, Address, Port}).
+
+-ifdef(TEST).
+-spec get_port(WorkerPid :: pid()) -> inet:port_number().
+get_port(WorkerPid) ->
+    #state{socket = {socket, Socket, _, _}} = sys:get_state(WorkerPid),
+    {ok, Port} = inet:port(Socket),
+    Port.
+-endif.
+
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
@@ -150,6 +166,7 @@ handle_call(
     {push_data, SCPacket, PacketTime, HandlerPid},
     _From,
     #state{
+        pubkeybin = PubKeyBin,
         push_data = PushData,
         location = Loc,
         shutdown_timer = {ShutdownTimeout, ShutdownRef},
@@ -157,10 +174,12 @@ handle_call(
     } =
         State
 ) ->
+    ct:print("UDP sending packet"),
     _ = erlang:cancel_timer(ShutdownRef),
     {Token, Data} = handle_data(SCPacket, PacketTime, Loc),
     {Reply, TimerRef} = send_push_data(Token, Data, State),
     _ = erlang:monitor(process, HandlerPid),
+    pg:join(PubKeyBin, HandlerPid),
     {reply, Reply, State#state{
         push_data = maps:put(Token, {Data, TimerRef}, PushData),
         handler_pids = [HandlerPid | HandlerPids],
@@ -359,11 +378,12 @@ handle_pull_ack(
 handle_pull_resp(_Data, #state{handler_pids = []} = State) ->
     lager:warning("could not send downlink, no handler pids"),
     {noreply, State};
-handle_pull_resp(Data, #state{handler_pids = [HandlerPid | HandlerPids]} = State) ->
+handle_pull_resp(Data, #state{pubkeybin = PubKeyBin, handler_pids = [_HandlerPid | _HandlerPids]} = State) ->
+    [HandlerPid| _] = pg:get_members(PubKeyBin),
     ok = do_handle_pull_resp(Data, HandlerPid),
     Token = semtech_udp:token(Data),
     _ = send_tx_ack(Token, State),
-    {noreply, State#state{handler_pids = HandlerPids}}.
+    {noreply, State#state{}}.
 
 -spec do_handle_pull_resp(binary(), pid()) -> ok.
 do_handle_pull_resp(Data, SCPid) when is_pid(SCPid) ->
