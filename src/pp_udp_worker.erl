@@ -72,7 +72,7 @@ start_link(Args) ->
     HandlerPid :: pid()
 ) -> ok | {error, any()}.
 push_data(WorkerPid, SCPacket, PacketTime, HandlerPid) ->
-    gen_server:call(WorkerPid, {push_data, SCPacket, PacketTime, HandlerPid}).
+    gen_server:cast(WorkerPid, {push_data, SCPacket, PacketTime, HandlerPid}).
 
 -spec push_data(
     Pid :: pid(),
@@ -83,7 +83,7 @@ push_data(WorkerPid, SCPacket, PacketTime, HandlerPid) ->
 ) -> ok | {error, any()}.
 push_data(WorkerPid, SCPacket, PacketTime, HandlerPid, Protocol) ->
     ok = update_address(WorkerPid, Protocol),
-    gen_server:call(WorkerPid, {push_data, SCPacket, PacketTime, HandlerPid}).
+    gen_server:cast(WorkerPid, {push_data, SCPacket, PacketTime, HandlerPid}).
 
 -spec update_address(
     WorkerPid :: pid(),
@@ -91,7 +91,7 @@ push_data(WorkerPid, SCPacket, PacketTime, HandlerPid, Protocol) ->
         {udp, Address :: pp_udp_socket:socket_address(), Port :: pp_udp_socket:socket_port()}
 ) -> ok.
 update_address(WorkerPid, {udp, Address, Port}) ->
-    gen_server:call(WorkerPid, {update_address, Address, Port}).
+    gen_server:cast(WorkerPid, {update_address, Address, Port}).
 
 -ifdef(TEST).
 
@@ -155,9 +155,12 @@ init(Args) ->
 
     {ok, State}.
 
-handle_call(
+handle_call(_Msg, _From, State) ->
+    lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
+    {reply, ok, State}.
+
+handle_cast(
     {update_address, Address, Port},
-    _From,
     #state{socket = Socket0} = State
 ) ->
     lager:debug("Updating address and port [old: ~p] [new: ~p]", [
@@ -165,10 +168,9 @@ handle_call(
         {Address, Port}
     ]),
     {ok, Socket1} = pp_udp_socket:update_address(Socket0, {Address, Port}),
-    {reply, ok, State#state{socket = Socket1}};
-handle_call(
+    {noreply, State#state{socket = Socket1}};
+handle_cast(
     {push_data, SCPacket, PacketTime, _HandlerPid},
-    _From,
     #state{
         pubkeybin = _PubKeyBin,
         push_data = PushData,
@@ -179,15 +181,11 @@ handle_call(
 ) ->
     _ = erlang:cancel_timer(ShutdownRef),
     {Token, Data} = handle_data(SCPacket, PacketTime, Loc),
-    {Reply, TimerRef} = send_push_data(Token, Data, State),
-    {reply, Reply, State#state{
+    {_Reply, TimerRef} = send_push_data(Token, Data, State),
+    {noreply, State#state{
         push_data = maps:put(Token, {Data, TimerRef}, PushData),
         shutdown_timer = {ShutdownTimeout, schedule_shutdown(ShutdownTimeout)}
     }};
-handle_call(_Msg, _From, State) ->
-    lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
-    {reply, ok, State}.
-
 handle_cast(_Msg, State) ->
     lager:warning("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
