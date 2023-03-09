@@ -1,5 +1,6 @@
 [
     {packet_purchaser, [
+        {is_chain_dead, "${PP_IS_CHAIN_DEAD}"},
         {oui, "${PP_OUI}"},
         {pp_udp_worker, [
             {address, "${PP_LNS_ADDRESS}"},

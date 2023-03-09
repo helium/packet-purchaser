@@ -10,13 +10,18 @@
 -export_type([location/0]).
 
 -export([
+    is_chain_dead/0,
+    chain/0,
+    ledger/0,
+    calculate_dc_amount/1,
+    get_hotspot_location/1
+]).
+
+-export([
     init_ets/0,
-    get_chain/0,
-    get_ledger/0,
     get_oui/0,
     pubkeybin_to_mac/1,
     animal_name/1,
-    calculate_dc_amount/1,
     hex_to_binary/1,
     hexstring_to_binary/1,
     binary_to_hex/1,
@@ -25,7 +30,7 @@
     hexstring_to_int/1,
     format_time/1,
     get_env_int/2,
-    get_hotspot_location/1,
+    get_env_bool/2,
     uint32/1,
     random_non_miner_predicate/1
 ]).
@@ -34,22 +39,6 @@
 init_ets() ->
     ?ETS = ets:new(?ETS, [public, named_table, set]),
     ok.
-
--spec get_chain() -> blockchain:blockchain().
-get_chain() ->
-    Key = pp_blockchain,
-    case persistent_term:get(Key, undefined) of
-        undefined ->
-            Chain = blockchain_worker:blockchain(),
-            ok = persistent_term:put(Key, Chain),
-            Chain;
-        Chain ->
-            Chain
-    end.
-
--spec get_ledger() -> blockchain_ledger_v1:ledger().
-get_ledger() ->
-    blockchain:ledger(get_chain()).
 
 format_time(Time) ->
     iso8601:format(calendar:system_time_to_universal_time(Time, millisecond)).
@@ -77,17 +66,6 @@ animal_name(PubKeyBin) ->
         PubKeyBin,
         fun() ->
             erl_angry_purple_tiger:animal_name(libp2p_crypto:bin_to_b58(PubKeyBin))
-        end
-    ).
-
--spec calculate_dc_amount(non_neg_integer()) -> non_neg_integer().
-calculate_dc_amount(PayloadSize) ->
-    e2qc:cache(
-        calculate_dc_amount_cache,
-        PayloadSize,
-        fun() ->
-            Ledger = blockchain:ledger(),
-            blockchain_utils:calculate_dc_amount(Ledger, PayloadSize)
         end
     ).
 
@@ -150,11 +128,19 @@ get_env_int(Key, Default) ->
         I -> I
     end.
 
+-spec get_env_bool(atom(), boolean()) -> boolean().
+get_env_bool(Key, Default) ->
+    case application:get_env(router, Key, Default) of
+        "true" -> true;
+        true -> true;
+        _ -> false
+    end.
+
 -spec get_hotspot_location(PubKeyBin :: binary()) ->
     ?LOCATION_NONE
     | {Index :: pos_integer(), Lat :: float(), Long :: float()}.
 get_hotspot_location(PubKeyBin) ->
-    Ledger = ?MODULE:get_ledger(),
+    Ledger = ?MODULE:ledger(),
     case blockchain_ledger_v1:find_gateway_info(PubKeyBin, Ledger) of
         {error, _} ->
             ?LOCATION_NONE;
@@ -175,3 +161,34 @@ uint32(Num) ->
 random_non_miner_predicate(Peer) ->
     not libp2p_peer:is_stale(Peer, timer:minutes(360)) andalso
         maps:get(<<"node_type">>, libp2p_peer:signed_metadata(Peer), undefined) /= <<"gateway">>.
+
+%% ===================================================================
+%% ===================================================================
+
+-spec is_chain_dead() -> boolean().
+is_chain_dead() ->
+    pp_utils:get_env_bool(is_chain_dead, false).
+
+-spec chain() -> blockchain:blockchain().
+chain() ->
+    Key = pp_blockchain,
+    case persistent_term:get(Key, undefined) of
+        undefined ->
+            Chain = blockchain_worker:blockchain(),
+            ok = persistent_term:put(Key, Chain),
+            Chain;
+        Chain ->
+            Chain
+    end.
+
+-spec ledger() -> blockchain_ledger_v1:ledger().
+ledger() ->
+    blockchain:ledger(?MODULE:chain()).
+
+-spec calculate_dc_amount(PayloadSize :: non_neg_integer()) -> pos_integer() | {error, any()}.
+calculate_dc_amount(PayloadSize) ->
+    case ?MODULE:is_chain_dead() of
+        false -> blockchain_utils:calculate_dc_amount(?MODULE:ledger(), PayloadSize);
+        %% 1 DC per 24 bytes of data
+        true -> erlang:ceil(PayloadSize / 24)
+    end.

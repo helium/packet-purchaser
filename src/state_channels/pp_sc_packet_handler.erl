@@ -38,7 +38,7 @@ handle_free_packet(SCPacket, PacketTime, Pid) ->
             Pid ! Err,
             Err;
         ok ->
-            Ledger = pp_utils:get_ledger(),
+            Ledger = pp_utils:ledger(),
             case ru_poc_denylist:check(PubKeyBin) of
                 true ->
                     lager:debug("do not rewards packet from denylist hotspot");
