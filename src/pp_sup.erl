@@ -100,25 +100,39 @@ init([]) ->
                     denylist_check_timer => {immediate, timer:hours(12)}
                 }
         end,
-    ChildSpecs = [
-        ?WORKER(pg, []),
-        ?WORKER(ru_poc_denylist, [POCDenyListArgs]),
-        ?WORKER(pp_config, [ConfigFilename]),
-        ?SUP(blockchain_sup, [BlockchainOpts]),
-        ?WORKER(pp_sc_worker, [#{}]),
-        ?SUP(pp_udp_sup, []),
-        ?SUP(pp_http_sup, []),
-        ?SUP(pp_console_sup, []),
-        ?WORKER(pp_metrics, [MetricsConfig]),
-        #{
-            id => pp_roaming_downlink,
-            start => {elli, start_link, [ElliConfig]},
-            restart => permanent,
-            shutdown => 5000,
-            type => worker,
-            modules => [elli]
-        }
-    ],
+
+    BlockChainWorkers =
+        case pp_utils:is_chain_dead() of
+            true ->
+                [];
+            false ->
+                [
+                    ?SUP(blockchain_sup, [BlockchainOpts]),
+                    ?WORKER(pp_sc_worker, [#{}])
+                ]
+        end,
+
+    ChildSpecs =
+        [
+            ?WORKER(pg, []),
+            ?WORKER(ru_poc_denylist, [POCDenyListArgs]),
+            ?WORKER(pp_config, [ConfigFilename])
+        ] ++
+            BlockChainWorkers ++
+            [
+                ?SUP(pp_udp_sup, []),
+                ?SUP(pp_http_sup, []),
+                ?SUP(pp_console_sup, []),
+                ?WORKER(pp_metrics, [MetricsConfig]),
+                #{
+                    id => pp_roaming_downlink,
+                    start => {elli, start_link, [ElliConfig]},
+                    restart => permanent,
+                    shutdown => 5000,
+                    type => worker,
+                    modules => [elli]
+                }
+            ],
     {ok, {?FLAGS, ChildSpecs}}.
 
 %%====================================================================
