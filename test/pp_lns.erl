@@ -280,79 +280,94 @@ handle(Req, Args) ->
 handle('POST', [<<"downlink">>], Req, Args) ->
     Forward = maps:get(forward, Args),
     Body = elli_request:body(Req),
-    #{<<"TransactionID">> := TransactionID} = Decoded = jsx:decode(Body),
+    Decoded = jsx:decode(Body),
 
-    %% SenderNetIDBin = maps:get(<<"SenderID">>, Decoded),
-    %% SenderNetID = pp_utils:hexstring_to_int(SenderNetIDBin),
-    FlowType =
-        case pp_config:lookup_transaction_id(TransactionID) of
-            {ok, _Endpoint, FT} ->
-                FT;
-            {error, _} ->
-                Forward ! {http_downlink_data_error, transaction_id_not_found}
-        end,
+    case maps:get(<<"DLMetaData">>, Decoded, undefined) of
+        undefined ->
+            {200, [], <<"result received">>};
+        #{<<"FNSULToken">> := Token} ->
+            {ok, _PubKeyBin, _Region, _PacketTime, _Address, FlowType} = pp_roaming_protocol:parse_uplink_token(
+                Token
+            ),
+            ct:print("handling packet with flow type: ~p", [FlowType]),
 
-    case FlowType of
-        async ->
-            Forward ! {http_downlink_data, Body},
-            Res = pp_roaming_downlink:handle(Req, Args),
-            ct:pal("Downlink handler resp: ~p", [Res]),
-            Forward ! {http_downlink_data_response, 200},
-            {200, [], <<>>};
-        sync ->
-            ct:pal("sync handling downlink:~n~p", [Decoded]),
-            Response = pp_roaming_downlink:handle(Req, Args),
+            case FlowType of
+                async ->
+                    Forward ! {http_downlink_data, Body},
+                    Res = pp_roaming_downlink:handle(Req, Args),
+                    ct:pal("Downlink handler resp: ~p", [Res]),
+                    Forward ! {http_downlink_data_response, 200},
+                    {200, [], <<>>};
+                sync ->
+                    ct:pal("sync handling downlink:~n~p", [Decoded]),
+                    Response = pp_roaming_downlink:handle(Req, Args),
 
-            %% ResponseBody = make_response_body(Decoded),
-            %% Response = {200, [], jsx:encode(ResponseBody)},
-            Forward ! {http_msg, Body, Req, Response},
-            Response
+                    %% ResponseBody = make_response_body(Decoded),
+                    %% Response = {200, [], jsx:encode(ResponseBody)},
+                    Forward ! {http_msg, Body, Req, Response},
+                    Response
+            end
     end;
 handle('POST', [<<"uplink">>], Req, Args) ->
+    WaitTimeMs = maps:get(wait_ms, Args, 250),
     Forward = maps:get(forward, Args),
     Body = elli_request:body(Req),
-    #{<<"TransactionID">> := TransactionID} = jsx:decode(Body),
+    Decoded = jsx:decode(Body),
+    #{<<"MessageType">> := MessageType} = Decoded,
 
-    %% ReceiverNetIDBin = maps:get(<<"ReceiverID">>, Decoded),
-    %% ReceiverNetID = pp_utils:hexstring_to_int(ReceiverNetIDBin),
-    {ok, _, FlowType} = pp_config:lookup_transaction_id(TransactionID),
-
-    ResponseBody =
-        case maps:get(response, Args, undefined) of
-            undefined ->
-                make_response_body(jsx:decode(Body));
-            Resp ->
-                ct:pal("Using canned response: ~p", [Resp]),
-                Resp
-        end,
-
-    case FlowType of
-        async ->
-            Response = {200, [], <<>>},
+    case MessageType of
+        <<"XmitDataAns">> ->
             Forward ! {http_uplink_data, Body},
             Forward ! {http_uplink_data_response, 200},
-            spawn(fun() ->
-                timer:sleep(250),
-                Res = hackney:post(
-                    <<"http://127.0.0.1:3003/downlink">>,
-                    [{<<"Host">>, <<"localhost">>}],
-                    jsx:encode(ResponseBody),
-                    [with_body]
-                ),
-                ct:pal("Downlink Res: ~p", [Res])
-            end),
 
-            Response;
-        sync ->
-            Response = {200, [], jsx:encode(ResponseBody)},
-            Forward ! {http_msg, Body, Req, Response},
+            {200, [], <<"XmitDataAns OK">>};
+        _ ->
+            #{
+                <<"TransactionID">> := _TransactionID,
+                <<"ULMetaData">> := #{<<"FNSULToken">> := Token}
+            } = Decoded,
 
-            Response
+            {ok, _PubKeyBin, _Region, _PacketTime, _Address, FlowType} = pp_roaming_protocol:parse_uplink_token(
+                Token
+            ),
+
+            ResponseBody =
+                case maps:get(response, Args, undefined) of
+                    undefined ->
+                        make_response_body(jsx:decode(Body));
+                    Resp ->
+                        ct:pal("Using canned response: ~p", [Resp]),
+                        Resp
+                end,
+
+            case FlowType of
+                async ->
+                    Response = {200, [], <<>>},
+                    Forward ! {http_uplink_data, Body},
+                    Forward ! {http_uplink_data_response, 200},
+                    spawn(fun() ->
+                        timer:sleep(WaitTimeMs),
+                        Res = hackney:post(
+                            <<"http://127.0.0.1:3003/downlink">>,
+                            [{<<"Host">>, <<"localhost">>}],
+                            jsx:encode(ResponseBody),
+                            [with_body]
+                        ),
+                        ct:pal("Downlink Res: ~p", [Res])
+                    end),
+
+                    Response;
+                sync ->
+                    Response = {200, [], jsx:encode(ResponseBody)},
+                    Forward ! {http_msg, Body, Req, Response},
+
+                    Response
+            end
     end.
 
 handle_event(_Event, _Data, _Args) ->
     %% uncomment for Elli errors.
-    ct:print("Elli Event (~p):~nData~n~p~nArgs~n~p", [_Event, _Data, _Args]),
+    %% ct:print("Elli Event (~p):~nData~n~p~nArgs~n~p", [_Event, _Data, _Args]),
     ok.
 
 make_response_body(#{

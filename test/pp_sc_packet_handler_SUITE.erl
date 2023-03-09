@@ -46,7 +46,9 @@
     udp_multiple_joins_same_dest_test/1,
     http_multiple_joins_test/1,
     http_multiple_joins_same_dest_test/1,
-    http_overlapping_devaddr_test/1
+    http_overlapping_devaddr_test/1,
+    %%
+    multiple_protocol_single_gateway_downlink_test/1
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -117,7 +119,9 @@ all() ->
         %%
         {group, http},
         %%
-        {group, multiple_buyers}
+        {group, multiple_buyers},
+        %%
+        multiple_protocol_single_gateway_downlink_test
     ].
 
 groups() ->
@@ -351,13 +355,13 @@ http_protocol_version_test(_Config) ->
     %% filled during the uplink process.
     TransactionID = 2177,
     Token = pp_roaming_protocol:make_uplink_token(
-        TransactionID,
+        PubKeyBin,
         'US915',
         1234,
         <<"www.example.com">>,
         sync
     ),
-    ok = pp_config:insert_transaction_id(TransactionID, <<"http://127.0.0.1:3002">>, sync),
+
     ok = pp_roaming_downlink:insert_handler(TransactionID, self()),
     SendDownlinkWithVersion = fun(ProtocolVersion) ->
         DownlinkBody = #{
@@ -593,6 +597,13 @@ http_sync_uplink_join_test(_Config) ->
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
 
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
+    Token = pp_roaming_protocol:make_uplink_token(
+        PubKeyBin,
+        'US915',
+        PacketTime,
+        <<"http://127.0.0.1:3002/uplink">>,
+        sync
+    ),
 
     %% 2. Expect a PRStartReq to the lns
     {
@@ -622,7 +633,7 @@ http_sync_uplink_join_test(_Config) ->
                 <<"RFRegion">> => erlang:atom_to_binary(Region),
                 <<"RecvTime">> => pp_utils:format_time(GatewayTime),
 
-                <<"FNSULToken">> => fun erlang:is_binary/1,
+                <<"FNSULToken">> => Token,
                 <<"GWCnt">> => 1,
                 <<"GWInfo">> => [
                     #{
@@ -639,11 +650,6 @@ http_sync_uplink_join_test(_Config) ->
                 ]
             }
         }
-    ),
-
-    ?assertMatch(
-        {ok, TransactionID, 'US915', PacketTime, <<"http://127.0.0.1:3002/uplink">>, sync},
-        pp_roaming_protocol:parse_uplink_token(Token)
     ),
 
     %% 3. Expect a PRStartAns from the lns
@@ -739,7 +745,15 @@ http_async_uplink_join_test(_Config) ->
     {ok, SCPacket, GatewayTime} = SendPacketFun(?DEVADDR_ACTILITY),
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
+
     PacketTime = blockchain_helium_packet_v1:timestamp(Packet),
+    Token = pp_roaming_protocol:make_uplink_token(
+        PubKeyBin,
+        'US915',
+        PacketTime,
+        <<"http://127.0.0.1:3002/uplink">>,
+        async
+    ),
 
     %% 4. Roamer receive http uplink
     {ok, #{<<"TransactionID">> := TransactionID, <<"ULMetaData">> := #{<<"FNSULToken">> := Token}}} = roamer_expect_uplink_data(
@@ -764,7 +778,7 @@ http_async_uplink_join_test(_Config) ->
                 <<"RFRegion">> => erlang:atom_to_binary(Region),
                 <<"RecvTime">> => pp_utils:format_time(GatewayTime),
 
-                <<"FNSULToken">> => fun erlang:is_binary/1,
+                <<"FNSULToken">> => Token,
                 <<"GWCnt">> => 1,
                 <<"GWInfo">> => [
                     #{
@@ -781,11 +795,6 @@ http_async_uplink_join_test(_Config) ->
                 ]
             }
         }
-    ),
-
-    ?assertMatch(
-        {ok, TransactionID, 'US915', PacketTime, <<"http://127.0.0.1:3002/uplink">>, async},
-        pp_roaming_protocol:parse_uplink_token(Token)
     ),
 
     %% 5. Forwarder receive 200 response
@@ -835,7 +844,7 @@ http_sync_downlink_test(_Config) ->
     TransactionID = 23,
 
     Token = pp_roaming_protocol:make_uplink_token(
-        TransactionID,
+        PubKeyBin,
         'US915',
         DownlinkTimestamp,
         <<"http://127.0.0.1:3002/uplink">>,
@@ -867,8 +876,8 @@ http_sync_downlink_test(_Config) ->
     %% NOTE: We need to insert the transaction and handler here because we're
     %% only simulating downlinks. In a normal flow, these details would be
     %% filled during the uplink process.
-    ok = pp_config:insert_transaction_id(TransactionID, <<"http://127.0.0.1:3002/uplink">>, sync),
-    ok = pp_roaming_downlink:insert_handler(TransactionID, self()),
+
+    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
     ok = pp_config:load_config([
         #{
             <<"name">> => <<"test">>,
@@ -934,8 +943,8 @@ http_async_downlink_test(_Config) ->
 
     %% 2. insert sc handler and config
     TransactionID = 23,
-    ok = pp_roaming_downlink:insert_handler(TransactionID, self()),
-    ok = pp_config:insert_transaction_id(TransactionID, <<"http://127.0.0.1:3002/uplink">>, async),
+    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+
     ok = pp_config:load_config([
         #{
             <<"name">> => <<"test">>,
@@ -953,7 +962,7 @@ http_async_downlink_test(_Config) ->
     DownlinkDatr = "SF10BW125",
 
     Token = pp_roaming_protocol:make_uplink_token(
-        TransactionID,
+        PubKeyBin,
         'US915',
         DownlinkTimestamp,
         <<"http://127.0.0.1:3002/uplink">>,
@@ -1053,11 +1062,13 @@ http_class_c_downlink_test(_Config) ->
     ok = start_roamer_listener(),
 
     %% 1. Get a gateway to send from
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
 
     %% 2. insert sc handler and config
     TransactionID = 2176,
-    ok = pp_roaming_downlink:insert_handler(TransactionID, self()),
-    ok = pp_config:insert_transaction_id(TransactionID, <<"http://127.0.0.1:3002/uplink">>, async),
+    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
+
     ok = pp_config:load_config([
         #{
             <<"name">> => <<"test">>,
@@ -1075,7 +1086,7 @@ http_class_c_downlink_test(_Config) ->
     DownlinkDatr = "SF10BW125",
 
     Token = pp_roaming_protocol:make_uplink_token(
-        TransactionID,
+        PubKeyBin,
         'US915',
         DownlinkTimestamp,
         <<"http://127.0.0.1:3002/uplink">>,
@@ -1212,7 +1223,7 @@ http_uplink_packet_no_roaming_agreement_test(_Config) ->
     %% First packet is purchased and sent to Roamer
     {
         ok,
-        #{<<"TransactionID">> := TransactionID, <<"ULMetaData">> := #{<<"FNSULToken">> := Token}},
+        #{<<"TransactionID">> := _TransactionID, <<"ULMetaData">> := #{<<"FNSULToken">> := Token}},
         _Request,
         {200, _RespBody}
     } = pp_lns:http_rcv(
@@ -1257,7 +1268,7 @@ http_uplink_packet_no_roaming_agreement_test(_Config) ->
     ),
 
     ?assertMatch(
-        {ok, TransactionID, 'US915', PacketTime, <<"http://127.0.0.1:3002/uplink">>, sync},
+        {ok, PubKeyBin, 'US915', PacketTime, <<"http://127.0.0.1:3002/uplink">>, sync},
         pp_roaming_protocol:parse_uplink_token(Token)
     ),
 
@@ -1304,7 +1315,7 @@ http_uplink_packet_test(_Config) ->
 
     {
         ok,
-        #{<<"TransactionID">> := TransactionID, <<"ULMetaData">> := #{<<"FNSULToken">> := Token}},
+        #{<<"TransactionID">> := _TransactionID, <<"ULMetaData">> := #{<<"FNSULToken">> := Token}},
         _Request,
         {200, _RespBody}
     } = pp_lns:http_rcv(
@@ -1349,7 +1360,7 @@ http_uplink_packet_test(_Config) ->
     ),
 
     ?assertMatch(
-        {ok, TransactionID, 'US915', PacketTime, <<"http://127.0.0.1:3002/uplink">>, sync},
+        {ok, PubKeyBin, 'US915', PacketTime, <<"http://127.0.0.1:3002/uplink">>, sync},
         pp_roaming_protocol:parse_uplink_token(Token)
     ),
 
@@ -1403,7 +1414,7 @@ http_uplink_packet_late_test(_Config) ->
 
     {
         ok,
-        #{<<"TransactionID">> := TransactionID, <<"ULMetaData">> := #{<<"FNSULToken">> := Token}},
+        #{<<"TransactionID">> := _TransactionID, <<"ULMetaData">> := #{<<"FNSULToken">> := Token}},
         _Request,
         {200, _RespBody}
     } = pp_lns:http_rcv(
@@ -1448,7 +1459,7 @@ http_uplink_packet_late_test(_Config) ->
     ),
 
     ?assertMatch(
-        {ok, TransactionID, 'US915', PacketTime, <<"http://127.0.0.1:3002/uplink">>, sync},
+        {ok, PubKeyBin1, 'US915', PacketTime, <<"http://127.0.0.1:3002/uplink">>, sync},
         pp_roaming_protocol:parse_uplink_token(Token)
     ),
 
@@ -1500,7 +1511,7 @@ http_multiple_gateways_test(_Config) ->
 
     {
         ok,
-        #{<<"TransactionID">> := TransactionID, <<"ULMetaData">> := #{<<"FNSULToken">> := Token}},
+        #{<<"TransactionID">> := _TransactionID, <<"ULMetaData">> := #{<<"FNSULToken">> := Token}},
         _Request,
         {200, _RespBody}
     } = pp_lns:http_rcv(#{
@@ -1550,7 +1561,7 @@ http_multiple_gateways_test(_Config) ->
 
     %% Gateway with better RSSI should be chosen
     ?assertMatch(
-        {ok, TransactionID, 'US915', PacketTime1, <<"http://127.0.0.1:3002/uplink">>, sync},
+        {ok, PubKeyBin1, 'US915', PacketTime1, <<"http://127.0.0.1:3002/uplink">>, sync},
         pp_roaming_protocol:parse_uplink_token(Token)
     ),
 
@@ -1791,7 +1802,7 @@ join_net_id_packet_test(_Config) ->
     pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
     {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin1, NetID}),
 
-    AddressPort = get_udp_worker_address_port(Pid),
+    AddressPort = pp_udp_worker:get_address_and_port(Pid),
     ?assertEqual({"3.3.3.3", 3333}, AddressPort),
 
     %% ------------------------------------------------------------
@@ -1892,7 +1903,7 @@ udp_change_location_test(_Config) ->
         pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
 
         {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        get_udp_worker_address_port(Pid)
+        pp_udp_worker:get_address_and_port(Pid)
     end,
 
     %% Load a config,
@@ -2227,7 +2238,7 @@ packet_websocket_test(_Config) ->
         pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
 
         {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        get_udp_worker_address_port(Pid)
+        pp_udp_worker:get_address_and_port(Pid)
     end,
 
     %% ok = pp_console_dc_tracker:refill(?NET_ID_ACTILITY, 1, 100),
@@ -2306,7 +2317,7 @@ packet_websocket_inactive_test(_Config) ->
         pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
 
         {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        get_udp_worker_address_port(Pid)
+        pp_udp_worker:get_address_and_port(Pid)
     end,
 
     ok = pp_config:load_config([
@@ -2601,7 +2612,7 @@ net_ids_map_packet_test(_Config) ->
         pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
 
         {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        get_udp_worker_address_port(Pid)
+        pp_udp_worker:get_address_and_port(Pid)
     end,
     ok = pp_config:load_config([
         #{
@@ -2666,7 +2677,7 @@ single_hotspot_multi_net_id_test(_Config) ->
         pp_sc_packet_handler:handle_packet(Packet, erlang:system_time(millisecond), self()),
 
         {ok, Pid} = pp_udp_sup:lookup_worker({PubKeyBin, NetID}),
-        get_udp_worker_address_port(Pid)
+        pp_udp_worker:get_address_and_port(Pid)
     end,
     ok = pp_config:load_config([
         #{
@@ -2691,6 +2702,162 @@ single_hotspot_multi_net_id_test(_Config) ->
     ?assertMatch({"1.1.1.1", 1111}, SendPacketFun(?DEVADDR_ACTILITY, ?NET_ID_ACTILITY)),
     ?assertMatch({"2.2.2.2", 2222}, SendPacketFun(?DEVADDR_ORANGE, ?NET_ID_ORANGE)),
     ?assertMatch({"3.3.3.3", 3333}, SendPacketFun(?DEVADDR_COMCAST, ?NET_ID_COMCAST)),
+    ok.
+
+multiple_protocol_single_gateway_downlink_test(_Config) ->
+    %% If a packet get's sent to a UDP _and_ HTTP roamer from the same gateway,
+    %% then a UDP response is sent through that gateway, regardless of if it was
+    %% meant for the latest packet, the downlink will use one of the PIDs the
+    %% future HTTP packet is trying to use.
+    %%
+    %% This test ensures that HTTP downlinks are not tied to a specific PID, and
+    %% can get any available PID from the gateway.
+    %%
+    %% Could happen with any packets that go through a UDP gateway.
+    %% Device-1 uplinks udp.
+    %% Device-2 uplinks through same gateway, udp and http.
+    %% Device-1 downlinks.
+    %% Device-2 http downlink fails.
+
+    %%
+    %% Forwarder : packet-purchaser
+    %% Roamer    : partner-lns
+    %%
+    ok = start_forwarder_listener(),
+    %% Add a small delay for http downlink so we can ensure the udp downlink goes first.
+    ok = start_roamer_listener(#{callback_args => #{wait_ms => 500}}),
+    {ok, UDPPid} = pp_lns:start_link(#{port => 1111, forward => self()}),
+
+    DevEUI1 = <<0, 0, 0, 0, 0, 0, 0, 1>>,
+    AppEUI1 = <<0, 0, 0, 2, 0, 0, 0, 1>>,
+
+    %% 1) Get a gateway to send from
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    %% RSSI and FCnt don't matter here, they're made different to help with debugging
+    Routing = blockchain_helium_packet_v1:make_routing_info({eui, DevEUI1, AppEUI1}),
+    JoinPacket = test_utils:frame_packet(
+        ?UNCONFIRMED_UP,
+        PubKeyBin,
+        ?DEVADDR_ACTILITY,
+        0,
+        Routing,
+        #{dont_encode => true, rssi => -120}
+    ),
+    DataPacket = test_utils:frame_packet(
+        ?UNCONFIRMED_UP,
+        PubKeyBin,
+        ?DEVADDR_ACTILITY,
+        42,
+        #{dont_encode => true, rssi => -42}
+    ),
+
+    %% 2) Load config
+    %%  - UDP that accepts joins and devaddrs
+    %%  - HTTP that accepts joins
+    ok = pp_config:load_config([
+        #{
+            <<"name">> => <<"udp_test">>,
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"protocol">> => <<"udp">>,
+            <<"address">> => <<"127.0.0.1">>,
+            <<"port">> => 1111,
+            <<"joins">> => [#{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1}],
+            <<"devaddrs">> => [
+                #{<<"lower">> => ?DEVADDR_ACTILITY_BIN, <<"upper">> => ?DEVADDR_ACTILITY_BIN}
+            ]
+        },
+        #{
+            <<"name">> => <<"test">>,
+            <<"net_id">> => ?NET_ID_ACTILITY,
+            <<"protocol">> => <<"http">>,
+            <<"http_endpoint">> => <<"http://127.0.0.1:3002/uplink">>,
+            <<"http_flow_type">> => <<"async">>,
+            <<"joins">> => [#{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1}]
+        }
+    ]),
+    %% Spin up 2 procs to act as gateways that whose connections will go down
+    %% when they receive a downlink. Otherwise the test will never fail, as the
+    %% test Pid lives throughout the test.
+    TestPid = self(),
+    JoinPacketReceiver = spawn(fun() ->
+        receive
+            Msg ->
+                %% ct:print("ONE (join_packet) received: ~p", [Msg]),
+                TestPid ! Msg
+        after timer:seconds(2) -> TestPid ! nothing_received
+        end
+    end),
+    DataPacketReceiver = spawn(fun() ->
+        receive
+            Msg ->
+                %% ct:print("TWO (data_packet) received: ~p", [Msg]),
+                TestPid ! Msg
+        after timer:seconds(2) -> TestPid ! nothing_received
+        end
+    end),
+
+    %% 3) Send join and data packet
+    ok = pp_sc_packet_handler:handle_packet(
+        DataPacket,
+        erlang:system_time(millisecond),
+        DataPacketReceiver
+    ),
+    timer:sleep(50),
+    ok = pp_sc_packet_handler:handle_packet(
+        JoinPacket,
+        erlang:system_time(millisecond),
+        JoinPacketReceiver
+    ),
+
+    %% Collect the UDP packets
+    PushData = 0,
+    {ok, _UDPJoinRequest} = pp_lns:rcv(UDPPid, PushData),
+    {ok, _UDPDataRequest} = pp_lns:rcv(UDPPid, PushData),
+
+    %% 4) UDP downlink to devaddr
+    {ok, GatewayPid} = pp_udp_sup:lookup_worker({PubKeyBin, ?NET_ID_ACTILITY}),
+    Port = pp_udp_worker:get_port(GatewayPid),
+
+    Token = semtech_udp:token(),
+    ok = pp_lns:pull_resp(UDPPid, "127.0.0.1", Port, Token, #{
+        data => <<"downlink_payload">>,
+        tmst => erlang:system_time(millisecond),
+        freq => 915.0,
+        datr => <<"SF11BW125">>,
+        powe => 27
+    }),
+    TxAck = 5,
+    ?assertMatch({ok, {Token, _, _}}, pp_lns:rcv(UDPPid, TxAck)),
+    % Downlink received by hotspot
+    ok = gateway_expect_downlink(fun(SCResp) ->
+        Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
+        ?assertEqual(<<"downlink_payload">>, blockchain_helium_packet_v1:payload(Downlink)),
+        ?assertEqual(27, blockchain_helium_packet_v1:signal_strength(Downlink)),
+        ok
+    end),
+
+    %% 5) HTTP join_request
+    {ok, _HttpJoinRequest} = roamer_expect_uplink_data(),
+    %% Expect join_accept
+    {ok, _Data} = forwarder_expect_downlink_data(),
+
+    %% 5.1) device should join_accept
+    ok = gateway_expect_downlink(fun(SCResp) ->
+        Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
+        ?assertEqual(<<"join_accept_payload">>, blockchain_helium_packet_v1:payload(Downlink)),
+        ?assertEqual(27, blockchain_helium_packet_v1:signal_strength(Downlink)),
+        ok
+    end),
+
+    %% Ensure both Pids were used for downlinking
+    ok =
+        receive
+            nothing_received -> ct:fail("Both gateway stand-in pids should have been used and gone")
+        after 250 -> ok
+        end,
+
     ok.
 
 multi_buy_worst_case_stress_test(_Config) ->
@@ -2833,21 +3000,6 @@ send_same_offer_with_actors([A | Rest], MakeOfferFun, DeadPid) ->
     ),
     send_same_offer_with_actors(Rest, MakeOfferFun, DeadPid).
 
-get_udp_worker_address_port(Pid) ->
-    {
-        state,
-        _Loc,
-        _PubKeyBin1,
-        _NetID,
-        Socket,
-        _PushData,
-        _ScPid,
-        _PullData,
-        _PullDataTimer,
-        _ShutdownTimer
-    } = sys:get_state(Pid),
-    pp_udp_socket:get_address(Socket).
-
 start_uplink_listener() ->
     start_uplink_listener(#{callback_args => #{}}).
 
@@ -2873,6 +3025,9 @@ start_downlink_listener() ->
 
 start_forwarder_listener() ->
     start_downlink_listener().
+
+start_roamer_listener(Opts) ->
+    start_uplink_listener(Opts).
 
 start_roamer_listener() ->
     start_uplink_listener().
@@ -2933,6 +3088,7 @@ roamer_expect_response(Code) ->
 gateway_expect_downlink(ExpectFn) ->
     receive
         {send_response, SCResp} ->
+            ct:print("gateway got response: ~p", [SCResp]),
             ExpectFn(SCResp)
     after 1000 -> ct:fail(gateway_expect_downlink_timeout)
     end.

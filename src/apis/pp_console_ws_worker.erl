@@ -243,7 +243,7 @@ handle_message(?ORGANIZATION_TOPIC, ?WS_RCV_REFILL_BALANCE, Payload) ->
     lager:info("refill DC balance: ~p", [Payload]),
     ok;
 handle_message(?ORGANIZATION_TOPIC, ?WS_RCV_REFETCH_ADDRESS, Payload) ->
-    ct:print("sending address: ~p", [Payload]),
+    lager:info("sending address: ~p", [Payload]),
     ?MODULE:send_address(),
     ok;
 handle_message(?NET_ID_TOPIC, ?WS_RCV_KEEP_PURCHASING_NET_ID, #{<<"net_ids">> := NetIDs}) ->

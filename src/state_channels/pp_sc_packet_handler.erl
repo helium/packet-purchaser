@@ -124,6 +124,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
             ),
             Err;
         {ok, Matches} ->
+            ok = pp_roaming_downlink:insert_handler(PubKeyBin, Pid),
             lists:foreach(
                 fun(Match) ->
                     case Match of
@@ -203,12 +204,7 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                                         PacketTime,
                                         PacketType
                                     ),
-                                    pp_http_worker:handle_packet(
-                                        WorkerPid,
-                                        SCPacket,
-                                        PacketTime,
-                                        Pid
-                                    )
+                                    pp_http_worker:handle_packet(WorkerPid, SCPacket, PacketTime)
                             end
                     end
                 end,

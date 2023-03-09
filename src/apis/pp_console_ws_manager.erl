@@ -143,7 +143,7 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 terminate(_Reason, _State) ->
-    ct:print("went down ~p : ~p", [?MODULE, _Reason]),
+    lager:warning("went down ~p : ~p", [?MODULE, _Reason]),
     ok.
 
 %% ------------------------------------------------------------------

@@ -71,7 +71,6 @@ init([]) ->
 
     ok = pp_multi_buy:init(),
     ok = pp_config:init_ets(),
-    ok = pp_roaming_downlink:init_ets(),
     ok = pp_utils:init_ets(),
     ok = pp_metrics:init_ets(),
 
@@ -102,6 +101,7 @@ init([]) ->
                 }
         end,
     ChildSpecs = [
+        ?WORKER(pg, []),
         ?WORKER(ru_poc_denylist, [POCDenyListArgs]),
         ?WORKER(pp_config, [ConfigFilename]),
         ?SUP(blockchain_sup, [BlockchainOpts]),

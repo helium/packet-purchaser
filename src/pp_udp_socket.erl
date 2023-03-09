@@ -20,7 +20,7 @@
 -type socket_port() :: inet:port_number().
 -type socket_info() :: {socket_address(), socket_port()}.
 
--export_type([socket/0, socket_address/0, socket_port/0]).
+-export_type([socket/0, socket_address/0, socket_port/0, socket_info/0]).
 
 -spec open(socket_info(), socket_info()) -> {ok, socket()}.
 open(Primary, Tee) ->

@@ -13,9 +13,7 @@
 
 %% State Channel API
 -export([
-    init_ets/0,
     insert_handler/2,
-    delete_handler/1,
     lookup_handler/1
 ]).
 
@@ -86,30 +84,17 @@ handle_event(Event, _Data, _Args) ->
 
 %% State Channel =====================================================
 
--spec init_ets() -> ok.
-init_ets() ->
-    ?SC_HANDLER_ETS = ets:new(?SC_HANDLER_ETS, [
-        public,
-        named_table,
-        set,
-        {read_concurrency, true},
-        {write_concurrency, true}
-    ]),
+-spec insert_handler(PubKeyBin :: libp2p_crypto:pubkey_bin(), SCPid :: pid()) -> ok.
+insert_handler(PubKeyBin, SCPid) ->
+    pg:join(PubKeyBin, SCPid),
     ok.
 
--spec insert_handler(TransactionID :: integer(), SCPid :: pid()) -> ok.
-insert_handler(TransactionID, SCPid) ->
-    true = ets:insert(?SC_HANDLER_ETS, {TransactionID, SCPid}),
-    ok.
-
--spec delete_handler(TransactionID :: integer()) -> ok.
-delete_handler(TransactionID) ->
-    true = ets:delete(?SC_HANDLER_ETS, TransactionID),
-    ok.
-
--spec lookup_handler(TransactionID :: integer()) -> {ok, SCPid :: pid()} | {error, any()}.
-lookup_handler(TransactionID) ->
-    case ets:lookup(?SC_HANDLER_ETS, TransactionID) of
-        [{_, SCPid}] -> {ok, SCPid};
-        [] -> {error, {not_found, TransactionID}}
+-spec lookup_handler(PubKeyBin :: libp2p_crypto:pubkey_bin()) ->
+    {ok, SCPid :: pid()} | {error, any()}.
+lookup_handler(PubKeyBin) ->
+    case pg:get_members(PubKeyBin) of
+        [] ->
+            {error, {not_found, PubKeyBin}};
+        [Pid | _] ->
+            {ok, Pid}
     end.

@@ -39,7 +39,7 @@ all() ->
 %% TEST CASE SETUP
 %%--------------------------------------------------------------------
 init_per_testcase(_TestCase, Config) ->
-    ok = pp_roaming_downlink:init_ets(),
+    {ok, _} = pg:start_link(),
     Config.
 %% test_utils:init_per_testcase(TestCase, Config).
 
@@ -55,11 +55,13 @@ end_per_testcase(_TestCase, _Config) ->
 %%--------------------------------------------------------------------
 
 class_c_downlink_test(_Config) ->
-    TransactionID = 2176,
-    pp_roaming_downlink:insert_handler(TransactionID, self()),
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    pp_roaming_downlink:insert_handler(PubKeyBin, self()),
 
     Token = pp_roaming_protocol:make_uplink_token(
-        TransactionID,
+        PubKeyBin,
         'US915',
         erlang:system_time(millisecond),
         <<"www.example.com">>,
@@ -90,11 +92,13 @@ class_c_downlink_test(_Config) ->
     ok.
 
 chirpstack_join_accept_test(_Config) ->
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
     TransactionID = 473719436,
-    pp_roaming_downlink:insert_handler(TransactionID, self()),
+    pp_roaming_downlink:insert_handler(PubKeyBin, self()),
 
     Token = pp_roaming_protocol:make_uplink_token(
-        TransactionID,
+        PubKeyBin,
         'US915',
         erlang:system_time(millisecond),
         <<"www.example.com">>,
@@ -137,12 +141,14 @@ chirpstack_join_accept_test(_Config) ->
     ok.
 
 rx1_timestamp_test(_Config) ->
-    TransactionID = 17,
-    ok = pp_roaming_downlink:insert_handler(TransactionID, self()),
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
 
     PacketTime = 0,
     Token = pp_roaming_protocol:make_uplink_token(
-        TransactionID,
+        PubKeyBin,
         'US915',
         PacketTime,
         <<"www.example.com">>,
@@ -192,8 +198,10 @@ rx1_timestamp_test(_Config) ->
     ok.
 
 rx1_downlink_test(_Config) ->
-    TransactionID = 17,
-    ok = pp_roaming_downlink:insert_handler(TransactionID, self()),
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
 
     Payload = <<"0x60c04e26e020000000a754ba934840c3bc120989b532ee4613e06e3dd5d95d9d1ceb9e20b1f2">>,
     RXDelay = 2,
@@ -201,7 +209,7 @@ rx1_downlink_test(_Config) ->
     DataRate = 10,
 
     Token = pp_roaming_protocol:make_uplink_token(
-        TransactionID,
+        PubKeyBin,
         'US915',
         erlang:system_time(millisecond),
         <<"www.example.com">>,
@@ -247,11 +255,13 @@ rx1_downlink_test(_Config) ->
     ok.
 
 rx2_downlink_test(_Config) ->
-    TransactionID = 17,
-    ok = pp_roaming_downlink:insert_handler(TransactionID, self()),
+    #{public := PubKey} = libp2p_crypto:generate_keys(ecc_compact),
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
+
+    ok = pp_roaming_downlink:insert_handler(PubKeyBin, self()),
 
     Token = pp_roaming_protocol:make_uplink_token(
-        TransactionID,
+        PubKeyBin,
         'US915',
         erlang:system_time(millisecond),
         <<"www.example.com">>,
