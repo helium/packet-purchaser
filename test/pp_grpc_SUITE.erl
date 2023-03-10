@@ -2,8 +2,11 @@
 
 -export([
     all/0,
+    groups/0,
     init_per_testcase/2,
-    end_per_testcase/2
+    end_per_testcase/2,
+    init_per_group/2,
+    end_per_group/2
 ]).
 
 -export([
@@ -50,7 +53,20 @@
 %%   Running tests for this suite
 %% @end
 %%--------------------------------------------------------------------
+
 all() ->
+    [
+        {group, chain_alive},
+        {group, chain_dead}
+    ].
+
+groups() ->
+    [
+        {chain_alive, all_tests()},
+        {chain_dead, all_tests()}
+    ].
+
+all_tests() ->
     [
         grpc_join_net_id_packet_test,
         grpc_net_ids_map_packet_test,
@@ -63,12 +79,32 @@ all() ->
 %%--------------------------------------------------------------------
 %% TEST CASE SETUP
 %%--------------------------------------------------------------------
+init_per_group(chain_dead, Config) ->
+    ok = application:set_env(
+        packet_purchaser,
+        is_chain_dead,
+        true,
+        [{persistent, true}]
+    ),
+    [{is_chain_dead, true} | Config];
+init_per_group(_GroupName, Config) ->
+    Config.
+
 init_per_testcase(TestCase, Config) ->
     test_utils:init_per_testcase(TestCase, Config).
 
 %%--------------------------------------------------------------------
 %% TEST CASE TEARDOWN
 %%--------------------------------------------------------------------
+end_per_group(_GroupName, _Config) ->
+    ok = application:set_env(
+        packet_purchaser,
+        is_chain_dead,
+        false,
+        [{persistent, true}]
+    ),
+    ok.
+
 end_per_testcase(TestCase, Config) ->
     test_utils:end_per_testcase(TestCase, Config).
 
