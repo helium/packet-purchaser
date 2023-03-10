@@ -22,7 +22,8 @@
         ]},
         {http_roaming_port, "${PP_HTTP_DOWNLINK_PORT}"},
         {force_net_id_protocol_version, #{
-            16#600013 => pv_1_0
+            16#600013 => pv_1_0,
+            16#000004 => pv_1_0
         }},
         {denylist_keys, ["1SbEYKju337P6aYsRd9DT2k4qgK5ZK62kXbSvnJgqeaxK3hqQrYURZjL"]},
         {denylist_url, "https://api.github.com/repos/helium/denylist/releases/latest"}
