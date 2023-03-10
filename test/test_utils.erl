@@ -38,7 +38,7 @@
 
 -spec init_per_testcase(atom(), list()) -> list().
 init_per_testcase(TestCase, Config) ->
-    BaseDir = erlang:atom_to_list(TestCase),
+    BaseDir = io_lib:format("~p-~p", [TestCase, erlang:system_time(millisecond)]),
     ok = application:set_env(?APP, testing, true),
     ok = application:set_env(blockchain, base_dir, BaseDir ++ "/blockchain_data"),
     ok = application:set_env(lager, log_root, BaseDir ++ "/log"),
@@ -120,10 +120,17 @@ init_per_testcase(TestCase, Config) ->
     ok = filelib:ensure_dir(SwarmKey),
     {ok, PPKeys} = libp2p_crypto:load_keys(SwarmKey),
     #{public := PPPubKey, secret := PPPrivKey} = PPKeys,
-    {ok, _GenesisMembers, ConsensusMembers, _Keys} = blockchain_test_utils:init_chain(
-        5000,
-        [{PPPrivKey, PPPubKey}]
-    ),
+    Config0 =
+        case proplists:get_value(is_chain_dead, Config, false) of
+            true ->
+                Config;
+            false ->
+                {ok, _GenesisMembers, ConsensusMembers, _Keys} = blockchain_test_utils:init_chain(
+                    5000,
+                    [{PPPrivKey, PPPubKey}]
+                ),
+                [{consensus_member, ConsensusMembers} | Config]
+        end,
 
     GatewayConfig = proplists:get_value(gateway_config, Config, #{}),
     {PubKeyBin, WorkerPid} = start_gateway(GatewayConfig),
@@ -138,10 +145,9 @@ init_per_testcase(TestCase, Config) ->
     [
         {lns, FakeLNSPid},
         {gateway, {PubKeyBin, WorkerPid}},
-        {consensus_member, ConsensusMembers},
         {reset_env_fun, ResetEnvFun},
         {elli, ElliPid}
-        | Config
+        | Config0
     ].
 
 -spec end_per_testcase(atom(), list()) -> ok.

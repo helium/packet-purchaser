@@ -56,7 +56,7 @@ init([]) ->
 
     BaseDir = application:get_env(blockchain, base_dir, "data"),
     ok = libp2p_crypto:set_network(application:get_env(libp2p, network, mainnet)),
-    Key = load_key(BaseDir),
+    Key = pp_utils:load_key(BaseDir),
     SeedNodes = get_seed_nodes(),
     BlockchainOpts = [
         {key, Key},
@@ -138,23 +138,6 @@ init([]) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
-
--spec load_key(string()) ->
-    {libp2p_crypto:pubkey(), libp2p_crypto:sig_fun(), libp2p_crypto:ecdh_fun()}.
-load_key(BaseDir) ->
-    SwarmKey = filename:join([BaseDir, "blockchain", "swarm_key"]),
-    ok = filelib:ensure_dir(SwarmKey),
-    case libp2p_crypto:load_keys(SwarmKey) of
-        {ok, #{secret := PrivKey, public := PubKey}} ->
-            {PubKey, libp2p_crypto:mk_sig_fun(PrivKey), libp2p_crypto:mk_ecdh_fun(PrivKey)};
-        {error, enoent} ->
-            KeyMap =
-                #{secret := PrivKey, public := PubKey} = libp2p_crypto:generate_keys(
-                    ecc_compact
-                ),
-            ok = libp2p_crypto:save_keys(KeyMap, SwarmKey),
-            {PubKey, libp2p_crypto:mk_sig_fun(PrivKey), libp2p_crypto:mk_ecdh_fun(PrivKey)}
-    end.
 
 -spec get_seed_nodes() -> list().
 get_seed_nodes() ->

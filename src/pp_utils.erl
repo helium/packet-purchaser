@@ -18,6 +18,12 @@
 ]).
 
 -export([
+    load_key/1,
+    pubkeybin/0,
+    pubkey_b58/0
+]).
+
+-export([
     init_ets/0,
     get_oui/0,
     pubkeybin_to_mac/1,
@@ -130,7 +136,7 @@ get_env_int(Key, Default) ->
 
 -spec get_env_bool(atom(), boolean()) -> boolean().
 get_env_bool(Key, Default) ->
-    case application:get_env(router, Key, Default) of
+    case application:get_env(packet_purchaser, Key, Default) of
         "true" -> true;
         true -> true;
         _ -> false
@@ -140,17 +146,22 @@ get_env_bool(Key, Default) ->
     ?LOCATION_NONE
     | {Index :: pos_integer(), Lat :: float(), Long :: float()}.
 get_hotspot_location(PubKeyBin) ->
-    Ledger = ?MODULE:ledger(),
-    case blockchain_ledger_v1:find_gateway_info(PubKeyBin, Ledger) of
-        {error, _} ->
+    case ?MODULE:is_chain_dead() of
+        true ->
             ?LOCATION_NONE;
-        {ok, Hotspot} ->
-            case blockchain_ledger_gateway_v2:location(Hotspot) of
-                undefined ->
+        false ->
+            Ledger = ?MODULE:ledger(),
+            case blockchain_ledger_v1:find_gateway_info(PubKeyBin, Ledger) of
+                {error, _} ->
                     ?LOCATION_NONE;
-                Index ->
-                    {Lat, Long} = h3:to_geo(Index),
-                    {Index, Lat, Long}
+                {ok, Hotspot} ->
+                    case blockchain_ledger_gateway_v2:location(Hotspot) of
+                        undefined ->
+                            ?LOCATION_NONE;
+                        Index ->
+                            {Lat, Long} = h3:to_geo(Index),
+                            {Index, Lat, Long}
+                    end
             end
     end.
 
@@ -192,3 +203,38 @@ calculate_dc_amount(PayloadSize) ->
         %% 1 DC per 24 bytes of data
         true -> erlang:ceil(PayloadSize / 24)
     end.
+
+-spec load_key(string()) ->
+    {libp2p_crypto:pubkey(), libp2p_crypto:sig_fun(), libp2p_crypto:ecdh_fun()}.
+load_key(BaseDir) ->
+    SwarmKey = filename:join([BaseDir, "blockchain", "swarm_key"]),
+    ok = filelib:ensure_dir(SwarmKey),
+    {Pubkey, _, _} =
+        Key =
+        case libp2p_crypto:load_keys(SwarmKey) of
+            {ok, #{secret := PrivKey, public := PubKey}} ->
+                {PubKey, libp2p_crypto:mk_sig_fun(PrivKey), libp2p_crypto:mk_ecdh_fun(PrivKey)};
+            {error, enoent} ->
+                KeyMap =
+                    #{secret := PrivKey, public := PubKey} = libp2p_crypto:generate_keys(
+                        ecc_compact
+                    ),
+                ok = libp2p_crypto:save_keys(KeyMap, SwarmKey),
+                {PubKey, libp2p_crypto:mk_sig_fun(PrivKey), libp2p_crypto:mk_ecdh_fun(PrivKey)}
+        end,
+    ok = persistent_term:put(pp_pubkeybin, libp2p_crypto:pubkey_to_bin(Pubkey)),
+    Key.
+
+-spec pubkeybin() -> binary().
+pubkeybin() ->
+    Key = pp_pubkeybin,
+    case persistent_term:get(Key, undefined) of
+        undefined ->
+            throw(pubkey_should_be_in_persistent_term);
+        PubKeyBin ->
+            PubKeyBin
+    end.
+
+-spec pubkey_b58() -> string().
+pubkey_b58() ->
+    libp2p_crypto:bin_to_b58(pubkeybin()).

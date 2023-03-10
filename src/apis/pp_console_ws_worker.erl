@@ -128,8 +128,7 @@ handle_packet(NetID, Packet, PacketTime, Type) ->
 
 -spec send_address() -> ok.
 send_address() ->
-    PubKeyBin = blockchain_swarm:pubkey_bin(),
-    B58 = libp2p_crypto:bin_to_b58(PubKeyBin),
+    B58 = pp_utils:pubkey_b58(),
     RouterAddressPayload = pp_console_ws_client:encode_msg(
         <<"0">>,
         ?ORGANIZATION_TOPIC,
