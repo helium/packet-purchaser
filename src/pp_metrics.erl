@@ -30,6 +30,8 @@
 -define(METRICS_GRPC_CONNECTION_COUNT, packet_purchaser_connection_count).
 -define(METRICS_FUN_DURATION, packet_purchaser_function_duration).
 
+-define(METRICS_PACKET_REPORT_HISTOGRAM, packet_purchaser_packet_report_histogram).
+
 -define(METRICS_WORKER_TICK_INTERVAL, timer:seconds(10)).
 -define(METRICS_WORKER_TICK, '__pp_metrics_tick').
 
@@ -55,7 +57,9 @@
     ws_state/1,
     ws_send_msg/1,
     %% timing
-    function_observe/2
+    function_observe/2,
+    %% packet reporting
+    observe_packet_report/2
 ]).
 
 %% Helper API
@@ -171,7 +175,7 @@ state_channel_close(Status) ->
 
 -spec ws_state(boolean()) -> ok.
 ws_state(State) ->
-    prometheus_boolean:set(?METRICS_WS_STATE, State).
+    catch prometheus_boolean:set(?METRICS_WS_STATE, State).
 
 -spec ws_send_msg(NetID :: non_neg_integer()) -> ok.
 ws_send_msg(NetID) ->
@@ -188,6 +192,17 @@ clean_net_id(NetID) ->
         true -> NetID;
         false -> unofficial_net_id
     end.
+
+-spec observe_packet_report(
+    Status :: ok | error,
+    Start :: non_neg_integer()
+) -> ok.
+observe_packet_report(Status, Start) ->
+    prometheus_histogram:observe(
+        ?METRICS_PACKET_REPORT_HISTOGRAM,
+        [Status],
+        erlang:system_time(millisecond) - Start
+    ).
 
 %% -------------------------------------------------------------------
 %% gen_server Callbacks
@@ -377,6 +392,13 @@ declare_metrics() ->
         {name, ?METRICS_FUN_DURATION},
         {help, "Function duration"},
         {labels, [function]}
+    ]),
+
+    %% Packet Reporting
+    prometheus_histogram:declare([
+        {name, ?METRICS_PACKET_REPORT_HISTOGRAM},
+        {help, "Packet Reports"},
+        {labels, [status]}
     ]),
 
     ok.

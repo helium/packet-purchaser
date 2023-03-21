@@ -12,6 +12,12 @@
             {secret, <<"${PP_CONSOLE_SECRET}">>},
             {auto_connect, "${PP_CONSOLE_ENABLE}"}
         ]},
+        {packet_reporter, #{
+            aws_bucket => <<"${PP_PACKET_REPORTER_AWS_BUCKET}">>,
+            aws_bucket_region => <<"${PP_PACKET_REPORTER_AWS_BUCKET_REGION}">>,
+            report_interval => 300_000,
+            report_max_size => 50_000_000
+        }},
         {update_from_ws_config, "${PP_CONSOLE_UPDATE_FROM_WS_CONFIG}"},
         {sc_open_dc_amount, "${PP_SC_OPEN_DC_AMOUNT}"},
         {sc_expiration_interval, "${PP_SC_EXPIRATION_INTERVAL}"},
@@ -60,6 +66,13 @@
                 {"${PP_NAT_EXTERNAL_IP}", "${PP_NAT_EXTERNAL_PORT}"}
         }},
         {max_tcp_connections, 500000}
+    ]},
+    {aws_credentials, [
+        {credential_providers, [aws_credentials_env, aws_credentials_ec2]}
+        %% uncomment for env usage
+        %% {aws_access_key_id, "${PP_PACKET_REPORTER_AWS_KEY}"},
+        %% {aws_secret_access_key, "${PP_PACKET_REPORTER_AWS_SECRET}"},
+        %% {aws_default_region, "${PP_PACKET_REPORTER_AWS_REGION}"}
     ]},
     {grpcbox, [
         {servers, [

@@ -33,7 +33,8 @@
     ignore_messages/0,
     %%
     packet_router_join_env_up/6,
-    packet_router_data_env_up/6
+    packet_router_data_env_up/6,
+    uplink_packet_up/1
 ]).
 
 -spec init_per_testcase(atom(), list()) -> list().
@@ -480,3 +481,70 @@ binxor(<<>>, <<>>, Acc) ->
     Acc;
 binxor(<<A, RestA/binary>>, <<B, RestB/binary>>, Acc) ->
     binxor(RestA, RestB, <<(A bxor B), Acc/binary>>).
+
+%% -------------------------------------------------------------------
+%% Generating HPR packets are a little different.
+%% -------------------------------------------------------------------
+
+-spec uplink_packet_up(Opts :: map()) -> hpr_packet_up:packet().
+uplink_packet_up(Opts0) ->
+    MType = maps:get(mtype, Opts0, ?UNCONFIRMED_UP),
+    MHDRRFU = 0,
+    Major = 0,
+    DevAddr = maps:get(devaddr, Opts0, 16#00000000),
+    ADR = 0,
+    ADRACKReq = 0,
+    ACK = 0,
+    RFU = 0,
+    FCnt = maps:get(fcnt, Opts0, 1),
+    FOptsBin = <<>>,
+    FOptsLen = erlang:byte_size(FOptsBin),
+    Port = 0,
+    Body = maps:get(data, Opts0, <<"data">>),
+    AppSessionKey = maps:get(
+        app_session_key,
+        Opts0,
+        crypto:strong_rand_bytes(16)
+    ),
+    Data = reverse(
+        packet_up_cipher(Body, AppSessionKey, MType band 1, DevAddr, FCnt)
+    ),
+    Payload0 =
+        <<MType:3, MHDRRFU:3, Major:2, DevAddr:32/little-unsigned-integer, ADR:1, ADRACKReq:1,
+            ACK:1, RFU:1, FOptsLen:4, FCnt:16/little-unsigned-integer, FOptsBin:FOptsLen/binary,
+            Port:8/integer, Data/binary>>,
+    B0 = packet_up_b0(MType band 1, DevAddr, FCnt, erlang:byte_size(Payload0)),
+    NwkSessionKey = maps:get(
+        nwk_session_key,
+        Opts0,
+        crypto:strong_rand_bytes(16)
+    ),
+    MIC = crypto:macN(cmac, aes_128_cbc, NwkSessionKey, <<B0/binary, Payload0/binary>>, 4),
+
+    Payload = <<Payload0/binary, MIC:4/binary>>,
+    Opts1 = maps:put(payload, maps:get(payload, Opts0, Payload), Opts0),
+    PacketUp = pp_packet_up:test_new(Opts1),
+    SigFun = maps:get(sig_fun, Opts0, fun(_) -> <<"signature">> end),
+    pp_packet_up:sign(PacketUp, SigFun).
+
+packet_up_cipher(Bin, Key, Dir, DevAddr, FCnt) ->
+    packet_up_cipher(Bin, Key, Dir, DevAddr, FCnt, 1, <<>>).
+
+packet_up_cipher(<<Block:16/binary, Rest/binary>>, Key, Dir, DevAddr, FCnt, I, Acc) ->
+    Si = crypto:crypto_one_time(aes_128_ecb, Key, ai(Dir, DevAddr, FCnt, I), true),
+    packet_up_cipher(Rest, Key, Dir, DevAddr, FCnt, I + 1, <<(binxor(Block, Si, <<>>))/binary, Acc/binary>>);
+packet_up_cipher(<<>>, _Key, _Dir, _DevAddr, _FCnt, _I, Acc) ->
+    Acc;
+packet_up_cipher(<<LastBlock/binary>>, Key, Dir, DevAddr, FCnt, I, Acc) ->
+    Si = crypto:crypto_one_time(aes_128_ecb, Key, packet_up_ai(Dir, DevAddr, FCnt, I), true),
+    <<(binxor(LastBlock, binary:part(Si, 0, byte_size(LastBlock)), <<>>))/binary, Acc/binary>>.
+
+-spec packet_up_ai(integer(), binary(), integer(), integer()) -> binary().
+packet_up_ai(Dir, DevAddr, FCnt, I) ->
+    Bin = <<DevAddr:32/integer-unsigned-big>>,
+    <<16#01, 0, 0, 0, 0, Dir, Bin:4/binary, FCnt:32/little-unsigned-integer, 0, I>>.
+
+-spec packet_up_b0(integer(), integer(), integer(), integer()) -> binary().
+packet_up_b0(Dir, DevAddr, FCnt, Len) ->
+    <<16#49, 0, 0, 0, 0, Dir, DevAddr:32/little-unsigned-integer, FCnt:32/little-unsigned-integer,
+        0, Len>>.

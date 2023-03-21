@@ -101,6 +101,8 @@ init([]) ->
                 }
         end,
 
+    PacketReporterConfig = application:get_env(packet_purchaser, packet_reporter, #{}),
+
     BlockChainWorkers =
         case pp_utils:is_chain_dead() of
             true ->
@@ -116,7 +118,8 @@ init([]) ->
         [
             ?WORKER(pg, []),
             ?WORKER(ru_poc_denylist, [POCDenyListArgs]),
-            ?WORKER(pp_config, [ConfigFilename])
+            ?WORKER(pp_config, [ConfigFilename]),
+            ?WORKER(pp_packet_reporter, [PacketReporterConfig])
         ] ++
             BlockChainWorkers ++
             [
