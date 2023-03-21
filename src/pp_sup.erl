@@ -73,6 +73,7 @@ init([]) ->
     ok = pp_config:init_ets(),
     ok = pp_utils:init_ets(),
     ok = pp_metrics:init_ets(),
+    ok = pp_ics_gateway_location_worker:init_ets(),
 
     ElliConfig = [
         {callback, pp_roaming_downlink},
@@ -102,6 +103,10 @@ init([]) ->
         end,
 
     PacketReporterConfig = application:get_env(packet_purchaser, packet_reporter, #{}),
+    {PubKey0, SigFun, _} = Key,
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey0),
+    ICSOptsDefault = application:get_env(packet_purchaser, ics, #{}),
+    ICSOpts = ICSOptsDefault#{pubkey_bin => PubKeyBin, sig_fun => SigFun},
 
     BlockChainWorkers =
         case pp_utils:is_chain_dead() of
@@ -119,7 +124,8 @@ init([]) ->
             ?WORKER(pg, []),
             ?WORKER(ru_poc_denylist, [POCDenyListArgs]),
             ?WORKER(pp_config, [ConfigFilename]),
-            ?WORKER(pp_packet_reporter, [PacketReporterConfig])
+            ?WORKER(pp_packet_reporter, [PacketReporterConfig]),
+            ?WORKER(pp_ics_gateway_location_worker, [ICSOpts])
         ] ++
             BlockChainWorkers ++
             [
