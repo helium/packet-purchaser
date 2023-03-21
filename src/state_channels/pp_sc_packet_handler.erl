@@ -163,7 +163,16 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                                         PacketTime,
                                         Pid,
                                         Protocol
-                                    );
+                                    ),
+                                    case pp_utils:is_chain_dead() of
+                                        true ->
+                                            pp_packet_reporter:report_packet(
+                                                helium_packet_service:to_packet_up(SCPacket),
+                                                NetID
+                                            );
+                                        _ ->
+                                            ok
+                                    end;
                                 {error, worker_not_started} = Err ->
                                     lager:error(
                                         [{packet_type, PacketType}, {net_id, NetID}],
@@ -209,7 +218,16 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                                         PacketTime,
                                         PacketType
                                     ),
-                                    pp_http_worker:handle_packet(WorkerPid, SCPacket, PacketTime)
+                                    pp_http_worker:handle_packet(WorkerPid, SCPacket, PacketTime),
+                                    case pp_utils:is_chain_dead() of
+                                        true ->
+                                            pp_packet_reporter:report_packet(
+                                                helium_packet_service:to_packet_up(SCPacket),
+                                                NetID
+                                            );
+                                        _ ->
+                                            ok
+                                    end
                             end
                     end
                 end,

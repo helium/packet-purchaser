@@ -326,6 +326,9 @@ grpc_single_hotspot_multi_net_id_test(_Config) ->
     ok.
 
 grpc_multi_buy_join_test(_Config) ->
+    ok = meck:new(pp_packet_reporter, [passthrough]),
+    ok = meck:expect(pp_packet_reporter, report_packet, 2, ok),
+
     %% This test uses a udp socket to test how many packets are received since
     %% we're going through the grpc entry point, and don't send back mutli-buy
     %% messages.
@@ -429,7 +432,17 @@ grpc_multi_buy_join_test(_Config) ->
         end,
         lists:seq(1, 100)
     ),
-
+    case pp_utils:is_chain_dead() of
+        true ->
+            %% counted up all the packet sending that returned 'got_data'
+            ?assertEqual(103, meck:num_calls(pp_packet_reporter, report_packet, 2)),
+            meck:unload(pp_packet_reporter),
+            ok;
+        false ->
+            ?assertEqual(0, meck:num_calls(pp_packet_reporter, report_packet, 2)),
+            meck:unload(pp_packet_reporter),
+            ok
+    end,
     ok.
 
 grpc_multi_buy_packet_test(_Config) ->
