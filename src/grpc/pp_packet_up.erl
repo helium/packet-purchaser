@@ -18,8 +18,7 @@
     verify/1,
     encode/1,
     decode/1,
-    type/1,
-    md/1
+    type/1
 ]).
 
 -ifdef(TEST).
@@ -150,46 +149,6 @@ type(Packet) ->
             {undefined, FType};
         _ ->
             {undefined, 0}
-    end.
-
--spec md(PacketUp :: packet()) -> ok.
-md(PacketUp) ->
-    Gateway = ?MODULE:gateway(PacketUp),
-    GatewayName = hpr_utils:gateway_name(Gateway),
-    StreamPid =
-        case hpr_packet_router_service:locate(Gateway) of
-            {ok, Pid} -> Pid;
-            {error, _} -> undefined
-        end,
-    case ?MODULE:type(PacketUp) of
-        {undefined, FType} ->
-            lager:md([
-                {stream, StreamPid},
-                {gateway, GatewayName},
-                {packet_type, FType},
-                {phash, hpr_utils:bin_to_hex_string(?MODULE:phash(PacketUp))}
-            ]);
-        {join_req, {AppEUI, DevEUI}} ->
-            lager:md([
-                {stream, StreamPid},
-                {gateway, GatewayName},
-                {app_eui, hpr_utils:int_to_hex_string(AppEUI)},
-                {dev_eui, hpr_utils:int_to_hex_string(DevEUI)},
-                {app_eui_int, AppEUI},
-                {dev_eui_int, DevEUI},
-                {packet_type, join_req},
-                {phash, hpr_utils:bin_to_hex_string(?MODULE:phash(PacketUp))}
-            ]);
-        {uplink, {Type, DevAddr}} ->
-            lager:md([
-                {stream, StreamPid},
-                {gateway, GatewayName},
-                {devaddr, hpr_utils:int_to_hex_string(DevAddr)},
-                %% TODO: Add net id (warning they might not have one)
-                {devaddr_int, DevAddr},
-                {packet_type, Type},
-                {phash, hpr_utils:bin_to_hex_string(?MODULE:phash(PacketUp))}
-            ])
     end.
 
 %% ------------------------------------------------------------------
