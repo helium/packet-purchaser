@@ -52,7 +52,8 @@ all() ->
 %% TEST CASE SETUP
 %%--------------------------------------------------------------------
 init_per_testcase(TestCase, Config) ->
-    test_utils:init_per_testcase(TestCase, Config).
+    ok = application:set_env(packet_purchaser, is_chain_dead, true),
+    test_utils:init_per_testcase(TestCase, [{is_chain_dead, true} | Config]).
 
 %%--------------------------------------------------------------------
 %% TEST CASE TEARDOWN

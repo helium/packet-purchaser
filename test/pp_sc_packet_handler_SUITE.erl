@@ -157,6 +157,14 @@ all_tests() ->
 %% TEST CASE SETUP
 %%--------------------------------------------------------------------
 
+init_per_group(chain_alive, Config) ->
+    ok = application:set_env(
+        packet_purchaser,
+        is_chain_dead,
+        false,
+        [{persistent, true}]
+    ),
+    [{is_chain_dead, false} | Config];
 init_per_group(chain_dead, Config) ->
     ok = application:set_env(
         packet_purchaser,
