@@ -186,6 +186,7 @@ encode_decode_test() ->
     ok.
 
 new_test() ->
+    application:set_env(packet_purchaser, oui, 1),
     Now = erlang:system_time(millisecond),
     TestPacket = pp_packet_up:test_new(#{
         timestamp => Now,
@@ -196,19 +197,9 @@ new_test() ->
         region => 'US915',
         gateway => <<"gateway">>
     }),
-    TestRoute = pp_route:test_new(#{
-        id => "1",
-        oui => 1,
-        net_id => 0,
-        devaddr_ranges => [],
-        euis => [],
-        server => #{host => "example.com", port => 8080, protocol => undefined},
-        max_copies => 1,
-        nonce => 1
-    }),
     ?assertEqual(
         test_new(#{gateway_timestamp_ms => Now}),
-        ?MODULE:new(TestPacket, TestRoute)
+        ?MODULE:new(TestPacket, 0)
     ).
 
 -endif.
