@@ -140,26 +140,6 @@ handle_cast(_Msg, State) ->
     lager:warning("rcvd unknown cast msg: ~p", [_Msg]),
     {noreply, State}.
 
-%% handle_info(
-%%     ?INIT,
-%%     #state{
-%%         transport = Transport,
-%%         host = Host,
-%%         port = Port,
-%%         conn_backoff = Backoff0
-%%     } = State
-%% ) ->
-%%     {Delay, Backoff1} = backoff:fail(Backoff0),
-%%     case connect(Transport, Host, Port) of
-%%         {error, _Reason} ->
-%%             lager:warning("fail to connect ~p, reconnecting in ~wms", [_Reason, Delay]),
-%%             _ = erlang:send_after(Delay, self(), ?INIT),
-%%             {noreply, State#state{conn_backoff = Backoff1}};
-%%         ok ->
-%%             lager:info("connected"),
-%%             {_, Backoff2} = backoff:succeed(Backoff0),
-%%             {noreply, State#state{conn_backoff = Backoff2}}
-%%     end;
 handle_info(_Msg, State) ->
     lager:warning("rcvd unknown info msg: ~p", [_Msg]),
     {noreply, State}.
@@ -249,24 +229,3 @@ start_link_args(_) ->
 
 channel() ->
     ?ICS_CHANNEL.
-
-%% -spec connect(Transport :: http | https, Host :: string(), Port :: non_neg_integer()) ->
-%%     ok | {error, any()}.
-%% connect(Transport, Host, Port) ->
-%%     case grpcbox_channel:pick(channel(), stream) of
-%%         {error, _} ->
-%%             case
-%%                 grpcbox_client:connect(channel(), [{Transport, Host, Port, []}], #{
-%%                     sync_start => true
-%%                 })
-%%             of
-%%                 {ok, _Conn} ->
-%%                     connect(Transport, Host, Port);
-%%                 {error, {already_started, _}} ->
-%%                     connect(Transport, Host, Port);
-%%                 {error, _Reason} = Error ->
-%%                     Error
-%%             end;
-%%         {ok, {_Conn, _Interceptor}} ->
-%%             ok
-%%     end.
