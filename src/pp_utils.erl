@@ -156,7 +156,13 @@ get_env_bool(Key, Default) ->
 get_hotspot_location(PubKeyBin) ->
     case ?MODULE:is_chain_dead() orelse pp_utils:get_env_bool(enable_ics_location, false) of
         true ->
-            pp_ics_gateway_location_worker:get(PubKeyBin);
+            case pp_ics_gateway_location_worker:get(PubKeyBin) of
+                {ok, Index} ->
+                    {Lat, Long} = h3:to_geo(Index),
+                    {Index, Lat, Long};
+                {error, _} ->
+                    ?LOCATION_NONE
+            end;
         false ->
             case persistent_term:get(?HOTSPOT_LOCATION_CACHE, undefined) of
                 undefined ->
@@ -165,7 +171,6 @@ get_hotspot_location(PubKeyBin) ->
                     cream:cache(Cache, PubKeyBin, fun() -> chain_get_hotspot_location(PubKeyBin) end)
             end
     end.
-
 
 -spec uint32(number()) -> 0..4294967295.
 uint32(Num) ->
