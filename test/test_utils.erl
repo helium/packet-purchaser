@@ -39,6 +39,7 @@
 
 -spec init_per_testcase(atom(), list()) -> list().
 init_per_testcase(TestCase, Config) ->
+    persistent_term:put(pp_test_ics_gateway_service, self()),
     BaseDir = io_lib:format("~p-~p", [TestCase, erlang:system_time(millisecond)]),
     ok = application:set_env(?APP, testing, true),
     ok = application:set_env(blockchain, base_dir, BaseDir ++ "/blockchain_data"),

@@ -32,15 +32,21 @@ location(Ctx, Req) ->
     ct:print("got location request: ~p", [Req]),
     case verify_location_req(Req) of
         true ->
-            lager:info("got location req ~p", [Req]),
-            Res = #gateway_location_res_v1_pb{
-                location = "8828308281fffff"
-            },
-            persistent_term:get(?MODULE) ! {?MODULE, location, Req},
-            {ok, Res, Ctx};
+            case pp_utils:get_env_bool(test_location_not_found, false) of
+                false ->
+                    lager:info("got location req ~p", [Req]),
+                    Res = #gateway_location_res_v1_pb{
+                        location = "8828308281fffff"
+                    },
+                    persistent_term:get(?MODULE) ! {?MODULE, location, Req},
+                    {ok, Res, Ctx};
+                true ->
+                    %% 5, not_found
+                    {grpc_error, {grpcbox_stream:code_to_status(5), <<"gateway not asserted">>}}
+            end;
         false ->
             lager:error("failed to verify location req ~p", [Req]),
-            {grpc_error, {7, <<"PERMISSION_DENIED">>}}
+            {grpc_error, {grpcbox_stream:code_to_status(7), <<"PERMISSION_DENIED">>}}
     end.
 
 -spec verify_location_req(Req :: #gateway_location_req_v1_pb{}) -> boolean().

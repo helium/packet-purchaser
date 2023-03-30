@@ -189,6 +189,13 @@ init_per_testcase(packet_websocket_inactive_test = TestCase, Config0) ->
     ],
     test_utils:init_per_testcase(TestCase, Config1);
 init_per_testcase(TestCase, Config) ->
+    %% NOTE: The test location service is setup to always return the same
+    %% location. When we test with the chain, none of the keys generated are
+    %% asserted. Because of different systems, when a location is not found, the
+    %% keys are not included in payloads we send out. To keep the chain_alive
+    %% chain_dead groups of this suite in alignment, we're telling the location
+    %% service to never return a location.
+    application:set_env(packet_purchaser, test_location_not_found, true),
     test_utils:init_per_testcase(TestCase, Config).
 
 %%--------------------------------------------------------------------
