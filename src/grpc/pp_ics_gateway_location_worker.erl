@@ -114,12 +114,19 @@ init(
     }}.
 
 handle_call({get, PubKeyBin}, _From, #state{conn_backoff = Backoff0} = State) ->
+    HotspotName = pp_utils:animal_name(PubKeyBin),
     case get_gateway_location(PubKeyBin, State) of
-        {error, Reason} = Error ->
+        {error, Reason, true} ->
             {Delay, Backoff1} = backoff:fail(Backoff0),
             _ = erlang:send_after(Delay, self(), ?INIT),
-            lager:warning("fail to get_gateway_location ~p, reconnecting in ~wms", [Reason, Delay]),
-            {reply, Error, State#state{conn_backoff = Backoff1}};
+            lager:warning(
+                "failed to get_gateway_location ~p for ~s, reconnecting in ~wms",
+                [Reason, HotspotName, Delay]
+            ),
+            {reply, {error, Reason}, State#state{conn_backoff = Backoff1}};
+        {error, Reason, false} ->
+            lager:warning("failed to get_gateway_location ~p for ~s", [Reason, HotspotName]),
+            {reply, {error, Reason}, State};
         {ok, H3IndexString} ->
             H3Index = h3:from_string(H3IndexString),
             ok = insert(PubKeyBin, H3Index),
@@ -189,8 +196,12 @@ insert(PubKeyBin, H3Index) ->
     }),
     ok.
 
+%% We have to do this because the call to `helium_iot_config_gateway_client:location` can return
+%% `{error, {Status, Reason}, _}` but is not in the spec... [from router]
+-dialyzer({nowarn_function, get_gateway_location/2}).
+
 -spec get_gateway_location(PubKeyBin :: libp2p_crypto:pubkey_bin(), state()) ->
-    {ok, string()} | {error, any()}.
+    {ok, string()} | {error, any(), boolean()}.
 get_gateway_location(PubKeyBin, #state{sig_fun = SigFun}) ->
     Req = #{
         gateway => PubKeyBin
@@ -202,10 +213,12 @@ get_gateway_location(PubKeyBin, #state{sig_fun = SigFun}) ->
             channel => channel()
         })
     of
+        {error, {Status, Reason}, _} when erlang:is_binary(Status) ->
+            {error, {grpcbox_utils:status_to_string(Status), Reason}, false};
         {grpc_error, Reason} ->
-            {error, Reason};
-        {error, _} = Error ->
-            Error;
+            {error, Reason, false};
+        {error, Reason} ->
+            {error, Reason, true};
         {ok, #{location := Location}, _Meta} ->
             {ok, Location}
     end.
