@@ -5,6 +5,7 @@
 -define(ETS, pp_utils_ets).
 
 -define(LOCATION_NONE, no_location).
+-define(HOTSPOT_LOCATION_CACHE, hotspot_location_cache).
 
 -type location() :: ?LOCATION_NONE | {Index :: pos_integer(), Lat :: float(), Long :: float()}.
 -export_type([location/0]).
@@ -25,6 +26,7 @@
 
 -export([
     init_ets/0,
+    init_location_cache/0,
     get_oui/0,
     pubkeybin_to_mac/1,
     animal_name/1,
@@ -44,6 +46,12 @@
 -spec init_ets() -> ok.
 init_ets() ->
     ?ETS = ets:new(?ETS, [public, named_table, set]),
+    ok.
+
+-spec init_location_cache() -> ok.
+init_location_cache() ->
+    {ok, HLC} = cream:new(200_00, [{initial_capacity, 20_000}, {seconds_to_live, 600}]),
+    ok = persistent_term:put(?HOTSPOT_LOCATION_CACHE, HLC),
     ok.
 
 format_time(Time) ->
@@ -146,24 +154,18 @@ get_env_bool(Key, Default) ->
     ?LOCATION_NONE
     | {Index :: pos_integer(), Lat :: float(), Long :: float()}.
 get_hotspot_location(PubKeyBin) ->
-    case ?MODULE:is_chain_dead() of
+    case ?MODULE:is_chain_dead() orelse pp_utils:get_env_bool(enable_ics_location, false) of
         true ->
-            ?LOCATION_NONE;
+            pp_ics_gateway_location_worker:get(PubKeyBin);
         false ->
-            Ledger = ?MODULE:ledger(),
-            case blockchain_ledger_v1:find_gateway_info(PubKeyBin, Ledger) of
-                {error, _} ->
-                    ?LOCATION_NONE;
-                {ok, Hotspot} ->
-                    case blockchain_ledger_gateway_v2:location(Hotspot) of
-                        undefined ->
-                            ?LOCATION_NONE;
-                        Index ->
-                            {Lat, Long} = h3:to_geo(Index),
-                            {Index, Lat, Long}
-                    end
+            case persistent_term:get(?HOTSPOT_LOCATION_CACHE, undefined) of
+                undefined ->
+                    chain_get_hotspot_location(PubKeyBin);
+                Cache ->
+                    cream:cache(Cache, PubKeyBin, fun() -> chain_get_hotspot_location(PubKeyBin) end)
             end
     end.
+
 
 -spec uint32(number()) -> 0..4294967295.
 uint32(Num) ->
@@ -238,3 +240,25 @@ pubkeybin() ->
 -spec pubkey_b58() -> string().
 pubkey_b58() ->
     libp2p_crypto:bin_to_b58(pubkeybin()).
+
+%% ===================================================================
+%% Internal Functions
+%% ===================================================================
+
+-spec chain_get_hotspot_location(PubKeyBin :: binary()) ->
+    ?LOCATION_NONE
+    | {Index :: pos_integer(), Lat :: float(), Long :: float()}.
+chain_get_hotspot_location(PubKeyBin) ->
+    Ledger = ?MODULE:ledger(),
+    case blockchain_ledger_v1:find_gateway_info(PubKeyBin, Ledger) of
+        {error, _} ->
+            ?LOCATION_NONE;
+        {ok, Hotspot} ->
+            case blockchain_ledger_gateway_v2:location(Hotspot) of
+                undefined ->
+                    ?LOCATION_NONE;
+                Index ->
+                    {Lat, Long} = h3:to_geo(Index),
+                    {Index, Lat, Long}
+            end
+    end.

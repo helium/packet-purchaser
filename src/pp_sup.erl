@@ -72,6 +72,7 @@ init([]) ->
     ok = pp_multi_buy:init(),
     ok = pp_config:init_ets(),
     ok = pp_utils:init_ets(),
+    ok = pp_utils:init_location_cache(),
     ok = pp_metrics:init_ets(),
     ok = pp_ics_gateway_location_worker:init_ets(),
 
