@@ -39,46 +39,28 @@ all() ->
 %%--------------------------------------------------------------------
 init_per_testcase(TestCase, Config) ->
     persistent_term:put(pp_test_ics_gateway_service, self()),
-    Port = 8085,
-    ServerPid = start_server(Port),
-    ok = application:set_env(
-        packet_purchaser,
-        ics,
-        #{transport => "http", host => "localhost", port => Port},
-        [{persistent, true}]
-    ),
     ok = application:set_env(
         packet_purchaser,
         is_chain_dead,
         true,
         [{persistent, true}]
     ),
-    test_utils:init_per_testcase(TestCase, [{is_chain_dead, true}, {ics_server, ServerPid} | Config]).
+    test_utils:init_per_testcase(TestCase, [{is_chain_dead, true}| Config]).
 
 %%--------------------------------------------------------------------
 %% TEST CASE TEARDOWN
 %%--------------------------------------------------------------------
 end_per_testcase(TestCase, Config) ->
-    test_utils:end_per_testcase(TestCase, Config),
-    ServerPid = proplists:get_value(ics_server, Config),
-    case erlang:is_process_alive(ServerPid) of
-        true -> gen_server:stop(ServerPid);
-        false -> ok
-    end,
-    _ = application:stop(grpcbox),
-    ok = application:set_env(
-        packet_purchaser,
-        ics,
-        #{},
-        [{persistent, true}]
-    ),
-    ok.
+    test_utils:end_per_testcase(TestCase, Config).
 
 %%--------------------------------------------------------------------
 %% TEST CASES
 %%--------------------------------------------------------------------
 
 main_test(_Config) ->
+    %% Eat any location requests that may have been sent during test startup.
+    _ = rcv_loop([]),
+
     #{public := PubKey1} = libp2p_crypto:generate_keys(ecc_compact),
     PubKeyBin1 = libp2p_crypto:pubkey_to_bin(PubKey1),
     ExpectedIndex = h3:from_string("8828308281fffff"),
@@ -117,19 +99,6 @@ main_test(_Config) ->
 %% ------------------------------------------------------------------
 %% Helper functions
 %% ------------------------------------------------------------------
-
-start_server(Port) ->
-    _ = application:ensure_all_started(grpcbox),
-    {ok, ServerPid} = grpcbox:start_server(#{
-        grpc_opts => #{
-            service_protos => [iot_config_pb],
-            services => #{
-                'helium.iot_config.gateway' => pp_test_ics_gateway_service
-            }
-        },
-        listen_opts => #{port => Port, ip => {0, 0, 0, 0}}
-    }),
-    ServerPid.
 
 rcv_loop(Acc) ->
     receive
