@@ -36,16 +36,16 @@ handle(Req, Args) ->
         {error, _} = Err ->
             lager:error("dowlink handle message error ~p", [Err]),
             {500, [], <<"An error occurred">>};
-        {join_accept, {SCPid, SCResp}} ->
+        {join_accept, {SCPid, PubKeyBin, SCResp}} ->
             lager:debug("sending downlink [sc_pid: ~p]", [SCPid]),
-            ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
+            catch SCPid ! {send_response, PubKeyBin, SCResp},
             {200, [], <<"downlink sent: 1">>};
-        {downlink, Response, {SCPid, SCResp}, {Endpoint, FlowType}} ->
+        {downlink, Response, {SCPid, PubKeyBin, SCResp}, {Endpoint, FlowType}} ->
             lager:debug(
                 "sending downlink [sc_pid: ~p] [response: ~p]",
                 [SCPid, Response]
             ),
-            ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
+            catch SCPid ! {send_response, PubKeyBin, SCResp},
             case FlowType of
                 sync ->
                     {200, [], jsx:encode(Response)};

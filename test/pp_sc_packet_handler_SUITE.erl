@@ -3087,8 +3087,8 @@ roamer_expect_response(Code) ->
 
 gateway_expect_downlink(ExpectFn) ->
     receive
-        {send_response, SCResp} ->
-            ct:print("gateway got response: ~p", [SCResp]),
+        {send_response, _Gateway, SCResp} ->
+            ct:print("gateway got response: ~p", [{_Gateway, SCResp}]),
             ExpectFn(SCResp)
     after 1000 -> ct:fail(gateway_expect_downlink_timeout)
     end.

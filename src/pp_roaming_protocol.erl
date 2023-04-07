@@ -40,6 +40,7 @@
 
 -type downlink() :: {
     SCPid :: pid(),
+    PubKeyBin :: binary(),
     SCResp :: any()
 }.
 
@@ -197,7 +198,7 @@ handle_prstart_ans(#{
 
     case pp_roaming_downlink:lookup_handler(PubKeyBin) of
         {error, _} = Err -> Err;
-        {ok, SCPid} -> {join_accept, {SCPid, SCResp}}
+        {ok, SCPid} -> {join_accept, {SCPid, PubKeyBin, SCResp}}
     end;
 handle_prstart_ans(#{
     <<"Result">> := #{<<"ResultCode">> := <<"Success">>},
@@ -230,7 +231,7 @@ handle_prstart_ans(#{
 
             case pp_roaming_downlink:lookup_handler(PubKeyBin) of
                 {error, _} = Err -> Err;
-                {ok, SCPid} -> {join_accept, {SCPid, SCResp}}
+                {ok, SCPid} -> {join_accept, {SCPid, PubKeyBin, SCResp}}
             end
     end;
 handle_prstart_ans(#{
@@ -314,8 +315,10 @@ handle_xmitdata_req(#{
             SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
 
             case pp_roaming_downlink:lookup_handler(PubKeyBin) of
-                {error, _} = Err -> Err;
-                {ok, SCPid} -> {downlink, PayloadResponse, {SCPid, SCResp}, {DestURL, FlowType}}
+                {error, _} = Err ->
+                    Err;
+                {ok, SCPid} ->
+                    {downlink, PayloadResponse, {SCPid, PubKeyBin, SCResp}, {DestURL, FlowType}}
             end
     end;
 %% Class C ==========================================
@@ -379,8 +382,10 @@ handle_xmitdata_req(#{
             SCResp = blockchain_state_channel_response_v1:new(true, DownlinkPacket),
 
             case pp_roaming_downlink:lookup_handler(PubKeyBin) of
-                {error, _} = Err -> Err;
-                {ok, SCPid} -> {downlink, PayloadResponse, {SCPid, SCResp}, {DestURL, FlowType}}
+                {error, _} = Err ->
+                    Err;
+                {ok, SCPid} ->
+                    {downlink, PayloadResponse, {SCPid, PubKeyBin, SCResp}, {DestURL, FlowType}}
             end
     end.
 

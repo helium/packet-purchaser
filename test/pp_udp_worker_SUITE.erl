@@ -411,7 +411,8 @@ pull_resp(Config) ->
     ?assertEqual({ok, {Token, MAC, Map}}, pp_lns:rcv(FakeLNSPid, ?TX_ACK)),
 
     receive
-        {send_response, SCResp} ->
+        {send_response, Gateway, SCResp} ->
+            ?assertEqual(PubKeyBin, Gateway),
             Downlink = blockchain_state_channel_response_v1:downlink(SCResp),
             ?assertEqual(DownlinkPayload, blockchain_helium_packet_v1:payload(Downlink)),
             ?assertEqual(DownlinkTimestamp, blockchain_helium_packet_v1:timestamp(Downlink)),

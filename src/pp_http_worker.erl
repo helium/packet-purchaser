@@ -217,8 +217,9 @@ send_data(#state{
                         {error, Err} ->
                             lager:error("error handling response: ~p", [Err]),
                             ok;
-                        {join_accept, {SCPid, SCResp}} ->
-                            ok = blockchain_state_channel_common:send_response(SCPid, SCResp);
+                        {join_accept, {SCPid, PubKeyBin, SCResp}} ->
+                            catch SCPid ! {send_response, PubKeyBin, SCResp},
+                            ok;
                         ok ->
                             ok
                     end;
