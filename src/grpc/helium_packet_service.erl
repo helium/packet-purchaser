@@ -18,29 +18,33 @@
 init(_Rpc, Stream) ->
     Stream.
 
--spec route(packet_router_pb:envelope_up_v1_pb(), grpcbox_stream:t()) ->
-    {ok, grpcbox_stream:t()} | grpcbox_stream:grpc_error_response().
+%% For some reason helium_packet_router_packet_bhvr is wrong about the returns .
+% -spec route(packet_router_pb:envelope_up_v1_pb(), grpcbox_stream:t()) -> {ok, grpcbox_stream:t()}.
+-dialyzer({nowarn_function, route/2}).
 route(#envelope_up_v1_pb{data = {packet, PacketUp}}, StreamState) ->
-    case verify(PacketUp) of
-        false ->
-            {grpc_error, {grpcbox_stream:code_to_status(2), <<"bad signature">>}};
-        true ->
-            SCPacket = to_sc_packet(PacketUp),
-            {Time, _} = timer:tc(pp_sc_packet_handler, handle_free_packet, [
-                SCPacket,
-                erlang:system_time(millisecond),
-                self()
-            ]),
-            pp_metrics:function_observe('pp_sc_packet_handler:handle_free_packet', Time),
-            {ok, StreamState}
-    end;
+    Self = self(),
+    erlang:spawn(fun() ->
+        case verify(PacketUp) of
+            false ->
+                ok;
+            true ->
+                SCPacket = to_sc_packet(PacketUp),
+                {Time, _} = timer:tc(pp_sc_packet_handler, handle_free_packet, [
+                    SCPacket,
+                    erlang:system_time(millisecond),
+                    Self
+                ]),
+                pp_metrics:function_observe('pp_sc_packet_handler:handle_free_packet', Time)
+        end
+    end),
+    {ok, StreamState};
 route(_EnvUp, StreamState) ->
     lager:warning("unknown ~p", [_EnvUp]),
     {ok, StreamState}.
 
 -spec handle_info(Msg :: any(), StreamState :: grpcbox_stream:t()) -> grpcbox_stream:t().
-handle_info({send_response, Reply}, StreamState) ->
-    grpcbox_stream:send(false, from_sc_packet(Reply), StreamState);
+handle_info({send_response, Gateway, Reply}, StreamState) ->
+    grpcbox_stream:send(false, from_sc_packet(Gateway, Reply), StreamState);
 handle_info(_Msg, StreamState) ->
     %% NOTE: For testing non-reply flows
     case application:get_env(router, packet_router_grpc_forward_unhandled_messages, undefined) of
@@ -118,9 +122,9 @@ routing_information(<<_FType:3, _:5, DevAddr:32/integer-unsigned-big, _/binary>>
 
 %% ===================================================================
 
--spec from_sc_packet(router_pb:blockchain_state_channel_response_v1_pb()) ->
+-spec from_sc_packet(Gateway :: binary(), router_pb:blockchain_state_channel_response_v1_pb()) ->
     packet_router_db:envelope_down_v1_pb().
-from_sc_packet(StateChannelResponse) ->
+from_sc_packet(Gateway, StateChannelResponse) ->
     Downlink = blockchain_state_channel_response_v1:downlink(StateChannelResponse),
     PacketDown = #packet_router_packet_down_v1_pb{
         payload = blockchain_helium_packet_v1:payload(Downlink),
@@ -130,7 +134,8 @@ from_sc_packet(StateChannelResponse) ->
             frequency = erlang:round(blockchain_helium_packet_v1:frequency(Downlink) * 1_000_000),
             datarate = hpr_datarate(blockchain_helium_packet_v1:datarate(Downlink))
         },
-        rx2 = rx2_window(blockchain_helium_packet_v1:rx2_window(Downlink))
+        rx2 = rx2_window(blockchain_helium_packet_v1:rx2_window(Downlink)),
+        gateway = Gateway
     },
     #envelope_down_v1_pb{data = {packet, PacketDown}}.
 

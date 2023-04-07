@@ -136,7 +136,7 @@ chirpstack_join_accept_test(_Config) ->
         <<"VSExtension">> => #{}
     },
     Self = self(),
-    ?assertMatch({join_accept, {Self, _}}, pp_roaming_protocol:handle_message(A)),
+    ?assertMatch({join_accept, {Self, PubKeyBin, _}}, pp_roaming_protocol:handle_message(A)),
 
     ok.
 

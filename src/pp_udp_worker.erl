@@ -374,14 +374,14 @@ handle_pull_resp(Data, #state{pubkeybin = PubKeyBin} = State) ->
         {error, _} ->
             lager:warning("could not send downlink, no handler pids");
         {ok, HandlerPid} ->
-            ok = do_handle_pull_resp(Data, HandlerPid),
+            ok = do_handle_pull_resp(PubKeyBin, Data, HandlerPid),
             Token = semtech_udp:token(Data),
             _ = send_tx_ack(Token, State)
     end,
     {noreply, State}.
 
--spec do_handle_pull_resp(binary(), pid()) -> ok.
-do_handle_pull_resp(Data, SCPid) when is_pid(SCPid) ->
+-spec do_handle_pull_resp(binary(), binary(), pid()) -> ok.
+do_handle_pull_resp(PubKeyBin, Data, SCPid) when is_pid(SCPid) ->
     Map = maps:get(<<"txpk">>, semtech_udp:json_data(Data)),
 
     JSONData0 = maps:get(<<"data">>, Map),
@@ -402,10 +402,8 @@ do_handle_pull_resp(Data, SCPid) when is_pid(SCPid) ->
         erlang:binary_to_list(maps:get(<<"datr">>, Map))
     ),
 
-    catch blockchain_state_channel_common:send_response(
-        SCPid,
-        blockchain_state_channel_response_v1:new(true, DownlinkPacket)
-    ),
+    catch SCPid !
+        {send_response, PubKeyBin, blockchain_state_channel_response_v1:new(true, DownlinkPacket)},
     ok.
 
 -spec schedule_pull_data(non_neg_integer()) -> reference().
