@@ -23,10 +23,10 @@ handle_info(_Msg, StreamState) ->
     StreamState.
 
 region_params(_Ctx, _Msg) ->
-    {grpc_error, {12, <<"UNIMPLEMENTED">>}}.
+    {grpc_error, {grpcbox_stream:code_to_status(12), <<"UNIMPLEMENTED">>}}.
 
 load_region(_Ctx, _Msg) ->
-    {grpc_error, {12, <<"UNIMPLEMENTED">>}}.
+    {grpc_error, {grpcbox_stream:code_to_status(12), <<"UNIMPLEMENTED">>}}.
 
 location(Ctx, Req) ->
     ct:print("got location request: ~p", [Req]),
