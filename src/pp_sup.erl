@@ -106,8 +106,7 @@ init([]) ->
     PacketReporterConfig = application:get_env(packet_purchaser, packet_reporter, #{}),
     {PubKey0, SigFun, _} = Key,
     PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey0),
-    ICSOptsDefault = application:get_env(packet_purchaser, ics, #{}),
-    ICSOpts = ICSOptsDefault#{pubkey_bin => PubKeyBin, sig_fun => SigFun},
+    ICSOpts = #{pubkey_bin => PubKeyBin, sig_fun => SigFun},
 
     BlockChainWorkers =
         case pp_utils:is_chain_dead() of

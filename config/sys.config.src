@@ -18,11 +18,6 @@
             report_interval => 300_000,
             report_max_size => 50_000_000
         }},
-        {ics, #{
-            transport => https,
-            host => "alb.iot.mainnet.helium.io",
-            port => 6080
-        }},
         {update_from_ws_config, "${PP_CONSOLE_UPDATE_FROM_WS_CONFIG}"},
         {sc_open_dc_amount, "${PP_SC_OPEN_DC_AMOUNT}"},
         {sc_expiration_interval, "${PP_SC_EXPIRATION_INTERVAL}"},

@@ -31,21 +31,10 @@
 -define(ICS_CHANNEL, ics_channel).
 -define(SERVER, ?MODULE).
 -define(ETS, pp_ics_gateway_location_worker_ets).
--define(INIT, init).
--ifdef(TEST).
--define(BACKOFF_MIN, 100).
--else.
--define(BACKOFF_MIN, timer:seconds(10)).
--endif.
--define(BACKOFF_MAX, timer:minutes(5)).
 
 -record(state, {
     pubkey_bin :: libp2p_crypto:pubkey_bin(),
-    sig_fun :: function(),
-    transport :: http | https,
-    host :: string(),
-    port :: non_neg_integer(),
-    conn_backoff :: backoff:backoff()
+    sig_fun :: function()
 }).
 
 -record(location, {
@@ -61,13 +50,7 @@
 %% ------------------------------------------------------------------
 
 start_link(Args) ->
-    case start_link_args(Args) of
-        ignore ->
-            lager:warning("~s ignored ~p", [?MODULE, Args]),
-            ignore;
-        Map ->
-            gen_server:start_link({local, ?SERVER}, ?SERVER, Map, [])
-    end.
+    gen_server:start_link({local, ?SERVER}, ?SERVER, Args, []).
 
 -spec init_ets() -> ok.
 init_ets() ->
@@ -95,36 +78,19 @@ get(PubKeyBin) ->
 init(
     #{
         pubkey_bin := PubKeyBin,
-        sig_fun := SigFun,
-        transport := Transport,
-        host := Host,
-        port := Port
+        sig_fun := SigFun
     } = Args
 ) ->
     lager:info("~p init with ~p", [?SERVER, Args]),
-    Backoff = backoff:type(backoff:init(?BACKOFF_MIN, ?BACKOFF_MAX), normal),
-    %% self() ! ?INIT,
     {ok, #state{
         pubkey_bin = PubKeyBin,
-        sig_fun = SigFun,
-        transport = Transport,
-        host = Host,
-        port = Port,
-        conn_backoff = Backoff
+        sig_fun = SigFun
     }}.
 
-handle_call({get, PubKeyBin}, _From, #state{conn_backoff = Backoff0} = State) ->
+handle_call({get, PubKeyBin}, _From, #state{} = State) ->
     HotspotName = pp_utils:animal_name(PubKeyBin),
     case get_gateway_location(PubKeyBin, State) of
-        {error, Reason, true} ->
-            {Delay, Backoff1} = backoff:fail(Backoff0),
-            _ = erlang:send_after(Delay, self(), ?INIT),
-            lager:warning(
-                "failed to get_gateway_location ~p for ~s, reconnecting in ~wms",
-                [Reason, HotspotName, Delay]
-            ),
-            {reply, {error, Reason}, State#state{conn_backoff = Backoff1}};
-        {error, Reason, false} ->
+        {error, Reason, _} ->
             lager:warning("failed to get_gateway_location ~p for ~s", [Reason, HotspotName]),
             {reply, {error, Reason}, State};
         {ok, H3IndexString} ->
@@ -206,26 +172,6 @@ get_gateway_location(PubKeyBin, #state{sig_fun = SigFun}) ->
 %% ------------------------------------------------------------------
 %% Config Service gen_server utils
 %% ------------------------------------------------------------------
-
--spec start_link_args(map()) -> ignore | map().
-start_link_args(#{transport := ""}) ->
-    ignore;
-start_link_args(#{host := ""}) ->
-    ignore;
-start_link_args(#{port := ""}) ->
-    ignore;
-start_link_args(#{transport := "http"} = Args) ->
-    start_link_args(Args#{transport => http});
-start_link_args(#{transport := "https"} = Args) ->
-    start_link_args(Args#{transport => https});
-start_link_args(#{port := Port} = Args) when is_list(Port) ->
-    start_link_args(Args#{port => erlang:list_to_integer(Port)});
-start_link_args(#{transport := Transport, host := Host, port := Port} = Args) when
-    is_atom(Transport) andalso is_list(Host) andalso is_integer(Port)
-->
-    Args;
-start_link_args(_) ->
-    ignore.
 
 channel() ->
     ?ICS_CHANNEL.
