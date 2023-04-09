@@ -50,7 +50,7 @@ init_ets() ->
 
 -spec init_location_cache() -> ok.
 init_location_cache() ->
-    {ok, HLC} = cream:new(200_00, [{initial_capacity, 20_000}, {seconds_to_live, 600}]),
+    {ok, HLC} = cream:new(200_000, [{initial_capacity, 20_000}, {seconds_to_live, 600}]),
     ok = persistent_term:put(?HOTSPOT_LOCATION_CACHE, HLC),
     ok.
 
