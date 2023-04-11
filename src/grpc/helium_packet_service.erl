@@ -11,7 +11,8 @@
     init/2,
     route/2,
     handle_info/2,
-    to_sc_packet/1
+    to_sc_packet/1,
+    to_packet_up/1
 ]).
 
 -spec init(atom(), grpcbox_stream:t()) -> grpcbox_stream:t().
@@ -103,6 +104,35 @@ to_sc_packet(HprPacketUp) ->
         routing_information(Payload)
     ),
     blockchain_state_channel_packet_v1:new(Packet, Gateway, Region, HoldTime).
+
+-spec to_packet_up(router_pb:blockchain_state_channel_packet_v1_pb()) ->
+    packet_router_pb:packet_router_packet_up_v1_pb().
+to_packet_up(SCPacket) ->
+    Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
+    HoldTime = blockchain_state_channel_packet_v1:hold_time(SCPacket),
+    Region = blockchain_state_channel_packet_v1:region(SCPacket),
+    Gateway = blockchain_state_channel_packet_v1:hotspot(SCPacket),
+
+    Payload = blockchain_helium_packet_v1:payload(Packet),
+    Timestamp = blockchain_helium_packet_v1:timestamp(Packet),
+    SignalStrength = blockchain_helium_packet_v1:signal_strength(Packet),
+    FrequencyMhz = blockchain_helium_packet_v1:frequency(Packet),
+    DataRate = blockchain_helium_packet_v1:datarate(Packet),
+    SNR = blockchain_helium_packet_v1:snr(Packet),
+
+    #packet_router_packet_up_v1_pb{
+        % signature = Signature
+        payload = Payload,
+        timestamp = Timestamp,
+        rssi = erlang:round(SignalStrength),
+        %% Mhz -> hz
+        frequency = erlang:round(FrequencyMhz * 1_000_000),
+        datarate = erlang:list_to_atom(DataRate),
+        snr = SNR,
+        region = Region,
+        hold_time = HoldTime,
+        gateway = Gateway
+    }.
 
 -spec routing_information(binary()) ->
     {devaddr, DevAddr :: non_neg_integer()}

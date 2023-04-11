@@ -488,6 +488,7 @@ multi_hotspots(Config) ->
     {ok, WorkerPid2} = pp_udp_sup:maybe_start_worker({PubKeyBin2, NetID}, #{}),
 
     Opts1 = pp_lns:send_packet(PubKeyBin1, #{payload => <<"payload1">>}),
+    timer:sleep(50),
     Opts2 = pp_lns:send_packet(PubKeyBin2, #{payload => <<"payload2">>}),
 
     {ok, Map0} = pp_lns:rcv(FakeLNSPid, ?PUSH_DATA),

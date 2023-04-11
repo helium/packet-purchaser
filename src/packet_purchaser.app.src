@@ -12,6 +12,8 @@
         ssl,
         public_key,
         lager,
+        aws_credentials,
+        aws,
         ranch,
         libp2p,
         helium_proto,

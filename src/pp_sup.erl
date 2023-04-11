@@ -56,7 +56,7 @@ init([]) ->
 
     BaseDir = application:get_env(blockchain, base_dir, "data"),
     ok = libp2p_crypto:set_network(application:get_env(libp2p, network, mainnet)),
-    Key = load_key(BaseDir),
+    Key = pp_utils:load_key(BaseDir),
     SeedNodes = get_seed_nodes(),
     BlockchainOpts = [
         {key, Key},
@@ -72,7 +72,9 @@ init([]) ->
     ok = pp_multi_buy:init(),
     ok = pp_config:init_ets(),
     ok = pp_utils:init_ets(),
+    ok = pp_utils:init_location_cache(),
     ok = pp_metrics:init_ets(),
+    ok = pp_ics_gateway_location_worker:init_ets(),
 
     ElliConfig = [
         {callback, pp_roaming_downlink},
@@ -100,47 +102,51 @@ init([]) ->
                     denylist_check_timer => {immediate, timer:hours(12)}
                 }
         end,
-    ChildSpecs = [
-        ?WORKER(pg, []),
-        ?WORKER(ru_poc_denylist, [POCDenyListArgs]),
-        ?WORKER(pp_config, [ConfigFilename]),
-        ?SUP(blockchain_sup, [BlockchainOpts]),
-        ?WORKER(pp_sc_worker, [#{}]),
-        ?SUP(pp_udp_sup, []),
-        ?SUP(pp_http_sup, []),
-        ?SUP(pp_console_sup, []),
-        ?WORKER(pp_metrics, [MetricsConfig]),
-        #{
-            id => pp_roaming_downlink,
-            start => {elli, start_link, [ElliConfig]},
-            restart => permanent,
-            shutdown => 5000,
-            type => worker,
-            modules => [elli]
-        }
-    ],
+
+    PacketReporterConfig = application:get_env(packet_purchaser, packet_reporter, #{}),
+    {PubKey0, SigFun, _} = Key,
+    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey0),
+    ICSOpts = #{pubkey_bin => PubKeyBin, sig_fun => SigFun},
+
+    BlockChainWorkers =
+        case pp_utils:is_chain_dead() of
+            true ->
+                [];
+            false ->
+                [
+                    ?SUP(blockchain_sup, [BlockchainOpts]),
+                    ?WORKER(pp_sc_worker, [#{}])
+                ]
+        end,
+
+    ChildSpecs =
+        [
+            ?WORKER(pg, []),
+            ?WORKER(ru_poc_denylist, [POCDenyListArgs]),
+            ?WORKER(pp_config, [ConfigFilename]),
+            ?WORKER(pp_packet_reporter, [PacketReporterConfig]),
+            ?WORKER(pp_ics_gateway_location_worker, [ICSOpts])
+        ] ++
+            BlockChainWorkers ++
+            [
+                ?SUP(pp_udp_sup, []),
+                ?SUP(pp_http_sup, []),
+                ?SUP(pp_console_sup, []),
+                ?WORKER(pp_metrics, [MetricsConfig]),
+                #{
+                    id => pp_roaming_downlink,
+                    start => {elli, start_link, [ElliConfig]},
+                    restart => permanent,
+                    shutdown => 5000,
+                    type => worker,
+                    modules => [elli]
+                }
+            ],
     {ok, {?FLAGS, ChildSpecs}}.
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
-
--spec load_key(string()) ->
-    {libp2p_crypto:pubkey(), libp2p_crypto:sig_fun(), libp2p_crypto:ecdh_fun()}.
-load_key(BaseDir) ->
-    SwarmKey = filename:join([BaseDir, "blockchain", "swarm_key"]),
-    ok = filelib:ensure_dir(SwarmKey),
-    case libp2p_crypto:load_keys(SwarmKey) of
-        {ok, #{secret := PrivKey, public := PubKey}} ->
-            {PubKey, libp2p_crypto:mk_sig_fun(PrivKey), libp2p_crypto:mk_ecdh_fun(PrivKey)};
-        {error, enoent} ->
-            KeyMap =
-                #{secret := PrivKey, public := PubKey} = libp2p_crypto:generate_keys(
-                    ecc_compact
-                ),
-            ok = libp2p_crypto:save_keys(KeyMap, SwarmKey),
-            {PubKey, libp2p_crypto:mk_sig_fun(PrivKey), libp2p_crypto:mk_ecdh_fun(PrivKey)}
-    end.
 
 -spec get_seed_nodes() -> list().
 get_seed_nodes() ->

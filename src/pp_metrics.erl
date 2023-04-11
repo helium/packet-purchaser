@@ -30,6 +30,8 @@
 -define(METRICS_GRPC_CONNECTION_COUNT, packet_purchaser_connection_count).
 -define(METRICS_FUN_DURATION, packet_purchaser_function_duration).
 
+-define(METRICS_PACKET_REPORT_HISTOGRAM, packet_purchaser_packet_report_histogram).
+
 -define(METRICS_WORKER_TICK_INTERVAL, timer:seconds(10)).
 -define(METRICS_WORKER_TICK, '__pp_metrics_tick').
 
@@ -55,7 +57,9 @@
     ws_state/1,
     ws_send_msg/1,
     %% timing
-    function_observe/2
+    function_observe/2,
+    %% packet reporting
+    observe_packet_report/2
 ]).
 
 %% Helper API
@@ -87,10 +91,7 @@
 
 -define(UNIQUE_OFFER_ETS, pp_metrics_unique_offer_ets).
 
--record(state, {
-    chain = undefined :: undefined | blockchain:blockchain(),
-    pubkey_bin :: libp2p_crypto:pubkey_bin()
-}).
+-record(state, {}).
 
 %% -------------------------------------------------------------------
 %% API Functions
@@ -174,7 +175,7 @@ state_channel_close(Status) ->
 
 -spec ws_state(boolean()) -> ok.
 ws_state(State) ->
-    prometheus_boolean:set(?METRICS_WS_STATE, State).
+    catch prometheus_boolean:set(?METRICS_WS_STATE, State).
 
 -spec ws_send_msg(NetID :: non_neg_integer()) -> ok.
 ws_send_msg(NetID) ->
@@ -192,6 +193,17 @@ clean_net_id(NetID) ->
         false -> unofficial_net_id
     end.
 
+-spec observe_packet_report(
+    Status :: ok | error,
+    Start :: non_neg_integer()
+) -> ok.
+observe_packet_report(Status, Start) ->
+    prometheus_histogram:observe(
+        ?METRICS_PACKET_REPORT_HISTOGRAM,
+        [Status],
+        erlang:system_time(millisecond) - Start
+    ).
+
 %% -------------------------------------------------------------------
 %% gen_server Callbacks
 %% -------------------------------------------------------------------
@@ -203,18 +215,13 @@ init(Args) ->
     ],
     {ok, _Pid} = elli:start_link(ElliOpts),
 
-    {ok, PubKey, _, _} = blockchain_swarm:keys(),
-    PubKeyBin = libp2p_crypto:pubkey_to_bin(PubKey),
-
     Timer = proplists:get_value(unique_offers_cleanup_timer, Args, 10),
     Window = proplists:get_value(unique_offers_window, Args, 60),
 
     ok = declare_metrics(),
     ok = spawn_crawl_offers(timer:seconds(Timer), timer:seconds(Window)),
 
-    _ = erlang:send_after(500, self(), post_init),
-
-    {ok, #state{pubkey_bin = PubKeyBin}}.
+    {ok, #state{}}.
 
 handle_call(_Request, _From, State) ->
     {reply, ignored, State}.
@@ -222,33 +229,10 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(post_init, #state{chain = undefined} = State) ->
-    case blockchain_worker:blockchain() of
-        undefined ->
-            erlang:send_after(500, self(), post_init),
-            {noreply, State};
-        Chain ->
-            _ = schedule_next_tick(),
-            {noreply, State#state{chain = Chain}}
-    end;
-handle_info({blockchain_event, {new_chain, Chain}}, State) ->
-    {noreply, State#state{chain = Chain}};
-handle_info(
-    {blockchain_event, {add_block, _BlockHash, _Syncing, _Ledger}},
-    #state{chain = undefined} = State
-) ->
-    erlang:send_after(500, self(), post_init),
-    {noreply, State};
-handle_info(
-    {blockchain_event, {add_block, BlockHash, _Syncing, _Ledger}},
-    #state{chain = Chain, pubkey_bin = PubkeyBin} = State
-) ->
-    _ = erlang:spawn(fun() -> ok = record_sc_close_conflict(Chain, BlockHash, PubkeyBin) end),
-    {noreply, State};
-handle_info(?METRICS_WORKER_TICK, #state{pubkey_bin = PubKeyBin} = State) ->
+handle_info(?METRICS_WORKER_TICK, State) ->
     lager:info("running metrics"),
     erlang:spawn(fun() ->
-        ok = record_dc_balance(PubKeyBin),
+        ok = record_dc_balance(),
         ok = record_chain_blocks(),
         ok = record_state_channels(),
         ok = record_vm_stats(),
@@ -410,69 +394,94 @@ declare_metrics() ->
         {labels, [function]}
     ]),
 
+    %% Packet Reporting
+    prometheus_histogram:declare([
+        {name, ?METRICS_PACKET_REPORT_HISTOGRAM},
+        {help, "Packet Reports"},
+        {labels, [status]}
+    ]),
+
     ok.
 
 -spec schedule_next_tick() -> reference().
 schedule_next_tick() ->
     erlang:send_after(?METRICS_WORKER_TICK_INTERVAL, self(), ?METRICS_WORKER_TICK).
 
-record_dc_balance(PubKeyBin) ->
-    Ledger = pp_utils:get_ledger(),
-    case blockchain_ledger_v1:find_dc_entry(PubKeyBin, Ledger) of
-        {error, _} ->
+record_dc_balance() ->
+    case pp_utils:is_chain_dead() of
+        true ->
             ok;
-        {ok, Entry} ->
-            Balance = blockchain_ledger_data_credits_entry_v1:balance(Entry),
-            ok = ?MODULE:dcs(Balance)
-    end,
-    ok.
+        false ->
+            {ok, PubKey, _, _} = blockchain_swarm:keys(),
+            PubKeyBin = libp2p_crypto:pubkey_to_b58(PubKey),
+
+            Ledger = pp_utils:ledger(),
+            case blockchain_ledger_v1:find_dc_entry(PubKeyBin, Ledger) of
+                {error, _} ->
+                    ok;
+                {ok, Entry} ->
+                    Balance = blockchain_ledger_data_credits_entry_v1:balance(Entry),
+                    ok = ?MODULE:dcs(Balance)
+            end,
+            ok
+    end.
 
 record_chain_blocks() ->
-    Chain = pp_utils:get_chain(),
-    case blockchain:head_block(Chain) of
-        {error, _} ->
+    case pp_utils:is_chain_dead() of
+        true ->
             ok;
-        {ok, Block} ->
-            Now = erlang:system_time(seconds),
-            Time = blockchain_block:time(Block),
-            ok = ?MODULE:blocks(Now - Time)
+        false ->
+            Chain = pp_utils:chain(),
+            case blockchain:head_block(Chain) of
+                {error, _} ->
+                    ok;
+                {ok, Block} ->
+                    Now = erlang:system_time(seconds),
+                    Time = blockchain_block:time(Block),
+                    ok = ?MODULE:blocks(Now - Time)
+            end
     end.
 
 record_state_channels() ->
-    Chain = pp_utils:get_chain(),
+    case pp_utils:is_chain_dead() of
+        true ->
+            ok;
+        false ->
+            Chain = pp_utils:chain(),
 
-    {ok, Height} = blockchain:height(Chain),
-    {OpenedCount, OverspentCount, _GettingCloseCount} = pp_sc_worker:counts(Height),
+            {ok, Height} = blockchain:height(Chain),
+            {OpenedCount, OverspentCount, _GettingCloseCount} = pp_sc_worker:counts(Height),
 
-    ActiveSCs = maps:values(blockchain_state_channels_server:get_actives()),
-    ActiveCount = erlang:length(ActiveSCs),
+            ActiveSCs = maps:values(blockchain_state_channels_server:get_actives()),
+            ActiveCount = erlang:length(ActiveSCs),
 
-    {TotalDCLeft, TotalActors} = lists:foldl(
-        fun({ActiveSC, _, _}, {DCs, Actors}) ->
-            Summaries = blockchain_state_channel_v1:summaries(ActiveSC),
-            TotalDC = blockchain_state_channel_v1:total_dcs(ActiveSC),
-            DCLeft = blockchain_state_channel_v1:amount(ActiveSC) - TotalDC,
-            %% If SC ran out of DC we should not be counted towards active metrics
-            case DCLeft of
-                0 ->
-                    {DCs, Actors};
-                _ ->
-                    {DCs + DCLeft, Actors + erlang:length(Summaries)}
-            end
-        end,
-        {0, 0},
-        ActiveSCs
-    ),
+            {TotalDCLeft, TotalActors} = lists:foldl(
+                fun({ActiveSC, _, _}, {DCs, Actors}) ->
+                    Summaries = blockchain_state_channel_v1:summaries(ActiveSC),
+                    TotalDC = blockchain_state_channel_v1:total_dcs(ActiveSC),
+                    DCLeft = blockchain_state_channel_v1:amount(ActiveSC) - TotalDC,
+                    %% If SC ran out of DC we should not be counted towards active metrics
+                    case DCLeft of
+                        0 ->
+                            {DCs, Actors};
+                        _ ->
+                            {DCs + DCLeft, Actors + erlang:length(Summaries)}
+                    end
+                end,
+                {0, 0},
+                ActiveSCs
+            ),
 
-    ok = ?MODULE:state_channels(
-        OpenedCount,
-        OverspentCount,
-        ActiveCount,
-        TotalDCLeft,
-        TotalActors
-    ),
+            ok = ?MODULE:state_channels(
+                OpenedCount,
+                OverspentCount,
+                ActiveCount,
+                TotalDCLeft,
+                TotalActors
+            ),
 
-    ok.
+            ok
+    end.
 
 -spec record_vm_stats() -> ok.
 record_vm_stats() ->
@@ -573,34 +582,6 @@ record_queues() ->
         maps:to_list(NewQs)
     ),
     ok.
-
--spec record_sc_close_conflict(
-    Chain :: blockchain:blockchain(),
-    BlockHash :: binary(),
-    PubkeyBin :: libp2p_crypto:pubkey_bin()
-) -> ok.
-record_sc_close_conflict(Chain, BlockHash, PubkeyBin) ->
-    case blockchain:get_block(BlockHash, Chain) of
-        {error, _Reason} ->
-            lager:error("failed to get block:~p ~p", [BlockHash, _Reason]);
-        {ok, Block} ->
-            Txns = lists:filter(
-                fun(Txn) ->
-                    case blockchain_txn:type(Txn) of
-                        blockchain_txn_state_channel_close_v1 ->
-                            SC = blockchain_txn_state_channel_close_v1:state_channel(Txn),
-                            blockchain_state_channel_v1:owner(SC) == PubkeyBin andalso
-                                blockchain_txn_state_channel_close_v1:conflicts_with(Txn) =/=
-                                    undefined;
-                        _ ->
-                            false
-                    end
-                end,
-                blockchain_block:transactions(Block)
-            ),
-            _ = prometheus_gauge:set(?METRICS_SC_CLOSE_CONFLICT, erlang:length(Txns)),
-            ok
-    end.
 
 -spec get_pid_name(pid()) -> list().
 get_pid_name(Pid) ->

@@ -4,7 +4,9 @@
     all/0,
     groups/0,
     init_per_testcase/2,
-    end_per_testcase/2
+    end_per_testcase/2,
+    init_per_group/2,
+    end_per_group/2
 ]).
 
 -export([
@@ -95,6 +97,18 @@
 %%--------------------------------------------------------------------
 all() ->
     [
+        {group, chain_alive},
+        {group, chain_dead}
+    ].
+
+groups() ->
+    [
+        {chain_alive, all_tests()},
+        {chain_dead, all_tests()}
+    ].
+
+all_tests() ->
+    [
         join_net_id_offer_test,
         join_net_id_packet_test,
         net_ids_map_offer_test,
@@ -116,42 +130,52 @@ all() ->
         stop_start_purchasing_net_id_join_test,
         drop_not_configured_orgs_packet_test,
         drop_not_configured_orgs_join_test,
-        %%
-        {group, http},
-        %%
-        {group, multiple_buyers},
+        %% http
+        http_sync_uplink_join_test,
+        http_async_uplink_join_test,
+        http_sync_downlink_test,
+        http_async_downlink_test,
+        http_class_c_downlink_test,
+        http_uplink_packet_test,
+        http_uplink_packet_no_roaming_agreement_test,
+        http_uplink_packet_late_test,
+        http_multiple_gateways_test,
+        http_multiple_gateways_single_shot_test,
+        http_auth_header_test,
+        http_protocol_version_test,
+        %% multiple_buyers
+        udp_multiple_joins_test,
+        udp_multiple_joins_same_dest_test,
+        http_multiple_joins_test,
+        http_multiple_joins_same_dest_test,
+        http_overlapping_devaddr_test,
         %%
         multiple_protocol_single_gateway_downlink_test
-    ].
-
-groups() ->
-    [
-        {http, [
-            http_sync_uplink_join_test,
-            http_async_uplink_join_test,
-            http_sync_downlink_test,
-            http_async_downlink_test,
-            http_class_c_downlink_test,
-            http_uplink_packet_test,
-            http_uplink_packet_no_roaming_agreement_test,
-            http_uplink_packet_late_test,
-            http_multiple_gateways_test,
-            http_multiple_gateways_single_shot_test,
-            http_auth_header_test,
-            http_protocol_version_test
-        ]},
-        {multiple_buyers, [
-            udp_multiple_joins_test,
-            udp_multiple_joins_same_dest_test,
-            http_multiple_joins_test,
-            http_multiple_joins_same_dest_test,
-            http_overlapping_devaddr_test
-        ]}
     ].
 
 %%--------------------------------------------------------------------
 %% TEST CASE SETUP
 %%--------------------------------------------------------------------
+
+init_per_group(chain_alive, Config) ->
+    ok = application:set_env(
+        packet_purchaser,
+        is_chain_dead,
+        false,
+        [{persistent, true}]
+    ),
+    [{is_chain_dead, false} | Config];
+init_per_group(chain_dead, Config) ->
+    ok = application:set_env(
+        packet_purchaser,
+        is_chain_dead,
+        true,
+        [{persistent, true}]
+    ),
+    [{is_chain_dead, true} | Config];
+init_per_group(_GroupName, Config) ->
+    Config.
+
 init_per_testcase(join_websocket_inactive_test = TestCase, Config0) ->
     Config1 = [
         {console_api, [{auto_connect, false}]}
@@ -165,11 +189,27 @@ init_per_testcase(packet_websocket_inactive_test = TestCase, Config0) ->
     ],
     test_utils:init_per_testcase(TestCase, Config1);
 init_per_testcase(TestCase, Config) ->
+    %% NOTE: The test location service is setup to always return the same
+    %% location. When we test with the chain, none of the keys generated are
+    %% asserted. Because of different systems, when a location is not found, the
+    %% keys are not included in payloads we send out. To keep the chain_alive
+    %% chain_dead groups of this suite in alignment, we're telling the location
+    %% service to never return a location.
+    application:set_env(packet_purchaser, test_location_not_found, true),
     test_utils:init_per_testcase(TestCase, Config).
 
 %%--------------------------------------------------------------------
 %% TEST CASE TEARDOWN
 %%--------------------------------------------------------------------
+end_per_group(_GroupName, _Config) ->
+    ok = application:set_env(
+        packet_purchaser,
+        is_chain_dead,
+        false,
+        [{persistent, true}]
+    ),
+    ok.
+
 end_per_testcase(TestCase, Config) ->
     test_utils:end_per_testcase(TestCase, Config).
 

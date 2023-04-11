@@ -5,18 +5,31 @@
 -define(ETS, pp_utils_ets).
 
 -define(LOCATION_NONE, no_location).
+-define(HOTSPOT_LOCATION_CACHE, hotspot_location_cache).
 
 -type location() :: ?LOCATION_NONE | {Index :: pos_integer(), Lat :: float(), Long :: float()}.
 -export_type([location/0]).
 
 -export([
+    is_chain_dead/0,
+    chain/0,
+    ledger/0,
+    calculate_dc_amount/1,
+    get_hotspot_location/1
+]).
+
+-export([
+    load_key/1,
+    pubkeybin/0,
+    pubkey_b58/0
+]).
+
+-export([
     init_ets/0,
-    get_chain/0,
-    get_ledger/0,
+    init_location_cache/0,
     get_oui/0,
     pubkeybin_to_mac/1,
     animal_name/1,
-    calculate_dc_amount/1,
     hex_to_binary/1,
     hexstring_to_binary/1,
     binary_to_hex/1,
@@ -25,7 +38,7 @@
     hexstring_to_int/1,
     format_time/1,
     get_env_int/2,
-    get_hotspot_location/1,
+    get_env_bool/2,
     uint32/1,
     random_non_miner_predicate/1
 ]).
@@ -35,21 +48,11 @@ init_ets() ->
     ?ETS = ets:new(?ETS, [public, named_table, set]),
     ok.
 
--spec get_chain() -> blockchain:blockchain().
-get_chain() ->
-    Key = pp_blockchain,
-    case persistent_term:get(Key, undefined) of
-        undefined ->
-            Chain = blockchain_worker:blockchain(),
-            ok = persistent_term:put(Key, Chain),
-            Chain;
-        Chain ->
-            Chain
-    end.
-
--spec get_ledger() -> blockchain_ledger_v1:ledger().
-get_ledger() ->
-    blockchain:ledger(get_chain()).
+-spec init_location_cache() -> ok.
+init_location_cache() ->
+    {ok, HLC} = cream:new(200_000, [{initial_capacity, 20_000}, {seconds_to_live, 600}]),
+    ok = persistent_term:put(?HOTSPOT_LOCATION_CACHE, HLC),
+    ok.
 
 format_time(Time) ->
     iso8601:format(calendar:system_time_to_universal_time(Time, millisecond)).
@@ -77,17 +80,6 @@ animal_name(PubKeyBin) ->
         PubKeyBin,
         fun() ->
             erl_angry_purple_tiger:animal_name(libp2p_crypto:bin_to_b58(PubKeyBin))
-        end
-    ).
-
--spec calculate_dc_amount(non_neg_integer()) -> non_neg_integer().
-calculate_dc_amount(PayloadSize) ->
-    e2qc:cache(
-        calculate_dc_amount_cache,
-        PayloadSize,
-        fun() ->
-            Ledger = blockchain:ledger(),
-            blockchain_utils:calculate_dc_amount(Ledger, PayloadSize)
         end
     ).
 
@@ -150,11 +142,119 @@ get_env_int(Key, Default) ->
         I -> I
     end.
 
+-spec get_env_bool(atom(), boolean()) -> boolean().
+get_env_bool(Key, Default) ->
+    case application:get_env(packet_purchaser, Key, Default) of
+        "true" -> true;
+        true -> true;
+        _ -> false
+    end.
+
 -spec get_hotspot_location(PubKeyBin :: binary()) ->
     ?LOCATION_NONE
     | {Index :: pos_integer(), Lat :: float(), Long :: float()}.
 get_hotspot_location(PubKeyBin) ->
-    Ledger = ?MODULE:get_ledger(),
+    case ?MODULE:is_chain_dead() orelse pp_utils:get_env_bool(enable_ics_location, false) of
+        true ->
+            case pp_ics_gateway_location_worker:get(PubKeyBin) of
+                {ok, Index} ->
+                    {Lat, Long} = h3:to_geo(Index),
+                    {Index, Lat, Long};
+                {error, _} ->
+                    ?LOCATION_NONE
+            end;
+        false ->
+            case persistent_term:get(?HOTSPOT_LOCATION_CACHE, undefined) of
+                undefined ->
+                    chain_get_hotspot_location(PubKeyBin);
+                Cache ->
+                    cream:cache(Cache, PubKeyBin, fun() -> chain_get_hotspot_location(PubKeyBin) end)
+            end
+    end.
+
+-spec uint32(number()) -> 0..4294967295.
+uint32(Num) ->
+    Num band 16#FFFF_FFFF.
+
+random_non_miner_predicate(Peer) ->
+    not libp2p_peer:is_stale(Peer, timer:minutes(360)) andalso
+        maps:get(<<"node_type">>, libp2p_peer:signed_metadata(Peer), undefined) /= <<"gateway">>.
+
+%% ===================================================================
+%% ===================================================================
+
+-spec is_chain_dead() -> boolean().
+is_chain_dead() ->
+    pp_utils:get_env_bool(is_chain_dead, false).
+
+-spec chain() -> blockchain:blockchain().
+chain() ->
+    Key = pp_blockchain,
+    case persistent_term:get(Key, undefined) of
+        undefined ->
+            Chain = blockchain_worker:blockchain(),
+            ok = persistent_term:put(Key, Chain),
+            Chain;
+        Chain ->
+            Chain
+    end.
+
+-spec ledger() -> blockchain_ledger_v1:ledger().
+ledger() ->
+    blockchain:ledger(?MODULE:chain()).
+
+-spec calculate_dc_amount(PayloadSize :: non_neg_integer()) -> pos_integer() | {error, any()}.
+calculate_dc_amount(PayloadSize) ->
+    case ?MODULE:is_chain_dead() of
+        false -> blockchain_utils:calculate_dc_amount(?MODULE:ledger(), PayloadSize);
+        %% 1 DC per 24 bytes of data
+        true -> erlang:ceil(PayloadSize / 24)
+    end.
+
+-spec load_key(string()) ->
+    {libp2p_crypto:pubkey(), libp2p_crypto:sig_fun(), libp2p_crypto:ecdh_fun()}.
+load_key(BaseDir) ->
+    SwarmKey = filename:join([BaseDir, "blockchain", "swarm_key"]),
+    ok = filelib:ensure_dir(SwarmKey),
+    {Pubkey, _, _} =
+        Key =
+        case libp2p_crypto:load_keys(SwarmKey) of
+            {ok, #{secret := PrivKey, public := PubKey}} ->
+                {PubKey, libp2p_crypto:mk_sig_fun(PrivKey), libp2p_crypto:mk_ecdh_fun(PrivKey)};
+            {error, enoent} ->
+                KeyMap =
+                    #{secret := PrivKey, public := PubKey} = libp2p_crypto:generate_keys(
+                        ecc_compact
+                    ),
+                ok = libp2p_crypto:save_keys(KeyMap, SwarmKey),
+                {PubKey, libp2p_crypto:mk_sig_fun(PrivKey), libp2p_crypto:mk_ecdh_fun(PrivKey)}
+        end,
+    ok = persistent_term:put(pp_pubkeybin, libp2p_crypto:pubkey_to_bin(Pubkey)),
+    Key.
+
+-spec pubkeybin() -> binary().
+pubkeybin() ->
+    Key = pp_pubkeybin,
+    case persistent_term:get(Key, undefined) of
+        undefined ->
+            throw(pubkey_should_be_in_persistent_term);
+        PubKeyBin ->
+            PubKeyBin
+    end.
+
+-spec pubkey_b58() -> string().
+pubkey_b58() ->
+    libp2p_crypto:bin_to_b58(pubkeybin()).
+
+%% ===================================================================
+%% Internal Functions
+%% ===================================================================
+
+-spec chain_get_hotspot_location(PubKeyBin :: binary()) ->
+    ?LOCATION_NONE
+    | {Index :: pos_integer(), Lat :: float(), Long :: float()}.
+chain_get_hotspot_location(PubKeyBin) ->
+    Ledger = ?MODULE:ledger(),
     case blockchain_ledger_v1:find_gateway_info(PubKeyBin, Ledger) of
         {error, _} ->
             ?LOCATION_NONE;
@@ -167,11 +267,3 @@ get_hotspot_location(PubKeyBin) ->
                     {Index, Lat, Long}
             end
     end.
-
--spec uint32(number()) -> 0..4294967295.
-uint32(Num) ->
-    Num band 16#FFFF_FFFF.
-
-random_non_miner_predicate(Peer) ->
-    not libp2p_peer:is_stale(Peer, timer:minutes(360)) andalso
-        maps:get(<<"node_type">>, libp2p_peer:signed_metadata(Peer), undefined) /= <<"gateway">>.

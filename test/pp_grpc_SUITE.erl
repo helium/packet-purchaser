@@ -2,8 +2,11 @@
 
 -export([
     all/0,
+    groups/0,
     init_per_testcase/2,
-    end_per_testcase/2
+    end_per_testcase/2,
+    init_per_group/2,
+    end_per_group/2
 ]).
 
 -export([
@@ -50,7 +53,20 @@
 %%   Running tests for this suite
 %% @end
 %%--------------------------------------------------------------------
+
 all() ->
+    [
+        {group, chain_alive},
+        {group, chain_dead}
+    ].
+
+groups() ->
+    [
+        {chain_alive, all_tests()},
+        {chain_dead, all_tests()}
+    ].
+
+all_tests() ->
     [
         grpc_join_net_id_packet_test,
         grpc_net_ids_map_packet_test,
@@ -63,12 +79,32 @@ all() ->
 %%--------------------------------------------------------------------
 %% TEST CASE SETUP
 %%--------------------------------------------------------------------
+init_per_group(chain_dead, Config) ->
+    ok = application:set_env(
+        packet_purchaser,
+        is_chain_dead,
+        true,
+        [{persistent, true}]
+    ),
+    [{is_chain_dead, true} | Config];
+init_per_group(_GroupName, Config) ->
+    Config.
+
 init_per_testcase(TestCase, Config) ->
     test_utils:init_per_testcase(TestCase, Config).
 
 %%--------------------------------------------------------------------
 %% TEST CASE TEARDOWN
 %%--------------------------------------------------------------------
+end_per_group(_GroupName, _Config) ->
+    ok = application:set_env(
+        packet_purchaser,
+        is_chain_dead,
+        false,
+        [{persistent, true}]
+    ),
+    ok.
+
 end_per_testcase(TestCase, Config) ->
     test_utils:end_per_testcase(TestCase, Config).
 
@@ -290,6 +326,9 @@ grpc_single_hotspot_multi_net_id_test(_Config) ->
     ok.
 
 grpc_multi_buy_join_test(_Config) ->
+    ok = meck:new(pp_packet_reporter, [passthrough]),
+    ok = meck:expect(pp_packet_reporter, report_packet, 2, ok),
+
     %% This test uses a udp socket to test how many packets are received since
     %% we're going through the grpc entry point, and don't send back mutli-buy
     %% messages.
@@ -393,7 +432,17 @@ grpc_multi_buy_join_test(_Config) ->
         end,
         lists:seq(1, 100)
     ),
-
+    case pp_utils:is_chain_dead() of
+        true ->
+            %% counted up all the packet sending that returned 'got_data'
+            ?assertEqual(103, meck:num_calls(pp_packet_reporter, report_packet, 2)),
+            meck:unload(pp_packet_reporter),
+            ok;
+        false ->
+            ?assertEqual(0, meck:num_calls(pp_packet_reporter, report_packet, 2)),
+            meck:unload(pp_packet_reporter),
+            ok
+    end,
     ok.
 
 grpc_multi_buy_packet_test(_Config) ->

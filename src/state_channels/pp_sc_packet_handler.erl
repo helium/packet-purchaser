@@ -38,16 +38,21 @@ handle_free_packet(SCPacket, PacketTime, Pid) ->
             Pid ! Err,
             Err;
         ok ->
-            Ledger = pp_utils:get_ledger(),
             case ru_poc_denylist:check(PubKeyBin) of
                 true ->
                     lager:debug("do not rewards packet from denylist hotspot");
                 false ->
-                    erlang:spawn(blockchain_state_channels_server, track_offer, [
-                        Offer,
-                        Ledger,
-                        self()
-                    ])
+                    case pp_utils:is_chain_dead() of
+                        true ->
+                            ok;
+                        false ->
+                            Ledger = pp_utils:ledger(),
+                            erlang:spawn(blockchain_state_channels_server, track_offer, [
+                                Offer,
+                                Ledger,
+                                self()
+                            ])
+                    end
             end,
             ?MODULE:handle_packet(SCPacket, PacketTime, Pid),
             ok
@@ -158,7 +163,16 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                                         PacketTime,
                                         Pid,
                                         Protocol
-                                    );
+                                    ),
+                                    case pp_utils:is_chain_dead() of
+                                        true ->
+                                            pp_packet_reporter:report_packet(
+                                                helium_packet_service:to_packet_up(SCPacket),
+                                                NetID
+                                            );
+                                        _ ->
+                                            ok
+                                    end;
                                 {error, worker_not_started} = Err ->
                                     lager:error(
                                         [{packet_type, PacketType}, {net_id, NetID}],
@@ -204,7 +218,16 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                                         PacketTime,
                                         PacketType
                                     ),
-                                    pp_http_worker:handle_packet(WorkerPid, SCPacket, PacketTime)
+                                    pp_http_worker:handle_packet(WorkerPid, SCPacket, PacketTime),
+                                    case pp_utils:is_chain_dead() of
+                                        true ->
+                                            pp_packet_reporter:report_packet(
+                                                helium_packet_service:to_packet_up(SCPacket),
+                                                NetID
+                                            );
+                                        _ ->
+                                            ok
+                                    end
                             end
                     end
                 end,
