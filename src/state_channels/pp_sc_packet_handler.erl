@@ -31,31 +31,38 @@ handle_free_packet(SCPacket, PacketTime, Pid) ->
     PubKeyBin = blockchain_state_channel_packet_v1:hotspot(SCPacket),
     Packet = blockchain_state_channel_packet_v1:packet(SCPacket),
     Region = blockchain_state_channel_packet_v1:region(SCPacket),
-    Offer = blockchain_state_channel_offer_v1:from_packet(Packet, PubKeyBin, Region),
 
-    case ?MODULE:handle_free_offer(Offer, Pid) of
-        {error, _} = Err ->
-            Pid ! Err,
-            Err;
-        ok ->
-            case ru_poc_denylist:check(PubKeyBin) of
-                true ->
-                    lager:debug("do not rewards packet from denylist hotspot");
-                false ->
-                    case pp_utils:is_chain_dead() of
+    try blockchain_state_channel_offer_v1:from_packet(Packet, PubKeyBin, Region) of
+        Offer ->
+            case ?MODULE:handle_free_offer(Offer, Pid) of
+                {error, _} = Err ->
+                    Pid ! Err,
+                    Err;
+                ok ->
+                    case ru_poc_denylist:check(PubKeyBin) of
                         true ->
-                            ok;
+                            lager:debug("do not rewards packet from denylist hotspot");
                         false ->
-                            Ledger = pp_utils:ledger(),
-                            erlang:spawn(blockchain_state_channels_server, track_offer, [
-                                Offer,
-                                Ledger,
-                                self()
-                            ])
-                    end
-            end,
-            ?MODULE:handle_packet(SCPacket, PacketTime, Pid),
-            ok
+                            case pp_utils:is_chain_dead() of
+                                true ->
+                                    ok;
+                                false ->
+                                    Ledger = pp_utils:ledger(),
+                                    erlang:spawn(blockchain_state_channels_server, track_offer, [
+                                        Offer,
+                                        Ledger,
+                                        self()
+                                    ])
+                            end
+                    end,
+                    ?MODULE:handle_packet(SCPacket, PacketTime, Pid),
+                    ok
+            end
+    catch
+        _ ->
+            Err = {error, invalid_packet},
+            Pid ! Err,
+            Err
     end.
 
 -spec handle_free_offer(blockchain_state_channel_offer_v1:offer(), pid()) -> ok | {error, any()}.
