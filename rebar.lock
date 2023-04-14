@@ -22,7 +22,7 @@
  {<<"cf">>,{pkg,<<"cf">>,<<"0.3.1">>},2},
  {<<"chatterbox">>,
   {git,"https://github.com/novalabsxyz/chatterbox.git",
-       {ref,"8c9267922d906355928c9fefc7479c6cb7034253"}},
+       {ref,"b030dde9f66612944937d502ebe1a75aebec796f"}},
   0},
  {<<"clique">>,
   {git,"https://github.com/helium/clique.git",
