@@ -44,14 +44,22 @@ route(_EnvUp, StreamState) ->
 
 -spec handle_info(Msg :: any(), StreamState :: grpcbox_stream:t()) -> grpcbox_stream:t().
 handle_info({send_response, Reply}, StreamState) ->
-    grpcbox_stream:send(false, from_sc_packet(Reply), StreamState);
+    lager:debug("got send_response ~p", [Reply]),
+    case from_sc_packet(Reply) of
+        ignore ->
+            lager:debug("ignored"),
+            StreamState;
+        EnvDown ->
+            lager:debug("send EnvDown ~p", [EnvDown]),
+            grpcbox_stream:send(false, EnvDown, StreamState)
+    end;
 handle_info(_Msg, StreamState) ->
     %% NOTE: For testing non-reply flows
     case application:get_env(router, packet_router_grpc_forward_unhandled_messages, undefined) of
         {Pid, Atom} when erlang:is_pid(Pid) andalso erlang:is_atom(Atom) -> Pid ! {Atom, _Msg};
         _ -> ok
     end,
-    lager:info("~p got an unhandled message ~p", [self(), _Msg]),
+    lager:debug("~p got an unhandled message ~p", [self(), _Msg]),
     StreamState.
 
 %% ------------------------------------------------------------------
@@ -152,20 +160,26 @@ routing_information(<<_FType:3, _:5, DevAddr:32/integer-unsigned-big, _/binary>>
 %% ===================================================================
 
 -spec from_sc_packet(router_pb:blockchain_state_channel_response_v1_pb()) ->
-    packet_router_db:envelope_down_v1_pb().
+    packet_router_db:envelope_down_v1_pb() | ignore.
 from_sc_packet(StateChannelResponse) ->
-    Downlink = blockchain_state_channel_response_v1:downlink(StateChannelResponse),
-    PacketDown = #packet_router_packet_down_v1_pb{
-        payload = blockchain_helium_packet_v1:payload(Downlink),
-        rx1 = #window_v1_pb{
-            timestamp = blockchain_helium_packet_v1:timestamp(Downlink),
-            %% Mhz to hz
-            frequency = erlang:round(blockchain_helium_packet_v1:frequency(Downlink) * 1_000_000),
-            datarate = hpr_datarate(blockchain_helium_packet_v1:datarate(Downlink))
-        },
-        rx2 = rx2_window(blockchain_helium_packet_v1:rx2_window(Downlink))
-    },
-    #envelope_down_v1_pb{data = {packet, PacketDown}}.
+    case blockchain_state_channel_response_v1:downlink(StateChannelResponse) of
+        undefined ->
+            ignore;
+        Downlink ->
+            PacketDown = #packet_router_packet_down_v1_pb{
+                payload = blockchain_helium_packet_v1:payload(Downlink),
+                rx1 = #window_v1_pb{
+                    timestamp = blockchain_helium_packet_v1:timestamp(Downlink),
+                    %% Mhz to hz
+                    frequency = erlang:round(
+                        blockchain_helium_packet_v1:frequency(Downlink) * 1_000_000
+                    ),
+                    datarate = hpr_datarate(blockchain_helium_packet_v1:datarate(Downlink))
+                },
+                rx2 = rx2_window(blockchain_helium_packet_v1:rx2_window(Downlink))
+            },
+            #envelope_down_v1_pb{data = {packet, PacketDown}}
+    end.
 
 -spec hpr_datarate(unicode:chardata()) -> packet_router_pb:'helium.data_rate'().
 hpr_datarate(DataRateString) ->
