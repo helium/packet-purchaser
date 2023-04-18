@@ -75,7 +75,7 @@
         %% {aws_default_region, "${PP_PACKET_REPORTER_AWS_REGION}"}
     ]},
     {grpcbox, [
-        {client, #{channels => [{ics_channel, [{https, "alb.iot.mainnet.helium.io", 6080, []}], #{}}]}}
+        {client, #{channels => [{ics_channel, [{https, "alb.iot.mainnet.helium.io", 6080, []}], #{}}]}},
         {servers, [
             #{
                 grpc_opts => #{
