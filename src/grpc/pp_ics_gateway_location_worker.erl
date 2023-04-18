@@ -31,6 +31,7 @@
 -define(ICS_CHANNEL, ics_channel).
 -define(SERVER, ?MODULE).
 -define(ETS, pp_ics_gateway_location_worker_ets).
+-define(CACHED_NOT_FOUND, cached_not_found).
 
 -record(state, {
     pubkey_bin :: libp2p_crypto:pubkey_bin(),
@@ -43,7 +44,7 @@
     h3_index :: h3:index()
 }).
 
--type state() :: #state{}.
+%% -type state() :: #state{}.
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
@@ -66,8 +67,23 @@ init_ets() ->
 -spec get(libp2p_crypto:pubkey_bin()) -> {ok, h3:index()} | {error, any()}.
 get(PubKeyBin) ->
     case lookup(PubKeyBin) of
+        {error, ?CACHED_NOT_FOUND} = E ->
+            E;
         {error, _Reason} ->
-            gen_server:call(?SERVER, {get, PubKeyBin});
+            HotspotName = blockchain_utils:addr2name(PubKeyBin),
+            case get_gateway_location(PubKeyBin) of
+                {error, ErrReason, _} ->
+                    lager:warning(
+                        "fail to get_gateway_location ~p for ~s",
+                        [ErrReason, HotspotName]
+                    ),
+                    ok = insert(PubKeyBin, ?CACHED_NOT_FOUND),
+                    {error, ErrReason};
+                {ok, H3IndexString} ->
+                    H3Index = h3:from_string(H3IndexString),
+                    ok = insert(PubKeyBin, H3Index),
+                    {ok, H3Index}
+            end;
         {ok, _} = OK ->
             OK
     end.
@@ -87,17 +103,6 @@ init(
         sig_fun = SigFun
     }}.
 
-handle_call({get, PubKeyBin}, _From, #state{} = State) ->
-    HotspotName = pp_utils:animal_name(PubKeyBin),
-    case get_gateway_location(PubKeyBin, State) of
-        {error, Reason, _} ->
-            lager:warning("failed to get_gateway_location ~p for ~s", [Reason, HotspotName]),
-            {reply, {error, Reason}, State};
-        {ok, H3IndexString} ->
-            H3Index = h3:from_string(H3IndexString),
-            ok = insert(PubKeyBin, H3Index),
-            {reply, {ok, H3Index}, State}
-    end;
 handle_call(_Msg, _From, State) ->
     lager:warning("rcvd unknown call msg: ~p from: ~p", [_Msg, _From]),
     {reply, ok, State}.
@@ -120,15 +125,22 @@ terminate(_Reason, _State) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
+%% Store valid locations for up to 24 hours.
+%% Invalid locations for 1 hour.
 -spec lookup(PubKeyBin :: libp2p_crypto:pubkey_bin()) ->
-    {ok, h3:index()} | {error, not_found | outdated}.
+    {ok, h3:index()} | {error, ?CACHED_NOT_FOUND | not_found | outdated}.
 lookup(PubKeyBin) ->
     Yesterday = erlang:system_time(millisecond) - timer:hours(24),
+    OneHour = erlang:system_time(millisecond) - timer:hours(1),
     case ets:lookup(?ETS, PubKeyBin) of
         [] ->
             {error, not_found};
         [#location{timestamp = T}] when T < Yesterday ->
             {error, outdated};
+        [#location{timestamp = T, h3_index = ?CACHED_NOT_FOUND}] when T < OneHour ->
+            {error, outdated};
+        [#location{h3_index = ?CACHED_NOT_FOUND}] ->
+            {error, ?CACHED_NOT_FOUND};
         [#location{h3_index = H3Index}] ->
             {ok, H3Index}
     end.
@@ -144,11 +156,12 @@ insert(PubKeyBin, H3Index) ->
 
 %% We have to do this because the call to `helium_iot_config_gateway_client:location` can return
 %% `{error, {Status, Reason}, _}` but is not in the spec... [from router]
--dialyzer({nowarn_function, get_gateway_location/2}).
+-dialyzer({nowarn_function, get_gateway_location/1}).
 
--spec get_gateway_location(PubKeyBin :: libp2p_crypto:pubkey_bin(), state()) ->
+-spec get_gateway_location(PubKeyBin :: libp2p_crypto:pubkey_bin()) ->
     {ok, string()} | {error, any(), boolean()}.
-get_gateway_location(PubKeyBin, #state{sig_fun = SigFun}) ->
+get_gateway_location(PubKeyBin) ->
+    SigFun = pp_utils:sig_fun(),
     Req = #{
         gateway => PubKeyBin
     },
