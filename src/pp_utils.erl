@@ -21,7 +21,8 @@
 -export([
     load_key/1,
     pubkeybin/0,
-    pubkey_b58/0
+    pubkey_b58/0,
+    sig_fun/0
 ]).
 
 -export([
@@ -230,6 +231,7 @@ load_key(BaseDir) ->
                 {PubKey, libp2p_crypto:mk_sig_fun(PrivKey), libp2p_crypto:mk_ecdh_fun(PrivKey)}
         end,
     ok = persistent_term:put(pp_pubkeybin, libp2p_crypto:pubkey_to_bin(Pubkey)),
+    ok = persistent_term:put(pp_key, Key),
     Key.
 
 -spec pubkeybin() -> binary().
@@ -245,6 +247,11 @@ pubkeybin() ->
 -spec pubkey_b58() -> string().
 pubkey_b58() ->
     libp2p_crypto:bin_to_b58(pubkeybin()).
+
+-spec sig_fun() -> libp2p_crypto:sig_fun().
+sig_fun() ->
+    {_PubKey, SigFun, _} = persistent_term:get(pp_key),
+    SigFun.
 
 %% ===================================================================
 %% Internal Functions
