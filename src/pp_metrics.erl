@@ -220,6 +220,7 @@ init(Args) ->
 
     ok = declare_metrics(),
     ok = spawn_crawl_offers(timer:seconds(Timer), timer:seconds(Window)),
+    _ = schedule_next_tick(),
 
     {ok, #state{}}.
 
