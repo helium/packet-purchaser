@@ -152,7 +152,7 @@ routing_information(
         _/binary>>
 ) ->
     {eui, DevEUI, AppEUI};
-routing_information(<<_FType:3, _:5, DevAddr:32/integer-unsigned-big, _/binary>>) ->
+routing_information(<<_FType:3, _:5, DevAddr:32/integer-unsigned-little, _/binary>>) ->
     % routing_information_pb{data = {devaddr, DevAddr}}.
     {devaddr, DevAddr}.
 
