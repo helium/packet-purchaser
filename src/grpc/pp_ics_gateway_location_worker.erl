@@ -163,7 +163,8 @@ insert(PubKeyBin, H3Index) ->
 get_gateway_location(PubKeyBin) ->
     SigFun = pp_utils:sig_fun(),
     Req = #{
-        gateway => PubKeyBin
+        gateway => PubKeyBin,
+        signer => pp_utils:pubkeybin()
     },
     EncodedReq = iot_config_client_pb:encode_msg(Req, gateway_location_req_v1_pb),
     SignedReq = Req#{signature => SigFun(EncodedReq)},
