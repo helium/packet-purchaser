@@ -371,7 +371,7 @@ frame_packet(MType, PubKeyBin, DevAddr, FCnt, Routing, Options) ->
             blockchain_state_channel_v1_pb:encode_msg(Msg)
     end.
 
-frame_payload(MType, DevAddr, NwkSessionKey, AppSessionKey, FCnt) ->
+frame_payload(MType, <<DevNum:32/integer-big>>= DevAddr, NwkSessionKey, AppSessionKey, FCnt) ->
     MHDRRFU = 0,
     Major = 0,
     ADR = 0,
@@ -386,7 +386,7 @@ frame_payload(MType, DevAddr, NwkSessionKey, AppSessionKey, FCnt) ->
     ),
     FCntSize = 16,
     Payload0 =
-        <<MType:3, MHDRRFU:3, Major:2, DevAddr:4/binary, ADR:1, ADRACKReq:1, ACK:1, RFU:1,
+        <<MType:3, MHDRRFU:3, Major:2, DevNum:32/integer-little, ADR:1, ADRACKReq:1, ACK:1, RFU:1,
             FOptsLen:4, FCnt:FCntSize/little-unsigned-integer, FOptsBin:FOptsLen/binary,
             Port:8/integer, Data/binary>>,
     B0 = b0(MType band 1, DevAddr, FCnt, erlang:byte_size(Payload0)),
