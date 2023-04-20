@@ -11,7 +11,7 @@
 -export([
     region_params/2,
     load_region/2,
-    location/2
+    location/2,info/2,info_stream/2
 ]).
 
 -spec init(atom(), StreamState :: grpcbox_stream:t()) -> grpcbox_stream:t().
@@ -26,6 +26,12 @@ region_params(_Ctx, _Msg) ->
     {grpc_error, {grpcbox_stream:code_to_status(12), <<"UNIMPLEMENTED">>}}.
 
 load_region(_Ctx, _Msg) ->
+    {grpc_error, {grpcbox_stream:code_to_status(12), <<"UNIMPLEMENTED">>}}.
+
+info(_Ctx, _Msg) ->
+    {grpc_error, {grpcbox_stream:code_to_status(12), <<"UNIMPLEMENTED">>}}.
+
+info_stream(_Ctx, _Msg) ->
     {grpc_error, {grpcbox_stream:code_to_status(12), <<"UNIMPLEMENTED">>}}.
 
 location(Ctx, Req) ->
@@ -60,5 +66,5 @@ verify_location_req(Req) ->
     libp2p_crypto:verify(
         EncodedReq,
         Req#gateway_location_req_v1_pb.signature,
-        libp2p_crypto:bin_to_pubkey(pp_utils:pubkeybin())
+        libp2p_crypto:bin_to_pubkey(Req#gateway_location_req_v1_pb.signer)
     ).
