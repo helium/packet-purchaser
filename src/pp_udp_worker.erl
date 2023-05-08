@@ -372,9 +372,11 @@ handle_pull_ack(
 handle_pull_resp(Data, #state{pubkeybin = PubKeyBin} = State) ->
     case pp_roaming_downlink:lookup_handler(PubKeyBin) of
         {error, _} ->
+            ok = pp_metrics:handle_packet_down(error, udp),
             lager:warning("could not send downlink, no handler pids");
         {ok, HandlerPid} ->
             ok = do_handle_pull_resp(Data, HandlerPid),
+            ok = pp_metrics:handle_packet_down(ok, udp),
             Token = semtech_udp:token(Data),
             _ = send_tx_ack(Token, State)
     end,
