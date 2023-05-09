@@ -82,8 +82,12 @@ handle_event(Event, _Data, _Args) ->
 
 -spec insert_handler(PubKeyBin :: libp2p_crypto:pubkey_bin(), SCPid :: pid()) -> ok.
 insert_handler(PubKeyBin, SCPid) ->
-    pg:join(PubKeyBin, SCPid),
-    ok.
+    case ?MODULE:lookup_handler(PubKeyBin) of
+        {ok, _Pid} ->
+            ok;
+        _ ->
+            pg:join(PubKeyBin, SCPid)
+    end.
 
 -spec lookup_handler(PubKeyBin :: libp2p_crypto:pubkey_bin()) ->
     {ok, SCPid :: pid()} | {error, any()}.
