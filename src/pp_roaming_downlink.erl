@@ -1,8 +1,5 @@
 -module(pp_roaming_downlink).
 
--include_lib("elli/include/elli.hrl").
--include("config.hrl").
-
 -behaviour(elli_handler).
 
 %% Downlink API
@@ -17,14 +14,10 @@
     lookup_handler/1
 ]).
 
--define(SC_HANDLER_ETS, pp_http_sc_handler_ets).
-
 %% Downlink Handler ==================================================
 
 handle(Req, Args) ->
     Method = elli_request:method(Req),
-    Host = elli_request:get_header(<<"Host">>, Req),
-    lager:info("request from [host: ~p]", [Host]),
 
     lager:debug("request: ~p", [{Method, elli_request:path(Req), Req, Args}]),
     Body = elli_request:body(Req),
@@ -35,10 +28,12 @@ handle(Req, Args) ->
             {200, [], <<"OK">>};
         {error, _} = Err ->
             lager:error("dowlink handle message error ~p", [Err]),
+            ok = pp_metrics:handle_packet_down(error, http),
             {500, [], <<"An error occurred">>};
         {join_accept, {SCPid, SCResp}} ->
             lager:debug("sending downlink [sc_pid: ~p]", [SCPid]),
             ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
+            ok = pp_metrics:handle_packet_down(ok, http),
             {200, [], <<"downlink sent: 1">>};
         {downlink, Response, {SCPid, SCResp}, {Endpoint, FlowType}} ->
             lager:debug(
@@ -46,6 +41,7 @@ handle(Req, Args) ->
                 [SCPid, Response]
             ),
             ok = blockchain_state_channel_common:send_response(SCPid, SCResp),
+            ok = pp_metrics:handle_packet_down(ok, http),
             case FlowType of
                 sync ->
                     {200, [], jsx:encode(Response)};
@@ -86,8 +82,12 @@ handle_event(Event, _Data, _Args) ->
 
 -spec insert_handler(PubKeyBin :: libp2p_crypto:pubkey_bin(), SCPid :: pid()) -> ok.
 insert_handler(PubKeyBin, SCPid) ->
-    pg:join(PubKeyBin, SCPid),
-    ok.
+    case ?MODULE:lookup_handler(PubKeyBin) of
+        {ok, _Pid} ->
+            ok;
+        _ ->
+            pg:join(PubKeyBin, SCPid)
+    end.
 
 -spec lookup_handler(PubKeyBin :: libp2p_crypto:pubkey_bin()) ->
     {ok, SCPid :: pid()} | {error, any()}.

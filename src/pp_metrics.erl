@@ -8,6 +8,7 @@
 -define(METRICS_UNIQUE_OFFER_COUNT, packet_purchaser_unique_offer_count).
 -define(METRICS_OFFER_COUNT, packet_purchaser_offer_count).
 -define(METRICS_PACKET_COUNT, packet_purchaser_packet_count).
+-define(METRICS_PACKET_DOWN_COUNT, packet_purchaser_packet_down_count).
 -define(METRICS_GWMP_COUNT, packet_purchaser_gwmp_counter).
 -define(METRICS_DC_BALANCE, packet_purchaser_dc_balance).
 -define(METRICS_CHAIN_BLOCKS, packet_purchaser_blockchain_blocks).
@@ -43,6 +44,7 @@
     handle_unique_offer/3,
     handle_offer/4,
     handle_packet/4,
+    handle_packet_down/2,
     %% GWMP
     pull_ack/2,
     pull_ack_missed/2,
@@ -130,6 +132,10 @@ handle_offer(NetID, OfferType, Action, PHash) ->
 ) -> ok.
 handle_packet(_PubKeyBin, NetID, PacketType, ProtocolType) ->
     prometheus_counter:inc(?METRICS_PACKET_COUNT, [clean_net_id(NetID), PacketType, ProtocolType]).
+
+-spec handle_packet_down(Status :: ok | error, Source :: udp | http) -> ok.
+handle_packet_down(Status, Source) ->
+    prometheus_counter:inc(?METRICS_PACKET_DOWN_COUNT, [Status, Source]).
 
 -spec push_ack(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
 push_ack(_PubKeyBin, NetID) ->
@@ -311,6 +317,14 @@ declare_metrics() ->
         {name, ?METRICS_GWMP_COUNT},
         {help, "Semtech UDP acks for Gateway and NetID"},
         {labels, [net_id, type, status]}
+    ]),
+
+    %% status = downlink success :: ok | error
+    %% source = protocol :: udp | http
+    prometheus_counter:declare([
+        {name, ?METRICS_PACKET_DOWN_COUNT},
+        {help, "Packet Downlink count"},
+        {labels, [status, source]}
     ]),
 
     %% Blockchain metrics

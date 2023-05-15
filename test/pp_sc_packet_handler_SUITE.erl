@@ -2745,7 +2745,7 @@ single_hotspot_multi_net_id_test(_Config) ->
     ok.
 
 multiple_protocol_single_gateway_downlink_test(_Config) ->
-    %% If a packet get's sent to a UDP _and_ HTTP roamer from the same gateway,
+    %% If a packet gets sent to a UDP _and_ HTTP roamer from the same gateway,
     %% then a UDP response is sent through that gateway, regardless of if it was
     %% meant for the latest packet, the downlink will use one of the PIDs the
     %% future HTTP packet is trying to use.
@@ -2817,38 +2817,24 @@ multiple_protocol_single_gateway_downlink_test(_Config) ->
             <<"joins">> => [#{<<"dev_eui">> => DevEUI1, <<"app_eui">> => AppEUI1}]
         }
     ]),
-    %% Spin up 2 procs to act as gateways that whose connections will go down
-    %% when they receive a downlink. Otherwise the test will never fail, as the
-    %% test Pid lives throughout the test.
+    %% Spin up a process to act as a gateway, it's connection will go down when
+    %% it stops receiving downlinks after 2 seconds.
     TestPid = self(),
-    JoinPacketReceiver = spawn(fun() ->
-        receive
-            Msg ->
-                %% ct:print("ONE (join_packet) received: ~p", [Msg]),
-                TestPid ! Msg
-        after timer:seconds(2) -> TestPid ! nothing_received
-        end
-    end),
-    DataPacketReceiver = spawn(fun() ->
-        receive
-            Msg ->
-                %% ct:print("TWO (data_packet) received: ~p", [Msg]),
-                TestPid ! Msg
-        after timer:seconds(2) -> TestPid ! nothing_received
-        end
+    PacketReceiver = spawn(fun() ->
+        receive_and_forward(TestPid, timer:seconds(2))
     end),
 
     %% 3) Send join and data packet
     ok = pp_sc_packet_handler:handle_packet(
         DataPacket,
         erlang:system_time(millisecond),
-        DataPacketReceiver
+        PacketReceiver
     ),
     timer:sleep(50),
     ok = pp_sc_packet_handler:handle_packet(
         JoinPacket,
         erlang:system_time(millisecond),
-        JoinPacketReceiver
+        PacketReceiver
     ),
 
     %% Collect the UDP packets
@@ -2899,6 +2885,14 @@ multiple_protocol_single_gateway_downlink_test(_Config) ->
         end,
 
     ok.
+
+receive_and_forward(ForwardPid, Timeout) ->
+    receive
+        Msg ->
+            ForwardPid ! Msg,
+            receive_and_forward(ForwardPid, Timeout)
+    after Timeout -> ok
+    end.
 
 multi_buy_worst_case_stress_test(_Config) ->
     <<DevNum:32/integer-unsigned>> = ?DEVADDR_COMCAST,

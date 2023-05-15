@@ -74,6 +74,10 @@
         %% {aws_secret_access_key, "${PP_PACKET_REPORTER_AWS_SECRET}"},
         %% {aws_default_region, "${PP_PACKET_REPORTER_AWS_REGION}"}
     ]},
+    {chatterbox, [
+        {client_initial_window_size, 16777216},
+        {server_initial_window_size, 16777216}
+    ]},
     {grpcbox, [
         {client, #{channels => [{ics_channel, [{https, "alb.iot.mainnet.helium.io", 6080, []}], #{}}]}},
         {servers, [
