@@ -3,7 +3,7 @@
 -include("./autogen/server/packet_router_pb.hrl").
 
 -export([
-    new/4,
+    new/5,
     gateway_tmst/1,
     oui/1,
     net_id/1,
@@ -38,10 +38,11 @@
     Packet :: pp_packet_up:packet(),
     NetID :: non_neg_integer(),
     OUI :: non_neg_integer(),
-    PacketType :: join | uplink
+    PacketType :: join | uplink,
+    ReceivedTimestamp :: non_neg_integer()
 ) -> packet_report().
-new(Packet, NetID, OUI, PacketType) ->
-    New = #packet_router_packet_report_v1_pb{
+new(Packet, NetID, OUI, PacketType, ReceivedTimestamp) ->
+    #packet_router_packet_report_v1_pb{
         gateway_tmst = pp_packet_up:timestamp(Packet),
         oui = OUI,
         net_id = NetID,
@@ -55,10 +56,8 @@ new(Packet, NetID, OUI, PacketType) ->
         payload_size = erlang:byte_size(pp_packet_up:payload(Packet)),
         free = false,
         type = PacketType,
-        received_timestamp = erlang:system_time(millisecond)
-    },
-    ct:print("New PacketReport:~n~p", [New]),
-    New.
+        received_timestamp = ReceivedTimestamp
+    }.
 
 -spec gateway_tmst(PacketReport :: packet_report()) -> non_neg_integer() | undefined.
 gateway_tmst(PacketReport) ->
