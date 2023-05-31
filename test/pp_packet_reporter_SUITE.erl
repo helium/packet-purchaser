@@ -110,8 +110,8 @@ upload_test(_Config) ->
     ExpectedPackets = lists:foldl(
         fun(X, Acc) ->
             Packet = test_utils:uplink_packet_up(#{rssi => X}),
-            pp_packet_reporter:report_packet(Packet, NetID),
-            PacketReport = pp_packet_report:new(Packet, NetID),
+            pp_packet_reporter:report_packet(Packet, NetID, uplink),
+            PacketReport = pp_packet_report:new(Packet, NetID, pp_utils:get_oui(), uplink),
             [PacketReport | Acc]
         end,
         [],

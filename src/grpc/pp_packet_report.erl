@@ -3,8 +3,8 @@
 -include("./autogen/server/packet_router_pb.hrl").
 
 -export([
-    new/2,
-    gateway_timestamp_ms/1,
+    new/4,
+    gateway_tmst/1,
     oui/1,
     net_id/1,
     rssi/1,
@@ -15,6 +15,9 @@
     gateway/1,
     payload_hash/1,
     payload_size/1,
+    free/1,
+    type/1,
+    received_timestamp/1,
     encode/1,
     decode/1
 ]).
@@ -31,11 +34,16 @@
 
 -export_type([packet_report/0]).
 
--spec new(hpr_packet_up:packet(), NetID :: non_neg_integer()) -> packet_report().
-new(Packet, NetID) ->
-    #packet_router_packet_report_v1_pb{
-        gateway_timestamp_ms = pp_packet_up:timestamp(Packet),
-        oui = pp_utils:get_oui(),
+-spec new(
+    Packet :: pp_packet_up:packet(),
+    NetID :: non_neg_integer(),
+    OUI :: non_neg_integer(),
+    PacketType :: join | uplink
+) -> packet_report().
+new(Packet, NetID, OUI, PacketType) ->
+    New = #packet_router_packet_report_v1_pb{
+        gateway_tmst = pp_packet_up:timestamp(Packet),
+        oui = OUI,
         net_id = NetID,
         rssi = pp_packet_up:rssi(Packet),
         frequency = pp_packet_up:frequency(Packet),
@@ -44,12 +52,17 @@ new(Packet, NetID) ->
         region = pp_packet_up:region(Packet),
         gateway = pp_packet_up:gateway(Packet),
         payload_hash = pp_packet_up:phash(Packet),
-        payload_size = erlang:byte_size(pp_packet_up:payload(Packet))
-    }.
+        payload_size = erlang:byte_size(pp_packet_up:payload(Packet)),
+        free = false,
+        type = PacketType,
+        received_timestamp = erlang:system_time(millisecond)
+    },
+    ct:print("New PacketReport:~n~p", [New]),
+    New.
 
--spec gateway_timestamp_ms(PacketReport :: packet_report()) -> non_neg_integer() | undefined.
-gateway_timestamp_ms(PacketReport) ->
-    PacketReport#packet_router_packet_report_v1_pb.gateway_timestamp_ms.
+-spec gateway_tmst(PacketReport :: packet_report()) -> non_neg_integer() | undefined.
+gateway_tmst(PacketReport) ->
+    PacketReport#packet_router_packet_report_v1_pb.gateway_tmst.
 
 -spec oui(Packet :: packet_report()) -> non_neg_integer() | undefined.
 oui(PacketReport) ->
@@ -91,6 +104,18 @@ payload_hash(PacketReport) ->
 payload_size(PacketReport) ->
     PacketReport#packet_router_packet_report_v1_pb.payload_size.
 
+-spec free(PacketReport :: packet_report()) -> boolean() | undefined.
+free(PacketReport) ->
+    PacketReport#packet_router_packet_report_v1_pb.free.
+
+-spec type(PacketReport :: packet_report()) -> join | uplink | undefined.
+type(PacketReport) ->
+    PacketReport#packet_router_packet_report_v1_pb.type.
+
+-spec received_timestamp(PacketReport :: packet_report()) -> non_neg_integer() | undefined.
+received_timestamp(PacketReport) ->
+    PacketReport#packet_router_packet_report_v1_pb.received_timestamp.
+
 -spec encode(PacketReport :: packet_report()) -> binary().
 encode(#packet_router_packet_report_v1_pb{} = PacketReport) ->
     packet_router_pb:encode_msg(PacketReport).
@@ -106,10 +131,10 @@ decode(BinaryReport) ->
 
 -spec test_new(Opts :: map()) -> packet_report().
 test_new(Opts) ->
-    PacketUp = pp_packet_up:test_new(#{}),
+    PacketUp = maps:get(packet, Opts, pp_packet_up:test_new(#{})),
     #packet_router_packet_report_v1_pb{
-        gateway_timestamp_ms = maps:get(
-            gateway_timestamp_ms,
+        gateway_tmst = maps:get(
+            gateway_tmst,
             Opts,
             erlang:system_time(millisecond)
         ),
@@ -122,7 +147,10 @@ test_new(Opts) ->
         region = maps:get(region, Opts, 'US915'),
         gateway = maps:get(gateway, Opts, <<"gateway">>),
         payload_hash = pp_packet_up:phash(PacketUp),
-        payload_size = erlang:byte_size(pp_packet_up:payload(PacketUp))
+        payload_size = erlang:byte_size(pp_packet_up:payload(PacketUp)),
+        free = maps:get(free, Opts, false),
+        type = maps:get(type, Opts, join),
+        received_timestamp = maps:get(received_timestamp, Opts, erlang:system_time(millisecond))
     }.
 
 -endif.
@@ -134,10 +162,10 @@ test_new(Opts) ->
 
 -include_lib("eunit/include/eunit.hrl").
 
-gateway_timestamp_ms_test() ->
+gateway_tmst_test() ->
     Now = erlang:system_time(millisecond),
-    PacketReport = test_new(#{gateway_timestamp_ms => Now}),
-    ?assertEqual(Now, gateway_timestamp_ms(PacketReport)),
+    PacketReport = test_new(#{gateway_tmst => Now}),
+    ?assertEqual(Now, gateway_tmst(PacketReport)),
     ok.
 
 oui_test() ->
@@ -186,7 +214,6 @@ encode_decode_test() ->
     ok.
 
 new_test() ->
-    application:set_env(packet_purchaser, oui, 1),
     Now = erlang:system_time(millisecond),
     TestPacket = pp_packet_up:test_new(#{
         timestamp => Now,

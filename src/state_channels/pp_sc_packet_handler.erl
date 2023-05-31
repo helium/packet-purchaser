@@ -174,7 +174,8 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                                         true ->
                                             pp_packet_reporter:report_packet(
                                                 helium_packet_service:to_packet_up(SCPacket),
-                                                NetID
+                                                NetID,
+                                                PacketType
                                             );
                                         _ ->
                                             ok
@@ -229,7 +230,8 @@ handle_packet(SCPacket, PacketTime, Pid) ->
                                         true ->
                                             pp_packet_reporter:report_packet(
                                                 helium_packet_service:to_packet_up(SCPacket),
-                                                NetID
+                                                NetID,
+                                                PacketType
                                             );
                                         _ ->
                                             ok
