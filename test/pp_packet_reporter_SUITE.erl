@@ -40,6 +40,8 @@ all() ->
 %% TEST CASE SETUP
 %%--------------------------------------------------------------------
 init_per_testcase(TestCase, Config) ->
+    ok = application:set_env(packet_purchaser, is_chain_dead, true),
+
     case os:getenv("PP_PACKET_REPORTER_LOCAL_HOST") of
         false ->
             {skip, env_var_not_set};
@@ -54,7 +56,7 @@ init_per_testcase(TestCase, Config) ->
                 ReporterCfg#{local_host => erlang:list_to_binary(OSEnv)},
                 [{persistent, true}]
             ),
-            test_utils:init_per_testcase(TestCase, Config)
+            test_utils:init_per_testcase(TestCase, [{is_chain_dead, true} | Config])
     end.
 
 %%--------------------------------------------------------------------
@@ -109,9 +111,15 @@ upload_test(_Config) ->
     %% }),
     ExpectedPackets = lists:foldl(
         fun(X, Acc) ->
+            Time = erlang:system_time(millisecond),
             Packet = test_utils:uplink_packet_up(#{rssi => X}),
-            pp_packet_reporter:report_packet(Packet, NetID),
-            PacketReport = pp_packet_report:new(Packet, NetID),
+            pp_packet_reporter:report_packet(
+                Packet,
+                NetID,
+                uplink,
+                Time
+            ),
+            PacketReport = pp_packet_report:new(Packet, NetID, pp_utils:get_oui(), uplink, Time),
             [PacketReport | Acc]
         end,
         [],

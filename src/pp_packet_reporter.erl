@@ -7,7 +7,7 @@
 %% ------------------------------------------------------------------
 -export([
     start_link/1,
-    report_packet/2
+    report_packet/4
 ]).
 
 %% ------------------------------------------------------------------
@@ -59,9 +59,16 @@
 start_link(Args) ->
     gen_server:start_link({local, ?SERVER}, ?SERVER, Args, []).
 
--spec report_packet(Packet :: pp_packet_up:packet(), NetID :: non_neg_integer()) -> ok.
-report_packet(Packet, NetID) ->
-    EncodedPacket = encode_packet(Packet, NetID),
+-spec report_packet(
+    Packet :: pp_packet_up:packet(),
+    NetID :: non_neg_integer(),
+    PacketType :: join | packet | uplink,
+    ReceivedTimestamp :: non_neg_integer()
+) -> ok.
+report_packet(Packet, NetID, packet, ReceivedTimestamp) ->
+    report_packet(Packet, NetID, uplink, ReceivedTimestamp);
+report_packet(Packet, NetID, PacketType, ReceivedTimestamp) ->
+    EncodedPacket = encode_packet(Packet, NetID, pp_utils:get_oui(), PacketType, ReceivedTimestamp),
     gen_server:cast(?SERVER, {report_packet, EncodedPacket}).
 
 %% ------------------------------------------------------------------
@@ -140,9 +147,17 @@ terminate(_Reason, #state{current_packets = Packets}) ->
 %%% Internal Function Definitions
 %% ------------------------------------------------------------------
 
--spec encode_packet(Packet :: pp_packet_up:packet(), PacketRoute :: pp_route:route()) -> binary().
-encode_packet(Packet, PacketRoute) ->
-    EncodedPacket = pp_packet_report:encode(pp_packet_report:new(Packet, PacketRoute)),
+-spec encode_packet(
+    Packet :: pp_packet_up:packet(),
+    NetID :: non_neg_integer(),
+    OUI :: non_neg_integer(),
+    PacketType :: join | uplink,
+    ReceivedTimestamp :: non_neg_integer()
+) -> binary().
+encode_packet(Packet, NetID, OUI, PacketType, ReceivedTimestamp) ->
+    EncodedPacket = pp_packet_report:encode(
+        pp_packet_report:new(Packet, NetID, OUI, PacketType, ReceivedTimestamp)
+    ),
     PacketSize = erlang:size(EncodedPacket),
     <<PacketSize:32/big-integer-unsigned, EncodedPacket/binary>>.
 
@@ -227,11 +242,11 @@ get_local_host_port() ->
 -spec get_local_host_port(Host :: string() | binary(), Port :: string() | binary()) ->
     {binary(), binary()}.
 get_local_host_port([], []) ->
-    {<<"localhost">>, <<"4556">>};
+    {<<"localhost">>, <<"4566">>};
 get_local_host_port([], Port) ->
     get_local_host_port(<<"localhost">>, Port);
 get_local_host_port(Host, []) ->
-    get_local_host_port(Host, <<"4556">>);
+    get_local_host_port(Host, <<"4566">>);
 get_local_host_port(Host, Port) when is_list(Host) ->
     get_local_host_port(erlang:list_to_binary(Host), Port);
 get_local_host_port(Host, Port) when is_list(Port) ->
