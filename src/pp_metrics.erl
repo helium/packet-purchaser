@@ -9,7 +9,6 @@
 -define(METRICS_OFFER_COUNT, packet_purchaser_offer_count).
 -define(METRICS_PACKET_COUNT, packet_purchaser_packet_count).
 -define(METRICS_PACKET_DOWN_COUNT, packet_purchaser_packet_down_count).
--define(METRICS_GWMP_COUNT, packet_purchaser_gwmp_counter).
 -define(METRICS_DC_BALANCE, packet_purchaser_dc_balance).
 -define(METRICS_CHAIN_BLOCKS, packet_purchaser_blockchain_blocks).
 
@@ -45,11 +44,6 @@
     handle_offer/4,
     handle_packet/4,
     handle_packet_down/2,
-    %% GWMP
-    pull_ack/2,
-    pull_ack_missed/2,
-    push_ack/2,
-    push_ack_missed/2,
     %% Stats
     dcs/1,
     blocks/1,
@@ -136,22 +130,6 @@ handle_packet(_PubKeyBin, NetID, PacketType, ProtocolType) ->
 -spec handle_packet_down(Status :: ok | error, Source :: udp | http) -> ok.
 handle_packet_down(Status, Source) ->
     prometheus_counter:inc(?METRICS_PACKET_DOWN_COUNT, [Status, Source]).
-
--spec push_ack(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
-push_ack(_PubKeyBin, NetID) ->
-    prometheus_counter:inc(?METRICS_GWMP_COUNT, [clean_net_id(NetID), push_ack, hit]).
-
--spec push_ack_missed(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
-push_ack_missed(_PubKeyBin, NetID) ->
-    prometheus_counter:inc(?METRICS_GWMP_COUNT, [clean_net_id(NetID), push_ack, miss]).
-
--spec pull_ack(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
-pull_ack(_PubKeyBin, NetID) ->
-    prometheus_counter:inc(?METRICS_GWMP_COUNT, [clean_net_id(NetID), pull_ack, hit]).
-
--spec pull_ack_missed(PubKeyBin :: libp2p_crypto:pubkey_bin(), NetID :: non_neg_integer()) -> ok.
-pull_ack_missed(_PubKeyBin, NetID) ->
-    prometheus_counter:inc(?METRICS_GWMP_COUNT, [clean_net_id(NetID), pull_ack, miss]).
 
 -spec dcs(Balance :: non_neg_integer()) -> ok.
 dcs(Balance) ->
@@ -309,14 +287,6 @@ declare_metrics() ->
         {name, ?METRICS_PACKET_COUNT},
         {help, "Packet count for NetID"},
         {labels, [net_id, type, protocol]}
-    ]),
-
-    %% type = gwmp packet type :: push_ack | pull_ack
-    %% status = received :: hit | miss
-    prometheus_counter:declare([
-        {name, ?METRICS_GWMP_COUNT},
-        {help, "Semtech UDP acks for Gateway and NetID"},
-        {labels, [net_id, type, status]}
     ]),
 
     %% status = downlink success :: ok | error
