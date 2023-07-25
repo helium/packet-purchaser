@@ -131,10 +131,8 @@ counts(Height) ->
     SignedTxn :: blockchain_txn_state_channel_close_v1:txn_state_channel_close()
 ) -> ok.
 sc_hook_close_submit(ok, _SignedTxn) ->
-    ok = pp_metrics:state_channel_close(ok),
     lager:info("sc close txn accepted");
 sc_hook_close_submit(Error, SignedTxn) ->
-    ok = pp_metrics:state_channel_close(error),
     lager:error("sc close txn failed [err: ~p] [txn: ~p]", [Error, SignedTxn]).
 
 %% ------------------------------------------------------------------

@@ -9,16 +9,6 @@
 -define(METRICS_OFFER_COUNT, packet_purchaser_offer_count).
 -define(METRICS_PACKET_COUNT, packet_purchaser_packet_count).
 -define(METRICS_PACKET_DOWN_COUNT, packet_purchaser_packet_down_count).
--define(METRICS_DC_BALANCE, packet_purchaser_dc_balance).
--define(METRICS_CHAIN_BLOCKS, packet_purchaser_blockchain_blocks).
-
--define(METRICS_SC_OPENED_COUNT, packet_purchaser_state_channel_opened_count).
--define(METRICS_SC_OVERSPENT_COUNT, packet_purchaser_state_channel_overspent_count).
--define(METRICS_SC_ACTIVE_COUNT, packet_purchaser_state_channel_active_count).
--define(METRICS_SC_ACTIVE_BALANCE, packet_purchaser_state_channel_active_balance).
--define(METRICS_SC_ACTIVE_ACTORS, packet_purchaser_state_channel_active_actors).
--define(METRICS_SC_CLOSE_SUBMIT, packet_purchaser_state_channel_close_submit_count).
--define(METRICS_SC_CLOSE_CONFLICT, packet_purchaser_state_channel_close_conflicts).
 
 -define(METRICS_WS_STATE, packet_purchaser_ws_state).
 -define(METRICS_WS_MSG_COUNT, packet_purchaser_ws_msg_count).
@@ -44,11 +34,6 @@
     handle_offer/4,
     handle_packet/4,
     handle_packet_down/2,
-    %% Stats
-    dcs/1,
-    blocks/1,
-    state_channels/5,
-    state_channel_close/1,
     %% Websocket
     ws_state/1,
     ws_send_msg/1,
@@ -131,32 +116,6 @@ handle_packet(_PubKeyBin, NetID, PacketType, ProtocolType) ->
 handle_packet_down(Status, Source) ->
     prometheus_counter:inc(?METRICS_PACKET_DOWN_COUNT, [Status, Source]).
 
--spec dcs(Balance :: non_neg_integer()) -> ok.
-dcs(Balance) ->
-    prometheus_gauge:set(?METRICS_DC_BALANCE, Balance).
-
--spec blocks(RelativeTime :: integer()) -> ok.
-blocks(RelativeTime) ->
-    prometheus_gauge:set(?METRICS_CHAIN_BLOCKS, RelativeTime).
-
--spec state_channels(
-    OpenedCount :: non_neg_integer(),
-    OverspentCount :: non_neg_integer(),
-    ActiveCount :: non_neg_integer(),
-    TotalDCLeft :: non_neg_integer(),
-    TotalActors :: non_neg_integer()
-) -> ok.
-state_channels(OpenedCount, OverspentCount, ActiveCount, TotalDCLeft, TotalActors) ->
-    prometheus_gauge:set(?METRICS_SC_OPENED_COUNT, OpenedCount),
-    prometheus_gauge:set(?METRICS_SC_OVERSPENT_COUNT, OverspentCount),
-    prometheus_gauge:set(?METRICS_SC_ACTIVE_COUNT, ActiveCount),
-    prometheus_gauge:set(?METRICS_SC_ACTIVE_BALANCE, TotalDCLeft),
-    prometheus_gauge:set(?METRICS_SC_ACTIVE_ACTORS, TotalActors).
-
--spec state_channel_close(Status :: ok | error) -> ok.
-state_channel_close(Status) ->
-    prometheus_counter:inc(?METRICS_SC_CLOSE_SUBMIT, [Status]).
-
 -spec ws_state(boolean()) -> ok.
 ws_state(State) ->
     catch prometheus_boolean:set(?METRICS_WS_STATE, State).
@@ -217,9 +176,6 @@ handle_cast(_Msg, State) ->
 handle_info(?METRICS_WORKER_TICK, State) ->
     lager:info("running metrics"),
     erlang:spawn(fun() ->
-        ok = record_dc_balance(),
-        ok = record_chain_blocks(),
-        ok = record_state_channels(),
         ok = record_vm_stats(),
         ok = record_ets(),
         ok = record_queues(),
@@ -297,47 +253,6 @@ declare_metrics() ->
         {labels, [status, source]}
     ]),
 
-    %% Blockchain metrics
-    prometheus_gauge:declare([
-        {name, ?METRICS_DC_BALANCE},
-        {help, "Account DC Balance"}
-    ]),
-    prometheus_gauge:declare([
-        {name, ?METRICS_CHAIN_BLOCKS},
-        {help, "Packet Purchaser's blockchain blocks"}
-    ]),
-
-    %% State channels
-    prometheus_gauge:declare([
-        {name, ?METRICS_SC_OPENED_COUNT},
-        {help, "Opened State Channels count"}
-    ]),
-    prometheus_gauge:declare([
-        {name, ?METRICS_SC_OVERSPENT_COUNT},
-        {help, "Overspent State Channels count"}
-    ]),
-    prometheus_gauge:declare([
-        {name, ?METRICS_SC_ACTIVE_COUNT},
-        {help, "Active State Channels count"}
-    ]),
-    prometheus_gauge:declare([
-        {name, ?METRICS_SC_ACTIVE_BALANCE},
-        {help, "Active State Channels balance"}
-    ]),
-    prometheus_gauge:declare([
-        {name, ?METRICS_SC_ACTIVE_ACTORS},
-        {help, "Active State Channels actors"}
-    ]),
-    prometheus_counter:declare([
-        {name, ?METRICS_SC_CLOSE_SUBMIT},
-        {help, "State Channel Close Txn status"},
-        {labels, [status]}
-    ]),
-    prometheus_gauge:declare([
-        {name, ?METRICS_SC_CLOSE_CONFLICT},
-        {help, "State Channels close with conflicts"}
-    ]),
-
     %% Websocket
     prometheus_boolean:declare([
         {name, ?METRICS_WS_STATE},
@@ -391,82 +306,6 @@ declare_metrics() ->
 -spec schedule_next_tick() -> reference().
 schedule_next_tick() ->
     erlang:send_after(?METRICS_WORKER_TICK_INTERVAL, self(), ?METRICS_WORKER_TICK).
-
-record_dc_balance() ->
-    case pp_utils:is_chain_dead() of
-        true ->
-            ok;
-        false ->
-            {ok, PubKey, _, _} = blockchain_swarm:keys(),
-            PubKeyBin = libp2p_crypto:pubkey_to_b58(PubKey),
-
-            Ledger = pp_utils:ledger(),
-            case blockchain_ledger_v1:find_dc_entry(PubKeyBin, Ledger) of
-                {error, _} ->
-                    ok;
-                {ok, Entry} ->
-                    Balance = blockchain_ledger_data_credits_entry_v1:balance(Entry),
-                    ok = ?MODULE:dcs(Balance)
-            end,
-            ok
-    end.
-
-record_chain_blocks() ->
-    case pp_utils:is_chain_dead() of
-        true ->
-            ok;
-        false ->
-            Chain = pp_utils:chain(),
-            case blockchain:head_block(Chain) of
-                {error, _} ->
-                    ok;
-                {ok, Block} ->
-                    Now = erlang:system_time(seconds),
-                    Time = blockchain_block:time(Block),
-                    ok = ?MODULE:blocks(Now - Time)
-            end
-    end.
-
-record_state_channels() ->
-    case pp_utils:is_chain_dead() of
-        true ->
-            ok;
-        false ->
-            Chain = pp_utils:chain(),
-
-            {ok, Height} = blockchain:height(Chain),
-            {OpenedCount, OverspentCount, _GettingCloseCount} = pp_sc_worker:counts(Height),
-
-            ActiveSCs = maps:values(blockchain_state_channels_server:get_actives()),
-            ActiveCount = erlang:length(ActiveSCs),
-
-            {TotalDCLeft, TotalActors} = lists:foldl(
-                fun({ActiveSC, _, _}, {DCs, Actors}) ->
-                    Summaries = blockchain_state_channel_v1:summaries(ActiveSC),
-                    TotalDC = blockchain_state_channel_v1:total_dcs(ActiveSC),
-                    DCLeft = blockchain_state_channel_v1:amount(ActiveSC) - TotalDC,
-                    %% If SC ran out of DC we should not be counted towards active metrics
-                    case DCLeft of
-                        0 ->
-                            {DCs, Actors};
-                        _ ->
-                            {DCs + DCLeft, Actors + erlang:length(Summaries)}
-                    end
-                end,
-                {0, 0},
-                ActiveSCs
-            ),
-
-            ok = ?MODULE:state_channels(
-                OpenedCount,
-                OverspentCount,
-                ActiveCount,
-                TotalDCLeft,
-                TotalActors
-            ),
-
-            ok
-    end.
 
 -spec record_vm_stats() -> ok.
 record_vm_stats() ->
