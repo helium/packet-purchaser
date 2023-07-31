@@ -210,14 +210,13 @@ handle_info(
     end;
 handle_info(
     {?PUSH_DATA_TICK, Token},
-    #state{push_data = PushData, pubkeybin = PBK, net_id = NetID} = State
+    #state{push_data = PushData} = State
 ) ->
     case maps:get(Token, PushData, undefined) of
         undefined ->
             {noreply, State};
         {_Data, _} ->
             lager:debug("got push data timeout ~p, ignoring lack of ack", [Token]),
-            ok = pp_metrics:push_ack_missed(PBK, NetID),
             {noreply, State#state{push_data = maps:remove(Token, PushData)}}
     end;
 handle_info(
@@ -228,10 +227,9 @@ handle_info(
     {noreply, State#state{pull_data = RefAndToken}};
 handle_info(
     ?PULL_DATA_TIMEOUT_TICK,
-    #state{pull_data_timer = PullDataTimer, pubkeybin = PBK, net_id = NetID} = State
+    #state{pull_data_timer = PullDataTimer} = State
 ) ->
     lager:debug("got a pull data timeout, ignoring missed pull_ack [retry: ~p]", [PullDataTimer]),
-    ok = pp_metrics:pull_ack_missed(PBK, NetID),
     _ = schedule_pull_data(PullDataTimer),
     {noreply, State};
 handle_info(?SHUTDOWN_TICK, #state{shutdown_timer = {ShutdownTimeout, _}} = State) ->
@@ -319,14 +317,7 @@ handle_udp(Data, State) ->
     end.
 
 -spec handle_push_ack(binary(), #state{}) -> {noreply, #state{}}.
-handle_push_ack(
-    Data,
-    #state{
-        push_data = PushData,
-        pubkeybin = PBK,
-        net_id = NetID
-    } = State
-) ->
+handle_push_ack(Data, #state{push_data = PushData} = State) ->
     Token = semtech_udp:token(Data),
     case maps:get(Token, PushData, undefined) of
         undefined ->
@@ -335,26 +326,18 @@ handle_push_ack(
         {_, TimerRef} ->
             lager:debug("got push ack ~p", [Token]),
             _ = erlang:cancel_timer(TimerRef),
-            ok = pp_metrics:push_ack(PBK, NetID),
             {noreply, State#state{push_data = maps:remove(Token, PushData)}}
     end.
 
 -spec handle_pull_ack(binary(), #state{}) -> {noreply, #state{}}.
-handle_pull_ack(
-    _Data,
-    #state{
-        pull_data = undefined
-    } = State
-) ->
+handle_pull_ack(_Data, #state{pull_data = undefined} = State) ->
     lager:warning("got unknown pull ack for ~p", [_Data]),
     {noreply, State};
 handle_pull_ack(
     Data,
     #state{
         pull_data = {PullDataRef, PullDataToken},
-        pull_data_timer = PullDataTimer,
-        pubkeybin = PBK,
-        net_id = NetID
+        pull_data_timer = PullDataTimer
     } = State
 ) ->
     case semtech_udp:token(Data) of
@@ -362,7 +345,6 @@ handle_pull_ack(
             erlang:cancel_timer(PullDataRef),
             lager:debug("got pull ack for ~p", [PullDataToken]),
             _ = schedule_pull_data(PullDataTimer),
-            ok = pp_metrics:pull_ack(PBK, NetID),
             {noreply, State#state{pull_data = undefined}};
         _UnknownToken ->
             lager:warning("got unknown pull ack for ~p", [_UnknownToken]),
