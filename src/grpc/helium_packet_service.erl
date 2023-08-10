@@ -25,19 +25,14 @@ route(eos, StreamState) ->
     lager:debug("received eos for stream"),
     {stop, StreamState};
 route(#envelope_up_v1_pb{data = {packet, PacketUp}}, StreamState) ->
-    case verify(PacketUp) of
-        false ->
-            {grpc_error, {grpcbox_stream:code_to_status(2), <<"bad signature">>}};
-        true ->
-            SCPacket = to_sc_packet(PacketUp),
-            {Time, _} = timer:tc(pp_sc_packet_handler, handle_free_packet, [
-                SCPacket,
-                erlang:system_time(millisecond),
-                self()
-            ]),
-            pp_metrics:function_observe('pp_sc_packet_handler:handle_free_packet', Time),
-            {ok, StreamState}
-    end;
+    SCPacket = to_sc_packet(PacketUp),
+    {Time, _} = timer:tc(pp_sc_packet_handler, handle_free_packet, [
+        SCPacket,
+        erlang:system_time(millisecond),
+        self()
+    ]),
+    pp_metrics:function_observe('pp_sc_packet_handler:handle_free_packet', Time),
+    {ok, StreamState};
 route(_EnvUp, StreamState) ->
     lager:warning("unknown ~p", [_EnvUp]),
     {ok, StreamState}.
@@ -64,25 +59,6 @@ handle_info(_Msg, StreamState) ->
 %% ------------------------------------------------------------------
 %% Helper Functions
 %% ------------------------------------------------------------------
--spec verify(Packet :: packet_router_pb:packet_router_packet_up_v1_pb()) -> boolean().
-verify(Packet) ->
-    try
-        BasePacket = Packet#packet_router_packet_up_v1_pb{signature = <<>>},
-        EncodedPacket = packet_router_pb:encode_msg(BasePacket),
-        #packet_router_packet_up_v1_pb{
-            signature = Signature,
-            gateway = PubKeyBin
-        } = Packet,
-        PubKey = libp2p_crypto:bin_to_pubkey(PubKeyBin),
-        libp2p_crypto:verify(EncodedPacket, Signature, PubKey)
-    of
-        Bool -> Bool
-    catch
-        _E:_R ->
-            false
-    end.
-
-%% ===================================================================
 
 -spec to_sc_packet(packet_router_pb:packet_router_packet_up_v1_pb()) ->
     router_pb:blockchain_state_channel_packet_v1_pb().
