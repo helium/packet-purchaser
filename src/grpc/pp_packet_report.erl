@@ -225,7 +225,7 @@ new_test() ->
     }),
     ?assertEqual(
         test_new(#{gateway_timestamp_ms => Now}),
-        ?MODULE:new(TestPacket, 0)
+        ?MODULE:new(TestPacket, 0, 1, join, Now)
     ).
 
 -endif.
