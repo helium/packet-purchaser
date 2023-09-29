@@ -65,6 +65,8 @@ start_link(Args) ->
     PacketType :: join | packet | uplink,
     ReceivedTimestamp :: non_neg_integer()
 ) -> ok.
+report_packet(_, _, join, _) ->
+    ok;
 report_packet(Packet, NetID, packet, ReceivedTimestamp) ->
     report_packet(Packet, NetID, uplink, ReceivedTimestamp);
 report_packet(Packet, NetID, PacketType, ReceivedTimestamp) ->
